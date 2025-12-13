@@ -257,33 +257,47 @@ export default function ScapeEditor() {
           <div className="flex h-full flex-col">
             {/* Split Editor / Preview */}
             <div className="flex-1 overflow-hidden">
-              {/* Simplified View Logic for now */}
               <ResizablePanelGroup direction="horizontal">
                 <ResizablePanel defaultSize={50} minSize={30}>
-                  <ResizablePanelGroup direction="vertical">
-                    <ResizablePanel defaultSize={isTerminalOpen ? 75 : 100}>
-                      <CodeEditor
-                        key={activeFile.name}
-                        fileName={activeFile.name}
-                        initialValue={activeFile.content}
-                        language={activeFile.language}
-                        onChange={handleCodeChange}
-                        onValidate={handleValidate}
-                      />
-                    </ResizablePanel>
-                    <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
-                    {isTerminalOpen && (
-                      <ResizablePanel defaultSize={25} minSize={10}>
+                  <div className="flex h-full flex-col">
+                    <div className="flex-1 min-h-0">
+                      <ResizablePanelGroup direction="vertical">
+                        <ResizablePanel defaultSize={isTerminalOpen ? 75 : 100}>
+                          <CodeEditor
+                            key={activeFile.name}
+                            fileName={activeFile.name}
+                            initialValue={activeFile.content}
+                            language={activeFile.language}
+                            onChange={handleCodeChange}
+                            onValidate={handleValidate}
+                          />
+                        </ResizablePanel>
+                        <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
+                        {isTerminalOpen && (
+                          <ResizablePanel defaultSize={25} minSize={10}>
+                            <TerminalPane
+                              activeTab={terminalTab}
+                              onTabChange={handleTerminalTabChange}
+                              onClose={() => setIsTerminalOpen(false)}
+                              problems={problems}
+                              isCollapsed={false}
+                            />
+                          </ResizablePanel>
+                        )}
+                      </ResizablePanelGroup>
+                    </div>
+                    {/* Collapsed Terminal Bar inside Left Panel */}
+                    {!isTerminalOpen && (
+                      <div className="h-9 border-t bg-background shrink-0">
                         <TerminalPane
                           activeTab={terminalTab}
                           onTabChange={handleTerminalTabChange}
-                          onClose={() => setIsTerminalOpen(false)}
                           problems={problems}
-                          isCollapsed={false}
+                          isCollapsed={true}
                         />
-                      </ResizablePanel>
+                      </div>
                     )}
-                  </ResizablePanelGroup>
+                  </div>
                 </ResizablePanel>
 
                 <ResizableHandle />
@@ -293,19 +307,6 @@ export default function ScapeEditor() {
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>
-
-            {/* Collapsed Terminal Bar */}
-            {!isTerminalOpen && (
-              <div className="h-9 border-t bg-background">
-                <TerminalPane
-                  activeTab={terminalTab}
-                  onTabChange={handleTerminalTabChange}
-                  problems={problems}
-                  isCollapsed={true}
-                />
-              </div>
-            )}
-
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
