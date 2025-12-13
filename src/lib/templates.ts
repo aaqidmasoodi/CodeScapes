@@ -1,12 +1,15 @@
 export interface TemplateFile {
-  name: string;
-  content: string;
-  language: string;
+  name: string
+  content: string
+  language: string
 }
 
-export type TemplateType = 'blank' | 'three' | 'p5' | 'html';
+export type TemplateType = "blank" | "three" | "p5" | "html"
 
-export const TEMPLATES: Record<TemplateType, { name: string; description: string; files: TemplateFile[] }> = {
+export const TEMPLATES: Record<
+  TemplateType,
+  { name: string; description: string; files: TemplateFile[] }
+> = {
   blank: {
     name: "Blank Project",
     description: "Start from scratch with empty files",
@@ -26,19 +29,19 @@ export const TEMPLATES: Record<TemplateType, { name: string; description: string
     <div id="app"></div>
     <script type="module" src="app.js"></script>
   </body>
-</html>`
+</html>`,
       },
       {
         name: "style.css",
         language: "css",
-        content: "/* Your styles here */"
+        content: "/* Your styles here */",
       },
       {
         name: "app.js",
         language: "javascript",
-        content: "// Your code here"
-      }
-    ]
+        content: "// Your code here",
+      },
+    ],
   },
   three: {
     name: "Three.js",
@@ -58,12 +61,12 @@ export const TEMPLATES: Record<TemplateType, { name: string; description: string
   <body>
     <script type="module" src="app.js"></script>
   </body>
-</html>`
+</html>`,
       },
       {
         name: "style.css",
         language: "css",
-        content: "body { margin: 0; }"
+        content: "body { margin: 0; }",
       },
       {
         name: "app.js",
@@ -133,9 +136,9 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-});`
-      }
-    ]
+});`,
+      },
+    ],
   },
   p5: {
     name: "p5.js",
@@ -157,7 +160,7 @@ window.addEventListener('resize', () => {
     <main></main>
     <script src="app.js"></script>
   </body>
-</html>`
+</html>`,
       },
       {
         name: "style.css",
@@ -169,7 +172,7 @@ window.addEventListener('resize', () => {
   align-items: center;
   min-height: 100vh;
   background: #f0f0f0;
-}`
+}`,
       },
       {
         name: "app.js",
@@ -182,9 +185,9 @@ function draw() {
   background(220);
   fill(255, 0, 0);
   ellipse(mouseX, mouseY, 50, 50);
-}`
-      }
-    ]
+}`,
+      },
+    ],
   },
   html: {
     name: "HTML/JS",
@@ -206,7 +209,7 @@ function draw() {
     <button id="btn">Click Me</button>
     <script type="module" src="app.js"></script>
 </body>
-</html>`
+</html>`,
       },
       {
         name: "style.css",
@@ -220,15 +223,15 @@ function draw() {
 
 h1 {
     color: #333;
-}`
+}`,
       },
       {
         name: "app.js",
         language: "javascript",
         content: `document.getElementById('btn').addEventListener('click', () => {
     alert('Button clicked!');
-});`
-      }
-    ]
-  }
-};
+});`,
+      },
+    ],
+  },
+}

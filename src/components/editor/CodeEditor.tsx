@@ -19,7 +19,7 @@ export function CodeEditor({
   fileName = "unknown",
   onChange,
   onValidate,
-  files = []
+  files = [],
 }: CodeEditorProps) {
   const { theme } = useTheme()
   const monaco = useMonaco()
@@ -31,11 +31,11 @@ export function CodeEditor({
     // Filter for JS files that are NOT the current file
     // We treat them as global functionality (common in p5.js / simple setups)
     const extraLibs = files
-      .filter(f => f.name.endsWith('.js') && f.name !== fileName)
-      .map(f => ({
+      .filter((f) => f.name.endsWith(".js") && f.name !== fileName)
+      .map((f) => ({
         content: f.content,
         // Using a definition path or just the filename
-        filePath: `file:///${f.name}`
+        filePath: `file:///${f.name}`,
       }))
 
     // Setup Compiler Options
@@ -48,13 +48,11 @@ export function CodeEditor({
       allowNonTsExtensions: true,
       allowJs: true,
       checkJs: true,
-      noLib: false
+      noLib: false,
     })
 
     // Dispose old libs before adding new ones
-    const disposables = extraLibs.map(lib =>
-      tsDefaults.addExtraLib(lib.content, lib.filePath)
-    )
+    const disposables = extraLibs.map((lib) => tsDefaults.addExtraLib(lib.content, lib.filePath))
 
     return () => {
       disposables.forEach((d: any) => d.dispose())
@@ -89,9 +87,14 @@ export function CodeEditor({
   }
 
   // Resolve effective theme for Monaco
-  const effectiveTheme = theme === "system"
-    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "vs-dark" : "light")
-    : (theme === "dark" ? "vs-dark" : "light")
+  const effectiveTheme =
+    theme === "system"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "vs-dark"
+        : "light"
+      : theme === "dark"
+        ? "vs-dark"
+        : "light"
 
   return (
     <div className="h-full w-full overflow-hidden">

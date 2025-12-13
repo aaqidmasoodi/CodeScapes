@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, type FormEvent } from "react"
 import { Terminal as TerminalIcon, X, AlertCircle, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -20,8 +19,8 @@ interface TerminalPaneProps {
 }
 
 type HistoryItem =
-  | { type: 'input'; content: string; cwd: string }
-  | { type: 'output'; content: React.ReactNode }
+  | { type: "input"; content: string; cwd: string }
+  | { type: "output"; content: React.ReactNode }
 
 export function TerminalPane({
   problems = [],
@@ -31,20 +30,24 @@ export function TerminalPane({
   isCollapsed = false,
   files = [],
   scapeName = "project",
-  onDeleteFile
+  onDeleteFile,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
-      type: 'output', content: (
+      type: "output",
+      content: (
         <div className="mb-2">
           <div>CodeScape Terminal [Version 1.0.0]</div>
           <div>(c) 2025 CodeScape Inc.</div>
         </div>
-      )
-    }
+      ),
+    },
   ])
   const [input, setInput] = useState("")
-  const [pendingConfirmation, setPendingConfirmation] = useState<{ command: 'rm', file: string } | null>(null)
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    command: "rm"
+    file: string
+  } | null>(null)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -52,7 +55,7 @@ export function TerminalPane({
   // Auto-scroll
   useEffect(() => {
     if (activeTab === "terminal" && !isCollapsed) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" })
     }
   }, [history, activeTab, isCollapsed])
 
@@ -71,16 +74,22 @@ export function TerminalPane({
 
     // Check if waiting for confirmation
     if (pendingConfirmation) {
-      if (pendingConfirmation.command === 'rm') {
-        if (cmd.toLowerCase() === 'y' || cmd.toLowerCase() === 'yes') {
+      if (pendingConfirmation.command === "rm") {
+        if (cmd.toLowerCase() === "y" || cmd.toLowerCase() === "yes") {
           if (onDeleteFile) {
             onDeleteFile(pendingConfirmation.file)
-            setHistory(prev => [...prev, { type: 'output', content: `Deleted '${pendingConfirmation.file}'` }])
+            setHistory((prev) => [
+              ...prev,
+              { type: "output", content: `Deleted '${pendingConfirmation.file}'` },
+            ])
           } else {
-            setHistory(prev => [...prev, { type: 'output', content: `Error: Delete handler not connected.` }])
+            setHistory((prev) => [
+              ...prev,
+              { type: "output", content: `Error: Delete handler not connected.` },
+            ])
           }
         } else {
-          setHistory(prev => [...prev, { type: 'output', content: 'Aborted.' }])
+          setHistory((prev) => [...prev, { type: "output", content: "Aborted." }])
         }
       }
       setPendingConfirmation(null)
@@ -89,42 +98,68 @@ export function TerminalPane({
 
     // Normal Commands
     switch (cmd) {
-      case 'help':
-        setHistory(prev => [...prev, {
-          type: 'output', content: (
-            <div className="text-muted-foreground">
-              Available commands:
-              <br />&nbsp;&nbsp;help&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Show this help message
-              <br />&nbsp;&nbsp;ls&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;List files
-              <br />&nbsp;&nbsp;rm &lt;file&gt;&nbsp;Delete a file
-              <br />&nbsp;&nbsp;clear&nbsp;&nbsp;&nbsp;&nbsp;Clear terminal
-            </div>
-          )
-        }])
+      case "help":
+        setHistory((prev) => [
+          ...prev,
+          {
+            type: "output",
+            content: (
+              <div className="text-muted-foreground">
+                Available commands:
+                <br />
+                &nbsp;&nbsp;help&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Show this help message
+                <br />
+                &nbsp;&nbsp;ls&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;List files
+                <br />
+                &nbsp;&nbsp;rm &lt;file&gt;&nbsp;Delete a file
+                <br />
+                &nbsp;&nbsp;clear&nbsp;&nbsp;&nbsp;&nbsp;Clear terminal
+              </div>
+            ),
+          },
+        ])
         break
-      case 'clear':
+      case "clear":
         setHistory([])
         break
-      case 'ls':
-        const fileList = files.map(f => f.name).sort().join('\n')
-        setHistory(prev => [...prev, { type: 'output', content: <div className="text-blue-400">{fileList || '(empty)'}</div> }])
+      case "ls":
+        const fileList = files
+          .map((f) => f.name)
+          .sort()
+          .join("\n")
+        setHistory((prev) => [
+          ...prev,
+          { type: "output", content: <div className="text-blue-400">{fileList || "(empty)"}</div> },
+        ])
         break
-      case 'rm':
+      case "rm":
         if (!args[0]) {
-          setHistory(prev => [...prev, { type: 'output', content: 'Usage: rm <filename>' }])
+          setHistory((prev) => [...prev, { type: "output", content: "Usage: rm <filename>" }])
         } else {
           const target = args[0]
-          const exists = files.some(f => f.name === target)
+          const exists = files.some((f) => f.name === target)
           if (!exists) {
-            setHistory(prev => [...prev, { type: 'output', content: `rm: cannot remove '${target}': No such file or directory` }])
+            setHistory((prev) => [
+              ...prev,
+              {
+                type: "output",
+                content: `rm: cannot remove '${target}': No such file or directory`,
+              },
+            ])
           } else {
-            setHistory(prev => [...prev, { type: 'output', content: `remove '${target}'? [y/N]` }])
-            setPendingConfirmation({ command: 'rm', file: target })
+            setHistory((prev) => [
+              ...prev,
+              { type: "output", content: `remove '${target}'? [y/N]` },
+            ])
+            setPendingConfirmation({ command: "rm", file: target })
           }
         }
         break
       default:
-        setHistory(prev => [...prev, { type: 'output', content: `zsh: command not found: ${cmd}` }])
+        setHistory((prev) => [
+          ...prev,
+          { type: "output", content: `zsh: command not found: ${cmd}` },
+        ])
     }
   }
 
@@ -133,24 +168,36 @@ export function TerminalPane({
     const currentInput = input
 
     // Add input to history
-    setHistory(prev => [...prev, {
-      type: 'input',
-      content: currentInput,
-      cwd: `~/${scapeName.replace(/\s+/g, '-').toLowerCase()}`
-    }])
+    setHistory((prev) => [
+      ...prev,
+      {
+        type: "input",
+        content: currentInput,
+        cwd: `~/${scapeName.replace(/\s+/g, "-").toLowerCase()}`,
+      },
+    ])
 
     handleCommand(currentInput)
     setInput("")
   }
 
   return (
-    <div className={cn("flex flex-col bg-background text-foreground", isCollapsed ? "h-auto border-t" : "h-full")}>
-      <div className={cn("flex items-center justify-between px-4 py-2", !isCollapsed && "border-b")}>
+    <div
+      className={cn(
+        "flex flex-col bg-background text-foreground",
+        isCollapsed ? "h-auto border-t" : "h-full"
+      )}
+    >
+      <div
+        className={cn("flex items-center justify-between px-4 py-2", !isCollapsed && "border-b")}
+      >
         <div className="flex items-center gap-4 text-xs font-medium uppercase text-muted-foreground">
           <div
             className={cn(
-              "flex items-center gap-2 cursor-pointer pb-2 -mb-2.5 hover:text-foreground transition-colors",
-              activeTab === "terminal" && !isCollapsed && "border-b-2 border-primary text-foreground",
+              "-mb-2.5 flex cursor-pointer items-center gap-2 pb-2 transition-colors hover:text-foreground",
+              activeTab === "terminal" &&
+                !isCollapsed &&
+                "border-b-2 border-primary text-foreground",
               activeTab === "terminal" && isCollapsed && "text-foreground"
             )}
             onClick={() => onTabChange("terminal")}
@@ -160,7 +207,7 @@ export function TerminalPane({
           </div>
           <div
             className={cn(
-              "cursor-pointer pb-2 -mb-2.5 hover:text-foreground transition-colors",
+              "-mb-2.5 cursor-pointer pb-2 transition-colors hover:text-foreground",
               activeTab === "output" && !isCollapsed && "border-b-2 border-primary text-foreground",
               activeTab === "output" && isCollapsed && "text-foreground"
             )}
@@ -170,8 +217,10 @@ export function TerminalPane({
           </div>
           <div
             className={cn(
-              "flex items-center gap-1.5 cursor-pointer pb-2 -mb-2.5 hover:text-foreground transition-colors",
-              activeTab === "problems" && !isCollapsed && "border-b-2 border-primary text-foreground",
+              "-mb-2.5 flex cursor-pointer items-center gap-1.5 pb-2 transition-colors hover:text-foreground",
+              activeTab === "problems" &&
+                !isCollapsed &&
+                "border-b-2 border-primary text-foreground",
               activeTab === "problems" && isCollapsed && "text-foreground"
             )}
             onClick={() => onTabChange("problems")}
@@ -186,7 +235,12 @@ export function TerminalPane({
         </div>
         <div className="flex items-center gap-1">
           {isCollapsed ? (
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onTabChange(activeTab)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => onTabChange(activeTab)}
+            >
               <ChevronUp className="h-3.5 w-3.5" />
             </Button>
           ) : (
@@ -199,41 +253,43 @@ export function TerminalPane({
 
       {!isCollapsed && (
         <div
-          className="flex-1 overflow-auto p-4 font-mono text-xs cursor-text"
+          className="flex-1 cursor-text overflow-auto p-4 font-mono text-xs"
           onClick={handleContainerClick}
         >
           {activeTab === "terminal" && (
             <>
               {history.map((item, i) => (
                 <div key={i} className="mb-1 break-words">
-                  {item.type === 'input' ? (
+                  {item.type === "input" ? (
                     <div className="flex gap-2">
                       <span className="text-green-500">➜</span>
-                      <span className="text-blue-500 min-w-fit">{item.cwd}</span>
+                      <span className="min-w-fit text-blue-500">{item.cwd}</span>
                       <span className="text-foreground">{item.content}</span>
                     </div>
                   ) : (
-                    <div className="text-muted-foreground whitespace-pre-wrap">{item.content}</div>
+                    <div className="whitespace-pre-wrap text-muted-foreground">{item.content}</div>
                   )}
                 </div>
               ))}
 
-              <div className="flex gap-2 items-center">
+              <div className="flex items-center gap-2">
                 {pendingConfirmation ? (
-                  <span className="text-yellow-500 font-bold">?</span>
+                  <span className="font-bold text-yellow-500">?</span>
                 ) : (
                   <>
                     <span className="text-green-500">➜</span>
-                    <span className="text-blue-500 whitespace-nowrap">~/{scapeName?.replace(/\s+/g, '-').toLowerCase() || 'project'}</span>
+                    <span className="whitespace-nowrap text-blue-500">
+                      ~/{scapeName?.replace(/\s+/g, "-").toLowerCase() || "project"}
+                    </span>
                   </>
                 )}
-                <form onSubmit={handleSubmit} className="flex-1 min-w-0">
+                <form onSubmit={handleSubmit} className="min-w-0 flex-1">
                   <input
                     ref={inputRef}
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    className="w-full bg-transparent border-none outline-none text-foreground p-0 m-0"
+                    className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
                     autoFocus
                     autoComplete="off"
                     spellCheck="false"
@@ -251,14 +307,26 @@ export function TerminalPane({
           {activeTab === "problems" && (
             <div className="flex flex-col gap-1">
               {problems.length === 0 ? (
-                <div className="text-muted-foreground">No problems have been detected in the workspace.</div>
+                <div className="text-muted-foreground">
+                  No problems have been detected in the workspace.
+                </div>
               ) : (
-                problems.map(problem => (
-                  <div key={problem.id} className="group flex cursor-pointer items-start gap-2 hover:bg-muted/50 p-1 rounded">
-                    <AlertCircle className={cn("mt-0.5 h-3.5 w-3.5 flex-shrink-0", problem.severity === "error" ? "text-destructive" : "text-yellow-500")} />
+                problems.map((problem) => (
+                  <div
+                    key={problem.id}
+                    className="group flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-muted/50"
+                  >
+                    <AlertCircle
+                      className={cn(
+                        "mt-0.5 h-3.5 w-3.5 flex-shrink-0",
+                        problem.severity === "error" ? "text-destructive" : "text-yellow-500"
+                      )}
+                    />
                     <div className="flex flex-col gap-0.5">
                       <span className="text-foreground">{problem.message}</span>
-                      <span className="text-muted-foreground">{problem.file} [{problem.line}:{problem.column}]</span>
+                      <span className="text-muted-foreground">
+                        {problem.file} [{problem.line}:{problem.column}]
+                      </span>
                     </div>
                   </div>
                 ))

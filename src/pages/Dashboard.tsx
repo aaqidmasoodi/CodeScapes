@@ -23,9 +23,9 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("")
 
   // Real data from Dexie
-  const myScapes = useLiveQuery(() => db.scapes.orderBy('createdAt').reverse().toArray())
+  const myScapes = useLiveQuery(() => db.scapes.orderBy("createdAt").reverse().toArray())
 
-  const filteredScapes = myScapes?.filter(scape =>
+  const filteredScapes = myScapes?.filter((scape) =>
     scape.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -37,31 +37,35 @@ export default function Dashboard() {
   }
 
   const renderContent = () => {
-    if (activeTab === 'learn') {
+    if (activeTab === "learn") {
       return (
-        <div className="flex h-full flex-col items-center justify-center p-8 text-center bg-muted/5">
-          <BookOpen className="h-16 w-16 text-muted-foreground/20 mb-4" />
+        <div className="flex h-full flex-col items-center justify-center bg-muted/5 p-8 text-center">
+          <BookOpen className="mb-4 h-16 w-16 text-muted-foreground/20" />
           <h2 className="text-2xl font-bold">Learning Center</h2>
-          <p className="text-muted-foreground mt-2 max-w-md">Tutorials, documentation, and guides to help you master CodeScape are coming soon.</p>
+          <p className="mt-2 max-w-md text-muted-foreground">
+            Tutorials, documentation, and guides to help you master CodeScape are coming soon.
+          </p>
         </div>
       )
     }
 
-    if (activeTab === 'community') {
+    if (activeTab === "community") {
       return (
-        <div className="flex h-full flex-col items-center justify-center p-8 text-center bg-muted/5">
-          <Globe className="h-16 w-16 text-muted-foreground/20 mb-4" />
+        <div className="flex h-full flex-col items-center justify-center bg-muted/5 p-8 text-center">
+          <Globe className="mb-4 h-16 w-16 text-muted-foreground/20" />
           <h2 className="text-2xl font-bold">Community Hub</h2>
-          <p className="text-muted-foreground mt-2 max-w-md">Explore and fork scapes created by other developers in the CodeScape Cloud.</p>
+          <p className="mt-2 max-w-md text-muted-foreground">
+            Explore and fork scapes created by other developers in the CodeScape Cloud.
+          </p>
         </div>
       )
     }
 
     // Default: My Scapes (Dashboard)
     return (
-      <div className="flex flex-col h-full bg-background">
+      <div className="flex h-full flex-col bg-background">
         {/* Toolbar */}
-        <div className="border-b px-6 py-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between sticky top-0 bg-background/95 backdrop-blur z-10">
+        <div className="sticky top-0 z-10 flex flex-col gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">My Scapes</h1>
             <p className="text-sm text-muted-foreground">Manage your local projects</p>
@@ -71,7 +75,7 @@ export default function Dashboard() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search..."
-                className="pl-9 bg-muted/50"
+                className="bg-muted/50 pl-9"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -83,36 +87,40 @@ export default function Dashboard() {
         {/* content */}
         <div className="flex-1 overflow-auto p-6">
           {!filteredScapes || filteredScapes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[60vh] text-center border-2 border-dashed rounded-xl mx-auto max-w-2xl bg-muted/5">
-              <div className="bg-muted p-4 rounded-full mb-4">
+            <div className="mx-auto flex h-[60vh] max-w-2xl flex-col items-center justify-center rounded-xl border-2 border-dashed bg-muted/5 text-center">
+              <div className="mb-4 rounded-full bg-muted p-4">
                 <Layout className="h-8 w-8 text-muted-foreground" />
               </div>
               <h3 className="text-lg font-semibold">No scapes found</h3>
-              <p className="text-sm text-muted-foreground mt-1 mb-6 max-w-xs mx-auto">
-                {searchQuery ? "Try adjusting your search query." : "create your first project to get started."}
+              <p className="mx-auto mb-6 mt-1 max-w-xs text-sm text-muted-foreground">
+                {searchQuery
+                  ? "Try adjusting your search query."
+                  : "create your first project to get started."}
               </p>
               {!searchQuery && <CreateScapeDialog />}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
-              {filteredScapes.map(scape => (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              {filteredScapes.map((scape) => (
                 <Card
                   key={scape.id}
-                  className="group relative flex flex-col cursor-pointer transition-all hover:border-primary/50 hover:shadow-lg overflow-hidden border-muted"
+                  className="group relative flex cursor-pointer flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
                   onClick={() => navigate(`/scape/${scape.id}`)}
                 >
                   {/* Decorative Banner */}
-                  <div className="h-24 bg-gradient-to-br from-muted to-muted/50 group-hover:from-primary/5 group-hover:to-blue-500/5 transition-colors absolute w-full top-0 left-0" />
+                  <div className="absolute left-0 top-0 h-24 w-full bg-gradient-to-br from-muted to-muted/50 transition-colors group-hover:from-primary/5 group-hover:to-blue-500/5" />
 
-                  <CardHeader className="relative pt-6 pb-2 px-5 mt-10">
+                  <CardHeader className="relative mt-10 px-5 pb-2 pt-6">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <CardTitle className="text-lg leading-tight group-hover:text-primary transition-colors line-clamp-1">
+                        <CardTitle className="line-clamp-1 text-lg leading-tight transition-colors group-hover:text-primary">
                           {scape.name}
                         </CardTitle>
                         <CardDescription className="flex items-center gap-2 text-xs">
-                          <span className={scape.source === 'cloud' ? 'text-blue-500 font-medium' : ''}>
-                            {scape.source === 'cloud' ? 'Cloud Scape' : 'Local File'}
+                          <span
+                            className={scape.source === "cloud" ? "font-medium text-blue-500" : ""}
+                          >
+                            {scape.source === "cloud" ? "Cloud Scape" : "Local File"}
                           </span>
                         </CardDescription>
                       </div>
@@ -121,7 +129,7 @@ export default function Dashboard() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 -mr-2 text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="-mr-2 h-8 w-8 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical className="h-4 w-4" />
@@ -140,12 +148,12 @@ export default function Dashboard() {
                     </div>
                   </CardHeader>
 
-                  <CardContent className="flex-1 pb-4 px-5 relative">
-                    <div className="flex flex-wrap gap-2 mt-2">
+                  <CardContent className="relative flex-1 px-5 pb-4">
+                    <div className="mt-2 flex flex-wrap gap-2">
                       <span className="inline-flex items-center rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground ring-1 ring-inset ring-gray-500/10">
                         {scape.type}
                       </span>
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground ml-auto">
+                      <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
                         {new Date(scape.updatedAt).toLocaleDateString()}
                       </span>
@@ -161,15 +169,12 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground overflow-hidden">
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-        <main className="flex-1 overflow-hidden h-full">
-          {renderContent()}
-        </main>
+        <main className="h-full flex-1 overflow-hidden">{renderContent()}</main>
       </div>
     </div>
   )
 }
-

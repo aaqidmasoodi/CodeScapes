@@ -1,19 +1,14 @@
 {
-    "compilerOptions": {
-        "module": "ESNext",
-        "target": "ESNext",
-        "lib": [
-            "DOM",
-            "ESNext"
-        ],
-        "moduleResolution": "node",
-        "strict": true,
-        "esModuleInterop": true,
-        "skipLibCheck": true,
-        "outDir": "dist-electron",
-        "noEmit": false
-    },
-    "include": [
-        "electron"
-    ]
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "ESNext",
+    "lib": ["DOM", "ESNext"],
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "dist-electron",
+    "noEmit": false
+  },
+  "include": ["electron"]
 }

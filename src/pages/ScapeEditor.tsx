@@ -29,7 +29,10 @@ import {
 } from "@/components/ui/alert-dialog"
 
 // --- Helper for Persistence ---
-function usePersistentState<T>(key: string, initialValue: T): [T, (value: T | ((val: T) => T)) => void] {
+function usePersistentState<T>(
+  key: string,
+  initialValue: T
+): [T, (value: T | ((val: T) => T)) => void] {
   const [state, setState] = useState<T>(() => {
     try {
       const stored = localStorage.getItem(key)
@@ -58,7 +61,11 @@ const getLayout = (key: string, defaults: number[]) => {
     const parsed = stored ? JSON.parse(stored) : null
 
     // Validate that we have an array of the correct length and all numbers
-    if (Array.isArray(parsed) && parsed.length === defaults.length && parsed.every((n: any) => typeof n === 'number')) {
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === defaults.length &&
+      parsed.every((n: any) => typeof n === "number")
+    ) {
       return parsed
     }
     return defaults
@@ -95,7 +102,7 @@ export default function ScapeEditor() {
 
   // Safe Layout Loader
   const getSafeLayout = () => {
-    const layout = getLayout('codescape:layout:main', [15, 85])
+    const layout = getLayout("codescape:layout:main", [15, 85])
     const sidebarSize = layout[0]
 
     // Auto-correct corruption
@@ -116,8 +123,14 @@ export default function ScapeEditor() {
   }, [activeTool])
 
   // Terminal State
-  const [isTerminalOpen, setIsTerminalOpen] = usePersistentState("codescape:ui:isTerminalOpen", true)
-  const [terminalTab, setTerminalTab] = usePersistentState<TerminalTab>("codescape:ui:terminalTab", "terminal")
+  const [isTerminalOpen, setIsTerminalOpen] = usePersistentState(
+    "codescape:ui:isTerminalOpen",
+    true
+  )
+  const [terminalTab, setTerminalTab] = usePersistentState<TerminalTab>(
+    "codescape:ui:terminalTab",
+    "terminal"
+  )
 
   // Project Specific State
   const [activeFilePath, setActiveFilePath] = usePersistentState<string | null>(
@@ -132,22 +145,21 @@ export default function ScapeEditor() {
   // Derived States
   const expandedFolders = useMemo(() => new Set(expandedFoldersList), [expandedFoldersList])
 
-  const activeFile = useMemo(() =>
-    files.find(f => f.name === activeFilePath) || null,
+  const activeFile = useMemo(
+    () => files.find((f) => f.name === activeFilePath) || null,
     [files, activeFilePath]
   )
-
 
   // --- INITIALIZATION ---
 
   // Initialize files from DB and handle Active File Redirection
   useEffect(() => {
     if (dbFiles) {
-      const mappedFiles: ScapeFile[] = dbFiles.map(f => ({
+      const mappedFiles: ScapeFile[] = dbFiles.map((f) => ({
         id: f.id,
         name: f.name,
         language: f.language as any,
-        content: f.content
+        content: f.content,
       }))
 
       // Update local files
@@ -157,12 +169,13 @@ export default function ScapeEditor() {
       // Handle Active File Logic
       if (mappedFiles.length > 0) {
         // If we have a stored path, verify it still exists
-        const storedExists = mappedFiles.some(f => f.name === activeFilePath)
+        const storedExists = mappedFiles.some((f) => f.name === activeFilePath)
 
         if (!activeFilePath || !storedExists) {
           // Default to index.html or first file
-          const defaultFile = mappedFiles.find(f => f.name === 'index.html')
-            || mappedFiles.find(f => f.language !== 'folder' as any)
+          const defaultFile =
+            mappedFiles.find((f) => f.name === "index.html") ||
+            mappedFiles.find((f) => f.language !== ("folder" as any))
 
           if (defaultFile) {
             setActiveFilePath(defaultFile.name)
@@ -185,8 +198,8 @@ export default function ScapeEditor() {
 
       // Auto-save to DB
       if (id) {
-        files.forEach(file => {
-          const dbFile = dbFiles?.find(df => df.name === file.name)
+        files.forEach((file) => {
+          const dbFile = dbFiles?.find((df) => df.name === file.name)
           if (dbFile && dbFile.content !== file.content) {
             db.files.update(dbFile.id, { content: file.content })
           }
@@ -197,7 +210,6 @@ export default function ScapeEditor() {
     return () => clearTimeout(timer)
   }, [files, id, dbFiles])
 
-
   // --- HANDLERS ---
 
   const handleFileSelect = (file: ScapeFile) => {
@@ -207,28 +219,28 @@ export default function ScapeEditor() {
   const handleCodeChange = (newContent: string | undefined) => {
     if (!activeFile || newContent === undefined) return
     setFiles((prev) =>
-      prev.map((f) =>
-        f.name === activeFile.name ? { ...f, content: newContent } : f
-      )
+      prev.map((f) => (f.name === activeFile.name ? { ...f, content: newContent } : f))
     )
     setRuntimeProblems([])
   }
 
   const handleCreateFile = async (fileName: string) => {
     if (!fileName) return
-    if (files.some(f => f.name === fileName)) {
+    if (files.some((f) => f.name === fileName)) {
       alert("File already exists")
       return
     }
-    const language = fileName.endsWith('.css') ? 'css'
-      : fileName.endsWith('.html') ? 'html'
-        : 'javascript'
+    const language = fileName.endsWith(".css")
+      ? "css"
+      : fileName.endsWith(".html")
+        ? "html"
+        : "javascript"
 
     await db.files.add({
       scapeId: id,
       name: fileName,
       language: language,
-      content: ''
+      content: "",
     })
     // Auto-select new file
     setActiveFilePath(fileName)
@@ -236,13 +248,13 @@ export default function ScapeEditor() {
 
   const handleCreateFolder = async (folderName: string) => {
     if (!folderName) return
-    if (files.some(f => f.name === folderName)) return
+    if (files.some((f) => f.name === folderName)) return
 
     await db.files.add({
       scapeId: id,
       name: folderName,
-      language: 'folder' as any,
-      content: ''
+      language: "folder" as any,
+      content: "",
     })
     // Auto-expand
     handleToggleFolder(folderName)
@@ -257,34 +269,37 @@ export default function ScapeEditor() {
   }
 
   const deleteFileDirectly = async (path: string) => {
-    const filesToDelete = files.filter(f => f.name === path || f.name.startsWith(path + '/'))
-    const dbFilesToDelete = dbFiles?.filter(df => filesToDelete.some(f => f.name === df.name))
+    const filesToDelete = files.filter((f) => f.name === path || f.name.startsWith(path + "/"))
+    const dbFilesToDelete = dbFiles?.filter((df) => filesToDelete.some((f) => f.name === df.name))
 
     if (dbFilesToDelete && dbFilesToDelete.length > 0) {
-      await db.files.bulkDelete(dbFilesToDelete.map(f => f.id))
+      await db.files.bulkDelete(dbFilesToDelete.map((f) => f.id))
     }
 
-    if (activeFilePath && (activeFilePath === path || activeFilePath.startsWith(path + '/'))) {
+    if (activeFilePath && (activeFilePath === path || activeFilePath.startsWith(path + "/"))) {
       setActiveFilePath(null)
     }
   }
 
   const handleMoveNode = async (oldPath: string, newPath: string) => {
-    if (files.some(f => f.name === newPath)) return
+    if (files.some((f) => f.name === newPath)) return
 
-    const folderEntry = files.find(f => f.name === oldPath && f.language === 'folder' as any)
+    const folderEntry = files.find((f) => f.name === oldPath && f.language === ("folder" as any))
     if (folderEntry) await db.files.update(folderEntry.id!, { name: newPath })
 
-    const filesToMove = files.filter(f => f.name === oldPath || f.name.startsWith(oldPath + '/'))
+    const filesToMove = files.filter((f) => f.name === oldPath || f.name.startsWith(oldPath + "/"))
     if (filesToMove.length > 0) {
-      const updates = filesToMove.map(f => ({
+      const updates = filesToMove.map((f) => ({
         key: f.id!,
-        changes: { name: newPath + f.name.slice(oldPath.length) }
+        changes: { name: newPath + f.name.slice(oldPath.length) },
       }))
-      await Promise.all(updates.map(u => db.files.update(u.key, u.changes)))
+      await Promise.all(updates.map((u) => db.files.update(u.key, u.changes)))
     }
 
-    if (activeFilePath && (activeFilePath === oldPath || activeFilePath.startsWith(oldPath + '/'))) {
+    if (
+      activeFilePath &&
+      (activeFilePath === oldPath || activeFilePath.startsWith(oldPath + "/"))
+    ) {
       setActiveFilePath(newPath + activeFilePath.slice(oldPath.length))
     }
   }
@@ -307,20 +322,23 @@ export default function ScapeEditor() {
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'RUNTIME_ERROR') {
+      if (event.data.type === "RUNTIME_ERROR") {
         const error = event.data.payload
-        if (!error || typeof error !== 'object') return
-        setRuntimeProblems(prev => {
-          if (prev.some(p => p.message === error.message && p.line === error.line)) return prev
-          return [...prev, {
-            id: crypto.randomUUID(),
-            file: 'index.html',
-            message: error.message || 'Unknown Runtime Error',
-            line: error.line || 0,
-            column: error.column || 0,
-            severity: 'error',
-            source: 'runtime'
-          }]
+        if (!error || typeof error !== "object") return
+        setRuntimeProblems((prev) => {
+          if (prev.some((p) => p.message === error.message && p.line === error.line)) return prev
+          return [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              file: "index.html",
+              message: error.message || "Unknown Runtime Error",
+              line: error.line || 0,
+              column: error.column || 0,
+              severity: "error",
+              source: "runtime",
+            },
+          ]
         })
       }
     }
@@ -328,32 +346,48 @@ export default function ScapeEditor() {
     return () => window.removeEventListener("message", handleMessage)
   }, [])
 
-  const problems = useMemo(() => [...syntaxProblems, ...runtimeProblems], [syntaxProblems, runtimeProblems])
-  const handleValidate = useCallback((fileProblems: Problem[]) => setSyntaxProblems(fileProblems), [])
+  const problems = useMemo(
+    () => [...syntaxProblems, ...runtimeProblems],
+    [syntaxProblems, runtimeProblems]
+  )
+  const handleValidate = useCallback(
+    (fileProblems: Problem[]) => setSyntaxProblems(fileProblems),
+    []
+  )
 
   const fileTree = useMemo(() => {
     const tree = buildFileTree(files)
-    const applyExpansion = (nodes: FileNode[]): FileNode[] => nodes.map(node => ({
-      ...node,
-      isOpen: expandedFolders.has(node.path),
-      children: node.children ? applyExpansion(node.children) : undefined
-    }))
+    const applyExpansion = (nodes: FileNode[]): FileNode[] =>
+      nodes.map((node) => ({
+        ...node,
+        isOpen: expandedFolders.has(node.path),
+        children: node.children ? applyExpansion(node.children) : undefined,
+      }))
     return applyExpansion(tree)
   }, [files, expandedFolders])
 
-
   // -- LOADING / ERROR STATES --
-  if (!id) return <div className="flex h-screen items-center justify-center text-muted-foreground">Invalid API ID</div>
-  if (!scape && !dbFiles) return (
-    <div className="flex h-screen items-center justify-center bg-background text-foreground">
-      <div className="flex flex-col items-center gap-4">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-        <p className="text-muted-foreground">Loading Scape...</p>
+  if (!id)
+    return (
+      <div className="flex h-screen items-center justify-center text-muted-foreground">
+        Invalid API ID
       </div>
-    </div>
-  )
-  if (!scape && dbFiles) return <div className="flex h-screen items-center justify-center text-muted-foreground">Scape not found</div>
-
+    )
+  if (!scape && !dbFiles)
+    return (
+      <div className="flex h-screen items-center justify-center bg-background text-foreground">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="text-muted-foreground">Loading Scape...</p>
+        </div>
+      </div>
+    )
+  if (!scape && dbFiles)
+    return (
+      <div className="flex h-screen items-center justify-center text-muted-foreground">
+        Scape not found
+      </div>
+    )
 
   return (
     <>
@@ -362,20 +396,37 @@ export default function ScapeEditor() {
         headerTitle={
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-xl font-bold bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-xl font-bold text-transparent">
                 CodeScape Editor
               </span>
-              <span className="text-sm font-medium text-muted-foreground border-l pl-2">
+              <span className="border-l pl-2 text-sm font-medium text-muted-foreground">
                 {scape?.name}
               </span>
             </div>
           </div>
         }
         headerActions={
-          <><Button variant="ghost" size="sm"><MonitorPlay className="mr-2 h-4 w-4" />Preview</Button><Button size="sm"><Zap className="mr-2 h-4 w-4" />Deploy</Button></>
+          <>
+            <Button variant="ghost" size="sm">
+              <MonitorPlay className="mr-2 h-4 w-4" />
+              Preview
+            </Button>
+            <Button size="sm">
+              <Zap className="mr-2 h-4 w-4" />
+              Deploy
+            </Button>
+          </>
         }
         headerEndActions={
-          <Button variant="destructive" size="sm" onClick={() => window.location.href = '/dashboard'} title="Exit to Dashboard"><LogOut className="h-4 w-4 mr-2" />Exit</Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => (window.location.href = "/dashboard")}
+            title="Exit to Dashboard"
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            Exit
+          </Button>
         }
       >
         <ResizablePanelGroup
@@ -385,7 +436,7 @@ export default function ScapeEditor() {
             if (sizes.length === 2 && activeTool === "explorer") {
               const sidebarSize = sizes[0]
               if (sidebarSize >= SIDEBAR_MIN - 5 && sidebarSize <= SIDEBAR_MAX + 5) {
-                localStorage.setItem('codescape:layout:main', JSON.stringify(sizes))
+                localStorage.setItem("codescape:layout:main", JSON.stringify(sizes))
               }
             }
           }}
@@ -397,7 +448,8 @@ export default function ScapeEditor() {
                 id="sidebar-panel"
                 order={1}
                 defaultSize={getSafeLayout()[0]}
-                minSize={SIDEBAR_MIN} maxSize={SIDEBAR_MAX}
+                minSize={SIDEBAR_MIN}
+                maxSize={SIDEBAR_MAX}
                 className="bg-muted/10"
               >
                 <FileExplorer
@@ -424,22 +476,32 @@ export default function ScapeEditor() {
               <div className="flex-1 overflow-hidden">
                 <ResizablePanelGroup
                   direction="horizontal"
-                  onLayout={(sizes) => localStorage.setItem('codescape:layout:workspace', JSON.stringify(sizes))}
+                  onLayout={(sizes) =>
+                    localStorage.setItem("codescape:layout:workspace", JSON.stringify(sizes))
+                  }
                 >
                   <ResizablePanel
-                    defaultSize={getLayout('codescape:layout:workspace', [50, 50])[0]}
+                    defaultSize={getLayout("codescape:layout:workspace", [50, 50])[0]}
                     minSize={30}
                   >
                     <div className="flex h-full flex-col">
-                      <div className="flex-1 min-h-0">
+                      <div className="min-h-0 flex-1">
                         <ResizablePanelGroup
                           direction="vertical"
                           onLayout={(sizes) => {
-                            if (isTerminalOpen) localStorage.setItem('codescape:layout:vertical', JSON.stringify(sizes))
+                            if (isTerminalOpen)
+                              localStorage.setItem(
+                                "codescape:layout:vertical",
+                                JSON.stringify(sizes)
+                              )
                           }}
                         >
                           <ResizablePanel
-                            defaultSize={isTerminalOpen ? getLayout('codescape:layout:vertical', [75, 25])[0] : 100}
+                            defaultSize={
+                              isTerminalOpen
+                                ? getLayout("codescape:layout:vertical", [75, 25])[0]
+                                : 100
+                            }
                           >
                             {activeFile ? (
                               <CodeEditor
@@ -452,7 +514,7 @@ export default function ScapeEditor() {
                                 files={files}
                               />
                             ) : (
-                              <div className="flex h-full items-center justify-center text-muted-foreground p-4">
+                              <div className="flex h-full items-center justify-center p-4 text-muted-foreground">
                                 <p className="text-sm">Select a file to start editing</p>
                               </div>
                             )}
@@ -460,7 +522,7 @@ export default function ScapeEditor() {
                           <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
                           {isTerminalOpen && (
                             <ResizablePanel
-                              defaultSize={getLayout('codescape:layout:vertical', [75, 25])[1]}
+                              defaultSize={getLayout("codescape:layout:vertical", [75, 25])[1]}
                               minSize={10}
                             >
                               <TerminalPane
@@ -478,7 +540,7 @@ export default function ScapeEditor() {
                         </ResizablePanelGroup>
                       </div>
                       {!isTerminalOpen && (
-                        <div className="h-9 border-t bg-background shrink-0">
+                        <div className="h-9 shrink-0 border-t bg-background">
                           <TerminalPane
                             activeTab={terminalTab}
                             onTabChange={handleTerminalTabChange}
@@ -496,7 +558,7 @@ export default function ScapeEditor() {
                   <ResizableHandle />
 
                   <ResizablePanel
-                    defaultSize={getLayout('codescape:layout:workspace', [50, 50])[1]}
+                    defaultSize={getLayout("codescape:layout:workspace", [50, 50])[1]}
                     minSize={30}
                   >
                     <PreviewPane files={debouncedFiles} />
@@ -514,13 +576,18 @@ export default function ScapeEditor() {
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete
-              <span className="font-semibold text-foreground px-1">"{itemToDelete}"</span>
+              <span className="px-1 font-semibold text-foreground">"{itemToDelete}"</span>
               and remove it from your project.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

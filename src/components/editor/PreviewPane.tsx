@@ -56,45 +56,51 @@ export function PreviewPane({ files }: PreviewPaneProps) {
 
   // Inject CSS
   // Regex looks for <link rel="stylesheet" href="...">
-  processedHtml = processedHtml.replace(/<link[^>]*href=["']([^"']+)["'][^>]*>/gi, (match, href) => {
-    const file = files.find(f => f.name === href || f.name === href.replace(/^\.\//, ''))
-    if (file && file.language === 'css') {
-      return `<style>${file.content}</style>`
+  processedHtml = processedHtml.replace(
+    /<link[^>]*href=["']([^"']+)["'][^>]*>/gi,
+    (match, href) => {
+      const file = files.find((f) => f.name === href || f.name === href.replace(/^\.\//, ""))
+      if (file && file.language === "css") {
+        return `<style>${file.content}</style>`
+      }
+      return match // Keep external links or missing files as is
     }
-    return match // Keep external links or missing files as is
-  })
+  )
 
   // Inject JS
   // Regex looks for <script src="...">
-  processedHtml = processedHtml.replace(/<script[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi, (match, src) => {
-    // Check if it's an external URL (http/https/cdn) - skip those
-    if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
+  processedHtml = processedHtml.replace(
+    /<script[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi,
+    (match, src) => {
+      // Check if it's an external URL (http/https/cdn) - skip those
+      if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("//")) {
+        return match
+      }
+
+      const file = files.find((f) => f.name === src || f.name === src.replace(/^\.\//, ""))
+      if (file) {
+        // Check if module is needed based on content
+        const needsModule = file.content.includes("import ") || file.content.includes("export ")
+        // If original tag had type="module", preserve it?
+        // Actually, safer to force our detection or preserve original attribute if present.
+        // Simplified: just inject content.
+
+        // preserve existing type if in match?
+        const isModuleRequest = match.includes('type="module"')
+        const finalType = isModuleRequest || needsModule ? 'type="module"' : ""
+
+        return `<script ${finalType}>${file.content}</script>`
+      }
       return match
     }
-
-    const file = files.find(f => f.name === src || f.name === src.replace(/^\.\//, ''))
-    if (file) {
-      // Check if module is needed based on content
-      const needsModule = file.content.includes('import ') || file.content.includes('export ')
-      // If original tag had type="module", preserve it? 
-      // Actually, safer to force our detection or preserve original attribute if present.
-      // Simplified: just inject content.
-
-      // preserve existing type if in match?
-      const isModuleRequest = match.includes('type="module"')
-      const finalType = isModuleRequest || needsModule ? 'type="module"' : ''
-
-      return `<script ${finalType}>${file.content}</script>`
-    }
-    return match
-  })
+  )
 
   // If the user cleared everything, just show the content
   if (!processedHtml) processedHtml = '<div style="padding:20px">No index.html content</div>'
 
   return (
-    <div className="flex h-full flex-col bg-white dark:bg-zinc-950 border-l dark:border-zinc-800">
-      <div className="flex h-10 items-center justify-between border-b bg-muted/20 dark:bg-zinc-900/50 px-2 border-zinc-200 dark:border-zinc-800">
+    <div className="flex h-full flex-col border-l bg-white dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="flex h-10 items-center justify-between border-b border-zinc-200 bg-muted/20 px-2 dark:border-zinc-800 dark:bg-zinc-900/50">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <MonitorPlay className="h-3.5 w-3.5" />
           <span className="max-w-[200px] truncate">Preview</span>
