@@ -38,4 +38,12 @@ db.version(2).stores({
 });
 
 
+// Helper to delete a scape and its files transactionally
+export async function deleteScape(id: number) {
+    await db.transaction('rw', db.scapes, db.files, async () => {
+        await db.files.where('scapeId').equals(id).delete();
+        await db.scapes.delete(id);
+    });
+}
+
 export { db };

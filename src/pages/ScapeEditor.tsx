@@ -117,15 +117,17 @@ export default function ScapeEditor() {
     const handleMessage = (event: MessageEvent) => {
       if (event.data.type === 'RUNTIME_ERROR') {
         const error = event.data.payload
+        if (!error || typeof error !== 'object') return
+
         setRuntimeProblems(prev => {
           // Avoid duplicates
           if (prev.some(p => p.message === error.message && p.line === error.line)) return prev
           return [...prev, {
             id: crypto.randomUUID(),
-            file: 'index.html', // Simplification: we don't know exactly which file caused it easily without sourcemaps
-            message: error.message,
-            line: error.line,
-            column: error.column,
+            file: 'index.html',
+            message: error.message || 'Unknown Runtime Error',
+            line: error.line || 0,
+            column: error.column || 0,
             severity: 'error',
             source: 'runtime'
           }]

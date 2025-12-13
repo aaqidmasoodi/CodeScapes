@@ -124,3 +124,7 @@ walkthrough.md
 
 # OS X
 .DS_Store
+
+# Electron
+dist-electron
+release
