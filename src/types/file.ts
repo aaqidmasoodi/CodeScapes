@@ -1,0 +1,7 @@
+export type FileType = "html" | "css" | "javascript" | "json" | "markdown"
+
+export interface ScapeFile {
+  name: string
+  content: string
+  language: FileType
+}
