@@ -1,7 +1,7 @@
-
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useParams } from "react-router-dom"
 import { useLiveQuery } from "dexie-react-hooks"
+import * as ResizablePrimitive from "react-resizable-panels"
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
@@ -55,7 +55,13 @@ function usePersistentState<T>(key: string, initialValue: T): [T, (value: T | ((
 const getLayout = (key: string, defaults: number[]) => {
   try {
     const stored = localStorage.getItem(key)
-    return stored ? JSON.parse(stored) : defaults
+    const parsed = stored ? JSON.parse(stored) : null
+
+    // Validate that we have an array of the correct length and all numbers
+    if (Array.isArray(parsed) && parsed.length === defaults.length && parsed.every((n: any) => typeof n === 'number')) {
+      return parsed
+    }
+    return defaults
   } catch {
     return defaults
   }
@@ -77,17 +83,43 @@ export default function ScapeEditor() {
 
   // --- PERSISTENT STATE ---
 
-  // 1. Activity Bar (Global Preference)
+  // Activity Bar State
   const [activeTool, setActiveTool] = usePersistentState<"explorer" | "search" | "settings" | null>(
     "codescape:ui:activeTool",
     "explorer"
   )
 
-  // 2. Terminal State (Global Preference)
+  // 1. Validate Sidebar Constraint (10% - 30%)
+  const SIDEBAR_MIN = 10
+  const SIDEBAR_MAX = 30
+
+  // Safe Layout Loader
+  const getSafeLayout = () => {
+    const layout = getLayout('codescape:layout:main', [15, 85])
+    const sidebarSize = layout[0]
+
+    // Auto-correct corruption
+    if (sidebarSize < SIDEBAR_MIN || sidebarSize > SIDEBAR_MAX) {
+      return [15, 85]
+    }
+    return layout
+  }
+
+  const mainLayoutGroupRef = useRef<ResizablePrimitive.ImperativePanelGroupHandle>(null)
+
+  // Force strict layout when Sidebar opens
+  useEffect(() => {
+    if (activeTool === "explorer" && mainLayoutGroupRef.current) {
+      const target = getSafeLayout()
+      mainLayoutGroupRef.current.setLayout(target)
+    }
+  }, [activeTool])
+
+  // Terminal State
   const [isTerminalOpen, setIsTerminalOpen] = usePersistentState("codescape:ui:isTerminalOpen", true)
   const [terminalTab, setTerminalTab] = usePersistentState<TerminalTab>("codescape:ui:terminalTab", "terminal")
 
-  // 3. Project Specific State (Per Scape)
+  // Project Specific State
   const [activeFilePath, setActiveFilePath] = usePersistentState<string | null>(
     `codescape:project:${id}:activeFile`,
     null
@@ -141,7 +173,7 @@ export default function ScapeEditor() {
         if (activeFilePath) setActiveFilePath(null)
       }
     }
-  }, [dbFiles, activeFilePath]) // Only run when DB updates (initial load or external change)
+  }, [dbFiles, activeFilePath])
 
   // Sync Debounced Files (Preview) & Save to DB
   useEffect(() => {
@@ -204,10 +236,7 @@ export default function ScapeEditor() {
 
   const handleCreateFolder = async (folderName: string) => {
     if (!folderName) return
-    if (files.some(f => f.name === folderName)) {
-      alert("Item already exists")
-      return
-    }
+    if (files.some(f => f.name === folderName)) return
 
     await db.files.add({
       scapeId: id,
@@ -238,10 +267,7 @@ export default function ScapeEditor() {
   }
 
   const handleMoveNode = async (oldPath: string, newPath: string) => {
-    if (files.some(f => f.name === newPath)) {
-      console.warn("Target file exists", newPath)
-      return
-    }
+    if (files.some(f => f.name === newPath)) return
 
     const folderEntry = files.find(f => f.name === oldPath && f.language === 'folder' as any)
     if (folderEntry) await db.files.update(folderEntry.id!, { name: newPath })
@@ -332,7 +358,6 @@ export default function ScapeEditor() {
         sidebar={<EditorActivityBar activeTool={activeTool} onToolSelect={setActiveTool} />}
         headerTitle={
           <div className="flex items-center gap-4">
-            {/* ... Header Content ... */}
             <div className="flex items-center gap-2">
               <span className="text-xl font-bold bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-transparent">
                 CodeScape Editor
@@ -351,15 +376,25 @@ export default function ScapeEditor() {
         }
       >
         <ResizablePanelGroup
+          ref={mainLayoutGroupRef}
           direction="horizontal"
-          onLayout={(sizes) => localStorage.setItem('codescape:layout:main', JSON.stringify(sizes))}
+          onLayout={(sizes) => {
+            if (sizes.length === 2 && activeTool === "explorer") {
+              const sidebarSize = sizes[0]
+              if (sidebarSize >= SIDEBAR_MIN - 5 && sidebarSize <= SIDEBAR_MAX + 5) {
+                localStorage.setItem('codescape:layout:main', JSON.stringify(sizes))
+              }
+            }
+          }}
         >
           {/* Sidebar - Persistent Size */}
           {activeTool === "explorer" && (
             <>
               <ResizablePanel
-                defaultSize={getLayout('codescape:layout:main', [15, 85])[0]}
-                minSize={10} maxSize={30}
+                id="sidebar-panel"
+                order={1}
+                defaultSize={getSafeLayout()[0]}
+                minSize={SIDEBAR_MIN} maxSize={SIDEBAR_MAX}
                 className="bg-muted/10"
               >
                 <FileExplorer
@@ -377,7 +412,11 @@ export default function ScapeEditor() {
             </>
           )}
 
-          <ResizablePanel defaultSize={activeTool === "explorer" ? getLayout('codescape:layout:main', [15, 85])[1] : 100}>
+          <ResizablePanel
+            id="editor-panel"
+            order={2}
+            defaultSize={activeTool === "explorer" ? getSafeLayout()[1] : 100}
+          >
             <div className="flex h-full flex-col">
               <div className="flex-1 overflow-hidden">
                 <ResizablePanelGroup
