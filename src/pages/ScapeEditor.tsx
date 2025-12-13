@@ -252,18 +252,21 @@ export default function ScapeEditor() {
 
   const confirmDelete = async () => {
     if (!itemToDelete) return
-    const path = itemToDelete
+    await deleteFileDirectly(itemToDelete)
+    setItemToDelete(null)
+  }
+
+  const deleteFileDirectly = async (path: string) => {
     const filesToDelete = files.filter(f => f.name === path || f.name.startsWith(path + '/'))
     const dbFilesToDelete = dbFiles?.filter(df => filesToDelete.some(f => f.name === df.name))
 
-    if (dbFilesToDelete) {
+    if (dbFilesToDelete && dbFilesToDelete.length > 0) {
       await db.files.bulkDelete(dbFilesToDelete.map(f => f.id))
     }
 
     if (activeFilePath && (activeFilePath === path || activeFilePath.startsWith(path + '/'))) {
       setActiveFilePath(null)
     }
-    setItemToDelete(null)
   }
 
   const handleMoveNode = async (oldPath: string, newPath: string) => {
@@ -466,6 +469,9 @@ export default function ScapeEditor() {
                                 onClose={() => setIsTerminalOpen(false)}
                                 problems={problems}
                                 isCollapsed={false}
+                                files={files}
+                                scapeName={scape?.name}
+                                onDeleteFile={deleteFileDirectly}
                               />
                             </ResizablePanel>
                           )}
@@ -478,6 +484,9 @@ export default function ScapeEditor() {
                             onTabChange={handleTerminalTabChange}
                             problems={problems}
                             isCollapsed={true}
+                            files={files}
+                            scapeName={scape?.name}
+                            onDeleteFile={deleteFileDirectly}
                           />
                         </div>
                       )}
