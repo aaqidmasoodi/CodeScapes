@@ -107,6 +107,10 @@ export function FileExplorer({
     setDragOverNodeId(null)
 
     const sourcePath = e.dataTransfer.getData("text/plain")
+
+    // Strict Check: Can only drop into Folders or Root
+    if (targetNode && targetNode.type !== 'folder') return
+
     // Target path is empty string for root, or node.path
     const targetPath = targetNode ? targetNode.path : ""
 
@@ -157,6 +161,9 @@ export function FileExplorer({
                   e.stopPropagation();
                   if (node.type === "file" && node.file) {
                     onFileSelect(node.file)
+                    // Auto-select parent folder so "New File" creates a sibling
+                    const parentDir = node.path.split('/').slice(0, -1).join('/')
+                    setSelectedFolderId(parentDir || null)
                   } else {
                     onToggleFolder(node.path)
                     setSelectedFolderId(node.path)
