@@ -88,13 +88,18 @@ export function CodeEditor({
     onValidate(problems)
   }
 
+  // Resolve effective theme for Monaco
+  const effectiveTheme = theme === "system"
+    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "vs-dark" : "light")
+    : (theme === "dark" ? "vs-dark" : "light")
+
   return (
     <div className="h-full w-full overflow-hidden">
       <Editor
         height="100%"
         defaultLanguage={language}
         defaultValue={initialValue}
-        theme={theme === "dark" ? "vs-dark" : "light"}
+        theme={effectiveTheme}
         onMount={handleEditorDidMount}
         onChange={onChange}
         onValidate={handleValidate}
