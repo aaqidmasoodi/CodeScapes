@@ -20,6 +20,7 @@ interface FileExplorerProps {
   onCreateFile: (name: string) => void
   onCreateFolder: (name: string) => void
   onDelete: (path: string) => void
+  onMove: (oldPath: string, newPath: string) => void
 }
 
 export function FileExplorer({
@@ -29,109 +30,221 @@ export function FileExplorer({
   onToggleFolder,
   onCreateFile,
   onCreateFolder,
-  onDelete
+  onDelete,
+  onMove
 }: FileExplorerProps) {
 
-  // Creation State
-  const [creationStart, setCreationStart] = useState<{ type: 'file' | 'folder' } | null>(null)
+  // Creation State with Context
+  const [creationStart, setCreationStart] = useState<{ type: 'file' | 'folder', parentPath?: string } | null>(null)
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
+
+  // DnD State
+  const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null)
 
   // Temporary input state
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (creationStart && inputRef.current) {
-      inputRef.current.focus()
-    }
+    creationStart && inputRef.current?.focus()
   }, [creationStart])
 
   const handleCommitCreation = () => {
     if (!creationStart || !inputRef.current) return
-    const name = inputRef.current.value.trim()
+    const rawName = inputRef.current.value.trim()
 
-    if (name) {
+    if (rawName) {
+      // Construct full path if nested
+      const fullName = creationStart.parentPath ? `${creationStart.parentPath}/${rawName}` : rawName
+
       if (creationStart.type === 'file') {
-        onCreateFile(name)
+        onCreateFile(fullName)
       } else {
-        onCreateFolder(name)
+        onCreateFolder(fullName)
       }
     }
     setCreationStart(null)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleCommitCreation()
-    } else if (e.key === 'Escape') {
-      setCreationStart(null)
+    if (e.key === 'Enter') handleCommitCreation()
+    else if (e.key === 'Escape') setCreationStart(null)
+  }
+
+  // --- HTML5 DnD Handlers ---
+  const handleDragStart = (e: React.DragEvent, node: FileNode) => {
+    e.dataTransfer.setData("text/plain", node.path)
+    e.dataTransfer.effectAllowed = "move"
+  }
+
+  const handleDragOver = (e: React.DragEvent, node: FileNode | null) => {
+    e.preventDefault()
+    e.stopPropagation() // Prevent bubbling to container if handling node
+
+    // If node is null, we are over the root container
+    if (!node) {
+      setDragOverNodeId("root")
+      e.dataTransfer.dropEffect = "move"
+      return
+    }
+
+    // Only allow dropping into folders
+    if (node.type === 'folder') {
+      setDragOverNodeId(node.path)
+      e.dataTransfer.dropEffect = "move"
+    } else {
+      setDragOverNodeId(null)
     }
   }
 
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOverNodeId(null)
+  }
+
+  const handleDrop = (e: React.DragEvent, targetNode: FileNode | null) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOverNodeId(null)
+
+    const sourcePath = e.dataTransfer.getData("text/plain")
+    // Target path is empty string for root, or node.path
+    const targetPath = targetNode ? targetNode.path : ""
+
+    if (!sourcePath) return
+
+    // Prevent dropping onto itself or direct parent (logic needs care)
+    // Source: "folder/file.txt", Target: "folder" -> No op
+    // Source: "file.txt", Target: "" -> No op
+    if (sourcePath === targetPath) return // Same path?
+
+    // Check if already in target folder
+    const sourceDir = sourcePath.split('/').slice(0, -1).join('/')
+    if (sourceDir === targetPath) return
+
+    // Move logic: New path = targetPath/sourceName
+    const sourceName = sourcePath.split('/').pop()
+    const newPath = targetPath ? `${targetPath}/${sourceName}` : sourceName
+
+    if (newPath) {
+      onMove(sourcePath, newPath)
+    }
+  }
+
+
   const renderTree = (nodes: FileNode[], level = 0) => {
-    return nodes.map((node) => (
-      <div key={node.id} className="select-none">
-        <ContextMenu>
-          <ContextMenuTrigger>
-            <div
-              className={cn(
-                "flex cursor-pointer items-center gap-1.5 px-2 py-1 text-sm transition-colors hover:bg-muted/50 rounded-sm mx-1",
-                activeFileId === node.name && node.type === "file" && "bg-secondary text-secondary-foreground"
-              )}
-              style={{ paddingLeft: `${level * 12 + 8}px` }}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (node.type === "file" && node.file) {
-                  onFileSelect(node.file)
-                } else {
-                  onToggleFolder(node.path)
-                }
-              }}
-            >
-              {node.type === "folder" && (
-                <span className="text-muted-foreground/70">
-                  {node.isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                </span>
-              )}
+    return nodes.map((node) => {
+      const isCreatingHere = creationStart?.parentPath === node.path
 
-              {node.type === "folder" ? (
-                node.isOpen ? (
-                  <FolderOpen className="h-4 w-4 text-blue-500/80" />
+      return (
+        <div key={node.id} className="select-none">
+          <ContextMenu>
+            <ContextMenuTrigger>
+              <div
+                draggable
+                onDragStart={(e) => handleDragStart(e, node)}
+                onDragOver={(e) => handleDragOver(e, node)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, node)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-1.5 px-2 py-1 text-sm transition-colors hover:bg-muted/50 rounded-sm mx-1 border border-transparent",
+                  activeFileId === node.name && node.type === "file" && "bg-secondary text-secondary-foreground",
+                  selectedFolderId === node.path && "bg-muted/30",
+                  // Stronger highlight in light mode (blue-200), subtle in dark mode (blue-900/40)
+                  dragOverNodeId === node.path && "bg-blue-200/50 border-blue-500/50 dark:bg-blue-900/40 dark:border-blue-500/50"
+                )}
+                style={{ paddingLeft: `${level * 12 + 8}px` }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (node.type === "file" && node.file) {
+                    onFileSelect(node.file)
+                  } else {
+                    onToggleFolder(node.path)
+                    setSelectedFolderId(node.path)
+                  }
+                }}
+              >
+                {node.type === "folder" && (
+                  <span className="text-muted-foreground/70">
+                    {node.isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                  </span>
+                )}
+
+                {node.type === "folder" ? (
+                  node.isOpen ? (
+                    <FolderOpen className="h-4 w-4 text-blue-500/80" />
+                  ) : (
+                    <Folder className="h-4 w-4 text-blue-500/80" />
+                  )
                 ) : (
-                  <Folder className="h-4 w-4 text-blue-500/80" />
-                )
-              ) : (
-                <File className="h-4 w-4 text-muted-foreground/80" />
-              )}
+                  <File className="h-4 w-4 text-muted-foreground/80" />
+                )}
 
-              <span className="truncate">{node.name}</span>
+                <span className="truncate">{node.name}</span>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(node.path)}>
+                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                Delete
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+
+          {/* Render Input if creating directly inside this folder */}
+          {isCreatingHere && (
+            <div className="flex items-center gap-1.5 px-2 py-1 mx-1" style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}>
+              <span className="text-muted-foreground/70 pl-2">
+                {creationStart.type === 'folder' ? <ChevronRight className="h-3 w-3" /> : <span className="w-3" />}
+              </span>
+              {creationStart.type === 'folder' ? <Folder className="h-4 w-4 text-blue-500/80" /> : <File className="h-4 w-4 text-muted-foreground/80" />}
+              <Input
+                ref={inputRef}
+                className="h-6 text-sm px-1 py-0"
+                onBlur={handleCommitCreation}
+                onKeyDown={handleKeyDown}
+                placeholder={creationStart.type === 'file' ? 'filename.ext' : 'foldername'}
+              />
             </div>
-          </ContextMenuTrigger>
-          <ContextMenuContent>
-            <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(node.path)}>
-              <Trash2 className="mr-2 h-3.5 w-3.5" />
-              Delete
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+          )}
 
-        {node.children && node.isOpen && (
-          <div className="border-l border-muted/20 ml-3">
-            {renderTree(node.children, level + 1)}
-          </div>
-        )}
-      </div>
-    ))
+          {node.children && node.isOpen && (
+            <div className="border-l border-muted/20 ml-3">
+              {renderTree(node.children, level + 1)}
+            </div>
+          )}
+        </div>
+      )
+    })
+  }
+
+  // Handle root creation vs nested creation
+  const handleStartCreation = (type: 'file' | 'folder') => {
+    setCreationStart({
+      type,
+      parentPath: selectedFolderId || undefined
+    })
   }
 
   return (
-    <div className="flex flex-col h-full bg-muted/5 border-r border-muted/50">
+    <div
+      className={cn(
+        "flex flex-col h-full bg-muted/5 border-r border-muted/50 transition-colors",
+        // Stronger root highlight in light mode
+        dragOverNodeId === "root" && "bg-blue-300/30 dark:bg-blue-900/20"
+      )}
+      onClick={() => setSelectedFolderId(null)}
+      onDragOver={(e) => handleDragOver(e, null)} // Handle drag over root
+      onDrop={(e) => handleDrop(e, null)} // Handle drop onto root
+      onDragLeave={handleDragLeave}
+    >
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-muted/50 bg-background/50 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-muted/50 bg-background/50 backdrop-blur-sm" onClick={(e) => e.stopPropagation()}>
         <span className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Explorer</span>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCreationStart({ type: 'file' })} title="New File">
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleStartCreation('file')} title="New File">
             <FilePlus className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setCreationStart({ type: 'folder' })} title="New Folder">
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleStartCreation('folder')} title="New Folder">
             <FolderPlus className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -139,8 +252,8 @@ export function FileExplorer({
 
       {/* Content */}
       <div className="flex-1 overflow-auto py-2">
-        {/* Input Field at Root (Top) */}
-        {creationStart && (
+        {/* Input Field at Root (Top) - Only if parentPath is undefined */}
+        {creationStart && !creationStart.parentPath && (
           <div className="flex items-center gap-1.5 px-2 py-1 mx-1">
             <span className="text-muted-foreground/70 pl-2">
               {creationStart.type === 'folder' ? <ChevronRight className="h-3 w-3" /> : <span className="w-3" />}
@@ -149,7 +262,7 @@ export function FileExplorer({
             <Input
               ref={inputRef}
               className="h-6 text-sm px-1 py-0"
-              onBlur={handleCommitCreation} // Commit on blur (VS Code style)
+              onBlur={handleCommitCreation}
               onKeyDown={handleKeyDown}
               placeholder={creationStart.type === 'file' ? 'filename.ext' : 'foldername'}
             />

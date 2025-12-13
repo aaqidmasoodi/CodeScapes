@@ -7,20 +7,13 @@ interface PreviewPaneProps {
 }
 
 export function PreviewPane({ files }: PreviewPaneProps) {
-  // Extract content
   const htmlFile = files.find((f) => f.name === "index.html")
-  const cssFile = files.find((f) => f.name === "style.css")
-  const jsFile = files.find((f) => f.name === "app.js")
-
   const rawHtml = htmlFile?.content || ""
-  const cssContent = cssFile?.content || ""
-  const jsContent = jsFile?.content || ""
 
   // Process the HTML to inject resources
   let processedHtml = rawHtml
 
-  // 1. Inject Import Map (Environment setup - always inject if parsing succeeds, mostly invisible helper)
-  // We keep this to ensure 'three' works without npm install, which is a platform feature.
+  // 1. Inject Import Map (Keep existing logic)
   const importMapScript = `
     <script type="importmap">
       {
@@ -57,30 +50,44 @@ export function PreviewPane({ files }: PreviewPaneProps) {
     processedHtml = importMapScript + processedHtml
   }
 
-  // 2. Strict CSS Injection
-  // Only inject if the link tag exists
-  const styleTag = `<style>body { margin: 0; } ${cssContent}</style>`
-  const cssLinkRegex = /<link[^>]*href=["']style\.css["'][^>]*>/i
+  // 2. Dynamic Resource Injection
+  // We iterate through the HTML finding script/link tags and replacing them with inline content
+  // if a matching file exists in our file list.
 
-  if (cssLinkRegex.test(processedHtml)) {
-    processedHtml = processedHtml.replace(cssLinkRegex, styleTag)
-  }
-  // Else: User removed the link, so we interpret that as "no styles wanted" from that file.
+  // Inject CSS
+  // Regex looks for <link rel="stylesheet" href="...">
+  processedHtml = processedHtml.replace(/<link[^>]*href=["']([^"']+)["'][^>]*>/gi, (match, href) => {
+    const file = files.find(f => f.name === href || f.name === href.replace(/^\.\//, ''))
+    if (file && file.language === 'css') {
+      return `<style>${file.content}</style>`
+    }
+    return match // Keep external links or missing files as is
+  })
 
-  // 3. Strict JS Injection
-  // Only inject if the script tag exists
+  // Inject JS
+  // Regex looks for <script src="...">
+  processedHtml = processedHtml.replace(/<script[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi, (match, src) => {
+    // Check if it's an external URL (http/https/cdn) - skip those
+    if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('//')) {
+      return match
+    }
 
-  // Determine if we need a module script (for imports) or a global script (for p5.js setup/draw)
-  const needsModule = jsContent.includes('import ') || jsContent.includes('export ');
-  const scriptType = needsModule ? 'type="module"' : '';
+    const file = files.find(f => f.name === src || f.name === src.replace(/^\.\//, ''))
+    if (file) {
+      // Check if module is needed based on content
+      const needsModule = file.content.includes('import ') || file.content.includes('export ')
+      // If original tag had type="module", preserve it? 
+      // Actually, safer to force our detection or preserve original attribute if present.
+      // Simplified: just inject content.
 
-  const scriptTag = `<script ${scriptType}>${jsContent}</script>`
-  const jsScriptRegex = /<script[^>]*src=["']app\.js["'][^>]*><\/script>/i
+      // preserve existing type if in match?
+      const isModuleRequest = match.includes('type="module"')
+      const finalType = isModuleRequest || needsModule ? 'type="module"' : ''
 
-  if (jsScriptRegex.test(processedHtml)) {
-    processedHtml = processedHtml.replace(jsScriptRegex, scriptTag)
-  }
-  // Else: User removed the script, so we don't run it.
+      return `<script ${finalType}>${file.content}</script>`
+    }
+    return match
+  })
 
   // If the user cleared everything, just show the content
   if (!processedHtml) processedHtml = '<div style="padding:20px">No index.html content</div>'

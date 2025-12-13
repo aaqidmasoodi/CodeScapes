@@ -17,6 +17,17 @@ import { db } from "@/lib/db"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { MonitorPlay, Zap, LogOut } from "lucide-react"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+
 export default function ScapeEditor() {
   const { scapeId } = useParams()
   // Force HMR update
@@ -31,6 +42,9 @@ export default function ScapeEditor() {
   const [activeFile, setActiveFile] = useState<ScapeFile | null>(null)
   const [debouncedFiles, setDebouncedFiles] = useState<ScapeFile[]>([])
 
+  // Delete Modal State
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null)
+
   // File Explorer State
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
@@ -39,6 +53,7 @@ export default function ScapeEditor() {
     if (dbFiles) {
       if (dbFiles.length > 0) {
         const mappedFiles: ScapeFile[] = dbFiles.map(f => ({
+          id: f.id,
           name: f.name,
           language: f.language as any,
           content: f.content
@@ -146,8 +161,13 @@ export default function ScapeEditor() {
     })
   }
 
-  const handleDelete = async (path: string) => {
-    if (!confirm(`Delete ${path}?`)) return
+  const handleDelete = (path: string) => {
+    setItemToDelete(path)
+  }
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return
+    const path = itemToDelete
 
     // Find all files that start with this path (recursive delete for folder)
     const filesToDelete = files.filter(f => f.name === path || f.name.startsWith(path + '/'))
@@ -161,6 +181,52 @@ export default function ScapeEditor() {
     // If active file was deleted, clear it
     if (activeFile && (activeFile.name === path || activeFile.name.startsWith(path + '/'))) {
       setActiveFile(null)
+    }
+
+    setItemToDelete(null)
+  }
+
+  const handleMoveNode = async (oldPath: string, newPath: string) => {
+    // 1. Check target existence to prevent overwrite (simple safe)
+    // Note: For folders, we'd need to check all children. Simplified check here.
+    if (files.some(f => f.name === newPath)) {
+      console.warn("Target file exists", newPath)
+      return
+    }
+
+    // 2. Find explicit Folder entry if it exists and move it
+    const folderEntry = files.find(f => f.name === oldPath && f.language === 'folder' as any)
+    if (folderEntry) {
+      await db.files.update(folderEntry.id!, { name: newPath })
+    }
+    // Note: If it was an implicit folder (no DB entry), we just move children.
+
+    // 3. Find and move all children files (if it's a folder or just a file)
+    // If it's a file, this filter finds just the file itself (exact match).
+    // If it's a folder, it finds all nested files.
+    const filesToMove = files.filter(f => f.name === oldPath || f.name.startsWith(oldPath + '/'))
+
+    if (filesToMove.length > 0) {
+      const updates = filesToMove.map(f => {
+        // Calculate new name
+        // If exact match (file move): oldPath -> newPath
+        // If child (folder move): oldPath/child -> newPath/child
+        const suffix = f.name.slice(oldPath.length)
+        return {
+          key: f.id!,
+          changes: { name: newPath + suffix }
+        }
+      })
+
+      // Bulk update is not natively supported by Dexie as a single method for different keys/changes
+      // We do promise.all
+      await Promise.all(updates.map(u => db.files.update(u.key, u.changes)))
+    }
+
+    // Update active file reference if it was moved
+    if (activeFile && (activeFile.name === oldPath || activeFile.name.startsWith(oldPath + '/'))) {
+      const suffix = activeFile.name.slice(oldPath.length)
+      setActiveFile({ ...activeFile, name: newPath + suffix })
     }
   }
 
@@ -278,136 +344,157 @@ export default function ScapeEditor() {
   // Let's just render ScapeLayout. If activeFile is null, CodeEditor won't render (handled below).
 
   return (
-    <ScapeLayout
-      sidebar={
-        <EditorActivityBar
-          activeTool={activeTool}
-          onToolSelect={setActiveTool}
-        />
-      }
-      headerTitle={
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xl font-bold bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-transparent">
-              CodeScape Editor
-            </span>
-            <span className="text-sm font-medium text-muted-foreground border-l pl-2">
-              {scape?.name}
-            </span>
-          </div>
-        </div>
-      }
-      headerActions={
-        <>
-          <Button variant="ghost" size="sm">
-            <MonitorPlay className="mr-2 h-4 w-4" />
-            Preview
-          </Button>
-          <Button size="sm">
-            <Zap className="mr-2 h-4 w-4" />
-            Deploy
-          </Button>
-        </>
-      }
-      headerEndActions={
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => window.location.href = '/dashboard'}
-          title="Exit to Dashboard"
-        >
-          <LogOut className="h-4 w-4 mr-2" />
-          Exit
-        </Button>
-      }
-    >
-      <ResizablePanelGroup direction="horizontal">
-        {/* Sidebar Panel - Conditionally Rendered */}
-        {activeTool === "explorer" && (
-          <>
-            <ResizablePanel defaultSize={15} minSize={10} maxSize={20} className="bg-muted/10">
-              <FileExplorer
-                files={fileTree}
-                onFileSelect={handleFileSelect}
-                activeFileId={activeFile?.name}
-                onToggleFolder={handleToggleFolder}
-                onCreateFile={handleCreateFile}
-                onCreateFolder={handleCreateFolder}
-                onDelete={handleDelete}
-              />
-            </ResizablePanel>
-            <ResizableHandle />
-          </>
-        )}
-
-
-        {/* Main Content */}
-        <ResizablePanel defaultSize={85}>
-          <div className="flex h-full flex-col">
-            {/* Split Editor / Preview */}
-            <div className="flex-1 overflow-hidden">
-              <ResizablePanelGroup direction="horizontal">
-                <ResizablePanel defaultSize={50} minSize={30}>
-                  <div className="flex h-full flex-col">
-                    <div className="flex-1 min-h-0">
-                      <ResizablePanelGroup direction="vertical">
-                        <ResizablePanel defaultSize={isTerminalOpen ? 75 : 100}>
-                          {activeFile ? (
-                            <CodeEditor
-                              key={activeFile.name}
-                              fileName={activeFile.name}
-                              initialValue={activeFile.content}
-                              language={activeFile.language}
-                              onChange={handleCodeChange}
-                              onValidate={handleValidate}
-                            />
-                          ) : (
-                            <div className="flex h-full items-center justify-center text-muted-foreground p-4">
-                              <div className="text-center">
-                                <p className="mb-2">No file selected</p>
-                                <p className="text-xs">Select a file from the explorer or create a new one.</p>
-                              </div>
-                            </div>
-                          )}
-                        </ResizablePanel>
-                        <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
-                        {isTerminalOpen && (
-                          <ResizablePanel defaultSize={25} minSize={10}>
-                            <TerminalPane
-                              activeTab={terminalTab}
-                              onTabChange={handleTerminalTabChange}
-                              onClose={() => setIsTerminalOpen(false)}
-                              problems={problems}
-                              isCollapsed={false}
-                            />
-                          </ResizablePanel>
-                        )}
-                      </ResizablePanelGroup>
-                    </div>
-                    {/* Collapsed Terminal Bar inside Left Panel */}
-                    {!isTerminalOpen && (
-                      <div className="h-9 border-t bg-background shrink-0">
-                        <TerminalPane
-                          activeTab={terminalTab}
-                          onTabChange={handleTerminalTabChange}
-                          problems={problems}
-                          isCollapsed={true}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </ResizablePanel>
-
-                <ResizableHandle />
-
-                <ResizablePanel defaultSize={50} minSize={30}>
-                  <PreviewPane files={debouncedFiles} />
-                </ResizablePanel>
-              </ResizablePanelGroup>
+    <>
+      <ScapeLayout
+        sidebar={
+          <EditorActivityBar
+            activeTool={activeTool}
+            onToolSelect={setActiveTool}
+          />
+        }
+        headerTitle={
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-bold bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-transparent">
+                CodeScape Editor
+              </span>
+              <span className="text-sm font-medium text-muted-foreground border-l pl-2">
+                {scape?.name}
+              </span>
             </div>
           </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
-    </ScapeLayout>
+        }
+        headerActions={
+          <>
+            <Button variant="ghost" size="sm">
+              <MonitorPlay className="mr-2 h-4 w-4" />
+              Preview
+            </Button>
+            <Button size="sm">
+              <Zap className="mr-2 h-4 w-4" />
+              Deploy
+            </Button>
+          </>
+        }
+        headerEndActions={
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => window.location.href = '/dashboard'}
+            title="Exit to Dashboard"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Exit
+          </Button>
+        }
+      >
+        <ResizablePanelGroup direction="horizontal">
+          {/* Sidebar Panel - Conditionally Rendered */}
+          {activeTool === "explorer" && (
+            <>
+              <ResizablePanel defaultSize={15} minSize={10} maxSize={20} className="bg-muted/10">
+                <FileExplorer
+                  files={fileTree}
+                  onFileSelect={handleFileSelect}
+                  activeFileId={activeFile?.name}
+                  onToggleFolder={handleToggleFolder}
+                  onCreateFile={handleCreateFile}
+                  onCreateFolder={handleCreateFolder}
+                  onDelete={handleDelete}
+                  onMove={handleMoveNode}
+                />
+              </ResizablePanel>
+              <ResizableHandle />
+            </>
+          )}
+
+
+          {/* Main Content */}
+          <ResizablePanel defaultSize={85}>
+            <div className="flex h-full flex-col">
+              {/* Split Editor / Preview */}
+              <div className="flex-1 overflow-hidden">
+                <ResizablePanelGroup direction="horizontal">
+                  <ResizablePanel defaultSize={50} minSize={30}>
+                    <div className="flex h-full flex-col">
+                      <div className="flex-1 min-h-0">
+                        <ResizablePanelGroup direction="vertical">
+                          <ResizablePanel defaultSize={isTerminalOpen ? 75 : 100}>
+                            {activeFile ? (
+                              <CodeEditor
+                                key={activeFile.name}
+                                fileName={activeFile.name}
+                                initialValue={activeFile.content}
+                                language={activeFile.language}
+                                onChange={handleCodeChange}
+                                onValidate={handleValidate}
+                                files={files}
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-muted-foreground p-4">
+                                <div className="text-center">
+                                  <p className="mb-2">No file selected</p>
+                                  <p className="text-xs">Select a file from the explorer or create a new one.</p>
+                                </div>
+                              </div>
+                            )}
+                          </ResizablePanel>
+                          <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
+                          {isTerminalOpen && (
+                            <ResizablePanel defaultSize={25} minSize={10}>
+                              <TerminalPane
+                                activeTab={terminalTab}
+                                onTabChange={handleTerminalTabChange}
+                                onClose={() => setIsTerminalOpen(false)}
+                                problems={problems}
+                                isCollapsed={false}
+                              />
+                            </ResizablePanel>
+                          )}
+                        </ResizablePanelGroup>
+                      </div>
+                      {/* Collapsed Terminal Bar inside Left Panel */}
+                      {!isTerminalOpen && (
+                        <div className="h-9 border-t bg-background shrink-0">
+                          <TerminalPane
+                            activeTab={terminalTab}
+                            onTabChange={handleTerminalTabChange}
+                            problems={problems}
+                            isCollapsed={true}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </ResizablePanel>
+
+                  <ResizableHandle />
+
+                  <ResizablePanel defaultSize={50} minSize={30}>
+                    <PreviewPane files={debouncedFiles} />
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </div>
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </ScapeLayout>
+
+      <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete
+              <span className="font-semibold text-foreground px-1">"{itemToDelete}"</span>
+              and remove it from your project.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
