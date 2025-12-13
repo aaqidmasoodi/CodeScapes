@@ -1,4 +1,4 @@
-export type FileType = "html" | "css" | "javascript" | "json" | "markdown"
+export type FileType = "html" | "css" | "javascript" | "json" | "markdown" | "folder"
 
 export interface ScapeFile {
   id?: number
