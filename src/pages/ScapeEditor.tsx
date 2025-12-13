@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo, useCallback } from "react" // Added useCallback
 import { useParams } from "react-router-dom"
 import { useLiveQuery } from "dexie-react-hooks"
@@ -14,10 +15,11 @@ import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
 import { db } from "@/lib/db"
-import { MonitorPlay, Zap } from "lucide-react"
+import { MonitorPlay, Zap, LogOut } from "lucide-react"
 
 export default function ScapeEditor() {
   const { scapeId } = useParams()
+  // Force HMR update
   const id = parseInt(scapeId || "0")
 
   // Load Scape and Files
@@ -199,9 +201,6 @@ export default function ScapeEditor() {
       }
       headerTitle={
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={() => window.location.href = '/dashboard'}>
-            Exit
-          </Button>
           <div className="flex items-center gap-2">
             <span className="text-xl font-bold bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-transparent">
               CodeScape Editor
@@ -223,6 +222,17 @@ export default function ScapeEditor() {
             Deploy
           </Button>
         </>
+      }
+      headerEndActions={
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => window.location.href = '/dashboard'}
+          title="Exit to Dashboard"
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          Exit
+        </Button>
       }
     >
       <ResizablePanelGroup direction="horizontal">

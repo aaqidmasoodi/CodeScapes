@@ -69,7 +69,12 @@ export function PreviewPane({ files }: PreviewPaneProps) {
 
   // 3. Strict JS Injection
   // Only inject if the script tag exists
-  const scriptTag = `<script type="module">${jsContent}</script>`
+
+  // Determine if we need a module script (for imports) or a global script (for p5.js setup/draw)
+  const needsModule = jsContent.includes('import ') || jsContent.includes('export ');
+  const scriptType = needsModule ? 'type="module"' : '';
+
+  const scriptTag = `<script ${scriptType}>${jsContent}</script>`
   const jsScriptRegex = /<script[^>]*src=["']app\.js["'][^>]*><\/script>/i
 
   if (jsScriptRegex.test(processedHtml)) {
@@ -81,8 +86,8 @@ export function PreviewPane({ files }: PreviewPaneProps) {
   if (!processedHtml) processedHtml = '<div style="padding:20px">No index.html content</div>'
 
   return (
-    <div className="flex h-full flex-col bg-white">
-      <div className="flex h-10 items-center justify-between border-b bg-muted/20 px-2">
+    <div className="flex h-full flex-col bg-white dark:bg-zinc-950 border-l dark:border-zinc-800">
+      <div className="flex h-10 items-center justify-between border-b bg-muted/20 dark:bg-zinc-900/50 px-2 border-zinc-200 dark:border-zinc-800">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <MonitorPlay className="h-3.5 w-3.5" />
           <span className="max-w-[200px] truncate">Preview</span>

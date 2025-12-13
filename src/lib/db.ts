@@ -4,6 +4,10 @@ export interface Scape {
     id: number;
     name: string;
     type: string; // 'blank' | 'three' | 'p5' | 'html'
+    source: 'local' | 'cloud';
+    syncStatus?: 'synced' | 'dirty' | 'offline';
+    authorId?: string;
+    cloudId?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -21,9 +25,17 @@ const db = new Dexie('CodeScapeDB') as Dexie & {
     files: EntityTable<File, 'id'>;
 };
 
-db.version(1).stores({
-    scapes: '++id, name, type, createdAt, updatedAt',
-    files: '++id, scapeId, name, [scapeId+name]' // Compound index for uniqueness within a scape
+// Version 2: Added source, syncStatus, authorId, cloudId
+db.version(2).stores({
+    scapes: '++id, name, type, source, createdAt, updatedAt', // Added source to index
+    files: '++id, scapeId, name, [scapeId+name]'
+}).upgrade(tx => {
+    // Migration: Set default source to 'local' for existing scapes
+    return tx.table('scapes').toCollection().modify(scape => {
+        scape.source = 'local';
+        scape.syncStatus = 'offline';
+    });
 });
+
 
 export { db };

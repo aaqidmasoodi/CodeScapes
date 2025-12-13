@@ -1,6 +1,6 @@
 # CodeScape
 
-CodeScape is a modern, creative coding environment designed for building and prototyping interactive web projects locally.
+CodeScape is a modern, creative coding environment designed for building and prototyping interactive coding Scapes
 
 ## Features
 

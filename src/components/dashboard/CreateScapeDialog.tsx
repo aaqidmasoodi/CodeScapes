@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Plus, Layout, Box, Paintbrush, Code2 } from "lucide-react"
+import { Plus, Layout, Box, Paintbrush, Code2, Laptop, Cloud, Lock } from "lucide-react"
 
 import {
     Dialog,
@@ -18,13 +18,18 @@ import { Card } from "@/components/ui/card"
 import { db } from "@/lib/db"
 import { TEMPLATES, type TemplateType, type TemplateFile } from "@/lib/templates"
 import { cn } from "@/lib/utils"
+// import { useAuthStore } from "@/store/useAuthStore" // Temporarily disabled for clean build or use if needed
 
 export function CreateScapeDialog() {
     const navigate = useNavigate()
     const [open, setOpen] = useState(false)
     const [name, setName] = useState("")
     const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>("blank")
+    const [source, setSource] = useState<'local' | 'cloud'>('local')
     const [loading, setLoading] = useState(false)
+
+    // Auth placeholder (can integrate store later for real checks)
+    const isAuthenticated = false; // Mock
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -36,6 +41,7 @@ export function CreateScapeDialog() {
             const scapeId = await db.scapes.add({
                 name: name.trim(),
                 type: selectedTemplate,
+                source: source, // 'local' or 'cloud'
                 createdAt: new Date(),
                 updatedAt: new Date()
             })
@@ -58,6 +64,7 @@ export function CreateScapeDialog() {
             // Reset form
             setName("")
             setSelectedTemplate("blank")
+            setSource("local")
 
         } catch (error) {
             console.error("Failed to create scape:", error)
@@ -89,7 +96,7 @@ export function CreateScapeDialog() {
                     <DialogHeader>
                         <DialogTitle>Create New Scape</DialogTitle>
                         <DialogDescription>
-                            Choose a template to get started with your new project.
+                            Choose a template and location for your new project.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-6 py-4">
@@ -103,6 +110,58 @@ export function CreateScapeDialog() {
                                 required
                             />
                         </div>
+
+                        {/* Location Selector */}
+                        <div className="grid gap-2">
+                            <Label>storage Location</Label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <Card
+                                    className={cn(
+                                        "cursor-pointer p-3 transition-all hover:border-primary",
+                                        source === 'local' ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50"
+                                    )}
+                                    onClick={() => setSource('local')}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="rounded-md bg-background p-2 shadow-sm">
+                                            <Laptop className="h-5 w-5" />
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            <div className="font-semibold text-sm">Local Device</div>
+                                            <div className="text-[10px] text-muted-foreground">Saved to browser</div>
+                                        </div>
+                                    </div>
+                                </Card>
+
+                                <Card
+                                    className={cn(
+                                        "relative cursor-pointer p-3 transition-all",
+                                        source === 'cloud' ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:border-primary/50",
+                                        !isAuthenticated && "opacity-70"
+                                    )}
+                                    onClick={() => {
+                                        if (isAuthenticated) setSource('cloud')
+                                        else alert("Please login to create cloud scapes (Coming Soon)")
+                                    }}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="rounded-md bg-background p-2 shadow-sm">
+                                            <Cloud className="h-5 w-5" />
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            <div className="font-semibold text-sm">CodeScape Cloud</div>
+                                            <div className="text-[10px] text-muted-foreground">Sync across devices</div>
+                                        </div>
+                                    </div>
+                                    {!isAuthenticated && (
+                                        <div className="absolute top-2 right-2">
+                                            <Lock className="h-3 w-3 text-muted-foreground" />
+                                        </div>
+                                    )}
+                                </Card>
+                            </div>
+                        </div>
+
                         <div className="grid gap-2">
                             <Label>Template</Label>
                             <div className="grid grid-cols-2 gap-4">

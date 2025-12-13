@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom"
-import { LayoutDashboard, Users, BookOpen, LogOut } from "lucide-react"
+import { LayoutDashboard, Users, BookOpen, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -55,11 +55,11 @@ export function Sidebar({ className, activeTab = "scape", onTabChange }: Sidebar
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start gap-3 px-3 text-muted-foreground hover:text-destructive"
-          onClick={() => navigate("/dashboard")}
+          className="w-full justify-start gap-3 px-3 text-muted-foreground hover:text-primary"
+          onClick={() => console.log("Open settings")}
         >
-          <LogOut className="h-4 w-4" />
-          <span>Exit Scape</span>
+          <Settings className="h-4 w-4" />
+          <span>Settings</span>
         </Button>
       </div>
     </div>
