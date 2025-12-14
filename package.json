@@ -4,6 +4,12 @@
   "version": "0.0.1",
   "type": "module",
   "main": "dist-electron/main.js",
+  "author": "Aaqid Masoodi <aaqidmasoodi@gmail.com>",
+  "description": "A VSCode-inspired coding web platform",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aaqidmasoodi/CodeScape.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -35,7 +41,10 @@
     },
     "linux": {
       "target": "AppImage"
-    }
+    },
+    "publish": [
+      "github"
+    ]
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
