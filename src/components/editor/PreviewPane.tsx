@@ -1,13 +1,49 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from "react"
 import { MonitorPlay, RefreshCw } from "lucide-react"
+import html2canvas from "html2canvas"
+
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
+
+export interface PreviewPaneHandle {
+  captureThumbnail: () => Promise<string | null>
+}
 
 interface PreviewPaneProps {
   files: ScapeFile[]
 }
 
-export function PreviewPane({ files }: PreviewPaneProps) {
+export const PreviewPane = forwardRef<PreviewPaneHandle, PreviewPaneProps>(({ files }, ref) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    captureThumbnail: async () => {
+      const iframe = iframeRef.current
+      if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) return null
+
+      try {
+        // OPTIMIZATION: If the scape has a <canvas> (WebGL/Three.js/p5.js),
+        // capture it directly! It's faster and avoids CSS parsing issues.
+        const canvasEl = iframe.contentDocument.querySelector("canvas")
+        if (canvasEl) {
+          return canvasEl.toDataURL("image/jpeg", 0.7)
+        }
+
+        // Fallback: Use html2canvas for HTML/CSS scapes
+        const canvas = await html2canvas(iframe.contentDocument.body, {
+          useCORS: true,
+          logging: false,
+          ignoreElements: (element) => element.tagName === "SCRIPT" || element.tagName === "LINK", // Avoid parsing external resources if possible
+        })
+        return canvas.toDataURL("image/jpeg", 0.7)
+      } catch {
+        // Silently fail to avoid console spam during live editing
+        // console.warn("Thumbnail capture failed", error)
+        return null
+      }
+    },
+  }))
+
   // 1. Create Blob URLs for all files
   // We strip './' from imports in JS files to force them to be "bare modules"
   // This bypasses the "Invalid relative url" error in Blob/SrcDoc environments
@@ -68,18 +104,29 @@ export function PreviewPane({ files }: PreviewPaneProps) {
 
     let processedHtml = htmlFile.content
 
-    // Inject Import Map
+    // Inject Import Map and WebGL Shim
     const importMapScript = `
-      <script type="importmap">
-        ${JSON.stringify(importMap, null, 2)}
-      </script>
       <script>
+        // Force preserveDrawingBuffer for WebGL to enable screenshots
+        const originalGetContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function(type, options) {
+          if (type === 'webgl' || type === 'webgl2') {
+            options = options || {};
+            options.preserveDrawingBuffer = true;
+          }
+          return originalGetContext.call(this, type, options);
+        };
+
+        // Error Handling
         window.onerror = function(message, source, lineno, colno, error) { 
           window.parent.postMessage({
             type: 'RUNTIME_ERROR',
             payload: { message: message, line: lineno, column: colno }
           }, '*');
         };
+      </script>
+      <script type="importmap">
+        ${JSON.stringify(importMap, null, 2)}
       </script>
     `
 
@@ -131,6 +178,7 @@ export function PreviewPane({ files }: PreviewPaneProps) {
       </div>
       <div className="flex-1 bg-white">
         <iframe
+          ref={iframeRef}
           title="preview"
           srcDoc={srcDoc}
           className="h-full w-full border-0"
@@ -139,4 +187,5 @@ export function PreviewPane({ files }: PreviewPaneProps) {
       </div>
     </div>
   )
-}
+})
+PreviewPane.displayName = "PreviewPane"

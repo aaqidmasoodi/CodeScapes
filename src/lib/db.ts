@@ -8,6 +8,7 @@ export interface Scape {
   syncStatus?: "synced" | "dirty" | "offline"
   authorId?: string
   cloudId?: string
+  thumbnail?: string // Base64 data URL
   createdAt: Date
   updatedAt: Date
 }
@@ -28,11 +29,10 @@ const db = new Dexie("CodeScapeDB") as Dexie & {
 // Version 2: Added source, syncStatus, authorId, cloudId
 db.version(2)
   .stores({
-    scapes: "++id, name, type, source, createdAt, updatedAt", // Added source to index
+    scapes: "++id, name, type, source, createdAt, updatedAt",
     files: "++id, scapeId, name, [scapeId+name]",
   })
   .upgrade((tx) => {
-    // Migration: Set default source to 'local' for existing scapes
     return tx
       .table("scapes")
       .toCollection()
@@ -40,6 +40,16 @@ db.version(2)
         scape.source = "local"
         scape.syncStatus = "offline"
       })
+  })
+
+// Version 3: Added thumbnail
+db.version(3)
+  .stores({
+    scapes: "++id, name, type, source, createdAt, updatedAt", // thumbnail is not indexed
+    files: "++id, scapeId, name, [scapeId+name]",
+  })
+  .upgrade(() => {
+    // No migration needed for new optional field, but we can init it if we wanted
   })
 
 // Helper to delete a scape and its files transactionally

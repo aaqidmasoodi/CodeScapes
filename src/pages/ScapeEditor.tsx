@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button"
 import { ScapeLayout } from "@/layouts/ScapeLayout"
 import { CodeEditor } from "@/components/editor/CodeEditor"
 import { FileExplorer } from "@/components/editor/FileExplorer"
-import { PreviewPane } from "@/components/editor/PreviewPane"
+import { PreviewPane, type PreviewPaneHandle } from "@/components/editor/PreviewPane"
 import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane"
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
-import { db } from "@/lib/db"
+import { db, type Scape } from "@/lib/db"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { MonitorPlay, Zap, LogOut } from "lucide-react"
 
@@ -112,6 +112,7 @@ export default function ScapeEditor() {
     return layout
   }
 
+  const previewRef = useRef<PreviewPaneHandle>(null)
   const mainLayoutGroupRef = useRef<ResizablePrimitive.ImperativePanelGroupHandle>(null)
 
   // Force strict layout when Sidebar opens
@@ -189,9 +190,12 @@ export default function ScapeEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbFiles, activeFilePath])
 
+  // Track last capture time to prevent spam
+  const lastCaptureRef = useRef<number>(0)
+
   // Sync Debounced Files (Preview) & Save to DB
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       // Only proceed if we have initialized
       if (files.length === 0) return
 
@@ -199,15 +203,45 @@ export default function ScapeEditor() {
 
       // Auto-save to DB
       if (id) {
+        let hasChanges = false
         files.forEach((file) => {
           const dbFile = dbFiles?.find((df) => df.name === file.name)
-          if (dbFile && dbFile.content !== file.content) {
+          // Normalize line endings and whitespace to prevent false positives on load
+          const normalize = (str: string) => str.replace(/\r\n/g, "\n").trim()
+
+          if (dbFile && normalize(dbFile.content) !== normalize(file.content)) {
+            // console.log(`[Diff Detected] ${file.name}`)
             db.files.update(dbFile.id, { content: file.content })
+            hasChanges = true
           }
         })
-        db.scapes.update(id, { updatedAt: new Date() })
+
+        const updateData: Partial<Scape> = { updatedAt: new Date() }
+        const now = Date.now()
+
+        // INTELLIGENT CAPTURE STRATEGY:
+        // 1. Only if content strictly changed (hasChanges)
+        // 2. Rate limited to once per minute (prevent spamming while typing/playing)
+        // 3. Or forced via "Exit" (handled separately)
+        if (hasChanges && now - lastCaptureRef.current > 60000 && previewRef.current) {
+          try {
+            const thumb = await previewRef.current.captureThumbnail()
+            if (thumb) {
+              updateData.thumbnail = thumb
+              lastCaptureRef.current = now
+              console.log("Thumbnail Auto-Captured (Scheduled)")
+            }
+          } catch (e) {
+            console.error("Auto-capture failed", e)
+          }
+        }
+
+        // Always update timestamp if content changed
+        if (hasChanges) {
+          await db.scapes.update(id, updateData)
+        }
       }
-    }, 1000)
+    }, 2000) // Increased debounce to 2s to allow render to settle
     return () => clearTimeout(timer)
   }, [files, id, dbFiles])
 
@@ -422,7 +456,9 @@ export default function ScapeEditor() {
           <Button
             variant="destructive"
             size="sm"
-            onClick={() => (window.location.href = "/dashboard")}
+            onClick={() => {
+              window.location.href = "/dashboard"
+            }}
             title="Exit to Dashboard"
           >
             <LogOut className="mr-2 h-4 w-4" />
@@ -562,7 +598,7 @@ export default function ScapeEditor() {
                     defaultSize={getLayout("codescape:layout:workspace", [50, 50])[1]}
                     minSize={30}
                   >
-                    <PreviewPane files={debouncedFiles} />
+                    <PreviewPane ref={previewRef} files={debouncedFiles} />
                   </ResizablePanel>
                 </ResizablePanelGroup>
               </div>

@@ -137,10 +137,20 @@ export default function Dashboard() {
                   className="group relative flex cursor-pointer flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
                   onClick={() => navigate(`/scape/${scape.id}`)}
                 >
-                  {/* Decorative Banner */}
-                  <div className="absolute left-0 top-0 h-24 w-full bg-gradient-to-br from-muted to-muted/50 transition-colors group-hover:from-primary/5 group-hover:to-blue-500/5" />
+                  {/* Decorative Banner or Thumbnail */}
+                  <div className="h-36 w-full overflow-hidden border-b bg-muted/20">
+                    {scape.thumbnail ? (
+                      <img
+                        src={scape.thumbnail}
+                        alt="Scape Preview"
+                        className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-gradient-to-br from-muted to-muted/50 transition-colors group-hover:from-primary/5 group-hover:to-blue-500/5" />
+                    )}
+                  </div>
 
-                  <CardHeader className="relative mt-10 px-5 pb-2 pt-6">
+                  <CardHeader className="px-4 pb-2 pt-4">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
                         <CardTitle className="line-clamp-1 text-lg leading-tight transition-colors group-hover:text-primary">
