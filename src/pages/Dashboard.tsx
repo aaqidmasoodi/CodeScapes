@@ -1,11 +1,28 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useLiveQuery } from "dexie-react-hooks"
-import { Search, Globe, BookOpen, Clock, Trash2, MoreVertical, Layout } from "lucide-react"
+import {
+  Search,
+  Globe,
+  BookOpen,
+  Clock,
+  Trash2,
+  MoreVertical,
+  Layout,
+  AlertTriangle,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,12 +32,16 @@ import {
 import { CreateScapeDialog } from "@/components/dashboard/CreateScapeDialog"
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
-import { db, deleteScape } from "@/lib/db"
+import { db, deleteScape, type Scape } from "@/lib/db"
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState("dashboard")
   const [searchQuery, setSearchQuery] = useState("")
+
+  // Delete Modal State
+  const [scapeToDelete, setScapeToDelete] = useState<Scape | null>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState("")
 
   // Real data from Dexie
   const myScapes = useLiveQuery(() => db.scapes.orderBy("createdAt").reverse().toArray())
@@ -29,12 +50,21 @@ export default function Dashboard() {
     scape.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const handleDelete = async (e: React.MouseEvent, id: number) => {
-    e.stopPropagation() // Prevent card click
-    if (confirm("Are you sure you want to delete this scape? This action cannot be undone.")) {
-      await deleteScape(id)
-    }
+  const handleDeleteClick = (e: React.MouseEvent, scape: Scape) => {
+    e.stopPropagation()
+    setScapeToDelete(scape)
+    setDeleteConfirmation("")
   }
+
+  const confirmDelete = async () => {
+    if (!scapeToDelete) return
+
+    await deleteScape(scapeToDelete.id!)
+    setScapeToDelete(null)
+    setDeleteConfirmation("")
+  }
+
+  const isDeleteValid = scapeToDelete && deleteConfirmation === `delete ${scapeToDelete.name}`
 
   const renderContent = () => {
     if (activeTab === "learn") {
@@ -138,7 +168,7 @@ export default function Dashboard() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
-                            onClick={(e) => handleDelete(e, scape.id)}
+                            onClick={(e) => handleDeleteClick(e, scape)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
@@ -164,6 +194,47 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* Delete Confirmation Modal */}
+        <Dialog open={!!scapeToDelete} onOpenChange={(open) => !open && setScapeToDelete(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+                Delete Scape
+              </DialogTitle>
+              <DialogDescription>
+                This action cannot be undone. This will permanently delete the project{" "}
+                <span className="font-semibold text-foreground">{scapeToDelete?.name}</span> and all
+                of its files.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <label className="mb-2 block text-sm text-muted-foreground">
+                Type{" "}
+                <span className="font-mono font-bold text-foreground">
+                  delete {scapeToDelete?.name}
+                </span>{" "}
+                to confirm:
+              </label>
+              <Input
+                value={deleteConfirmation}
+                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                placeholder={`delete ${scapeToDelete?.name}`}
+                className="font-mono"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setScapeToDelete(null)}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={confirmDelete} disabled={!isDeleteValid}>
+                Delete Scape
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     )
   }
