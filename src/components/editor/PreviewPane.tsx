@@ -1,13 +1,42 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from "react"
 import { MonitorPlay, RefreshCw } from "lucide-react"
+import html2canvas from "html2canvas"
+
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
+
+export interface PreviewPaneHandle {
+  captureThumbnail: () => Promise<string | null>
+}
 
 interface PreviewPaneProps {
   files: ScapeFile[]
 }
 
-export function PreviewPane({ files }: PreviewPaneProps) {
+export const PreviewPane = forwardRef<PreviewPaneHandle, PreviewPaneProps>(({ files }, ref) => {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    captureThumbnail: async () => {
+      const iframe = iframeRef.current
+      if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) return null
+
+      try {
+        // We capture the body of the iframe
+        const canvas = await html2canvas(iframe.contentDocument.body, {
+          width: 1200, // Standardize width
+          height: 630, // Standardize Open Graph size aspect ratio if possible, or just strict dimensions
+          useCORS: true, // Important if using external images (though difficult in sandboxed iframe)
+          logging: false,
+        })
+        return canvas.toDataURL("image/jpeg", 0.7) // Compress slightly
+      } catch (error) {
+        console.error("Thumbnail capture failed:", error)
+        return null
+      }
+    },
+  }))
+
   // 1. Create Blob URLs for all files
   // We strip './' from imports in JS files to force them to be "bare modules"
   // This bypasses the "Invalid relative url" error in Blob/SrcDoc environments
@@ -131,6 +160,7 @@ export function PreviewPane({ files }: PreviewPaneProps) {
       </div>
       <div className="flex-1 bg-white">
         <iframe
+          ref={iframeRef}
           title="preview"
           srcDoc={srcDoc}
           className="h-full w-full border-0"
@@ -139,4 +169,5 @@ export function PreviewPane({ files }: PreviewPaneProps) {
       </div>
     </div>
   )
-}
+})
+PreviewPane.displayName = "PreviewPane"

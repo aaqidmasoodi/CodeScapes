@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { ScapeLayout } from "@/layouts/ScapeLayout"
 import { CodeEditor } from "@/components/editor/CodeEditor"
 import { FileExplorer } from "@/components/editor/FileExplorer"
-import { PreviewPane } from "@/components/editor/PreviewPane"
+import { PreviewPane, type PreviewPaneHandle } from "@/components/editor/PreviewPane"
 import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane"
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import type { ScapeFile } from "@/types/file"
@@ -112,6 +112,7 @@ export default function ScapeEditor() {
     return layout
   }
 
+  const previewRef = useRef<PreviewPaneHandle>(null)
   const mainLayoutGroupRef = useRef<ResizablePrimitive.ImperativePanelGroupHandle>(null)
 
   // Force strict layout when Sidebar opens
@@ -422,7 +423,15 @@ export default function ScapeEditor() {
           <Button
             variant="destructive"
             size="sm"
-            onClick={() => (window.location.href = "/dashboard")}
+            onClick={async () => {
+              if (previewRef.current) {
+                const thumb = await previewRef.current.captureThumbnail()
+                if (thumb && id) {
+                  await db.scapes.update(id, { thumbnail: thumb })
+                }
+              }
+              window.location.href = "/dashboard"
+            }}
             title="Exit to Dashboard"
           >
             <LogOut className="mr-2 h-4 w-4" />
@@ -562,7 +571,7 @@ export default function ScapeEditor() {
                     defaultSize={getLayout("codescape:layout:workspace", [50, 50])[1]}
                     minSize={30}
                   >
-                    <PreviewPane files={debouncedFiles} />
+                    <PreviewPane ref={previewRef} files={debouncedFiles} />
                   </ResizablePanel>
                 </ResizablePanelGroup>
               </div>
