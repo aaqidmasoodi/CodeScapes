@@ -158,7 +158,7 @@ export default function ScapeEditor() {
       const mappedFiles: ScapeFile[] = dbFiles.map((f) => ({
         id: f.id,
         name: f.name,
-        language: f.language as ScapeFile["language"],
+        language: f.language as unknown as ScapeFile["language"],
         content: f.content,
       }))
 
