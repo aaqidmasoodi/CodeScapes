@@ -118,7 +118,7 @@ dist
 
 # Gemini / Agent artifacts
 .gemini
-task.md
+
 implementation_plan.md
 walkthrough.md
 
@@ -128,3 +128,5 @@ walkthrough.md
 # Electron
 dist-electron
 release
+
+GIT_WORKFLOW.md
