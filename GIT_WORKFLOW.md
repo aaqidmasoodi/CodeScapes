@@ -171,8 +171,11 @@ Check the following boxes:
   - [x] **Require approvals**: Set to `0` if working solo (forces PR flow but allows self-merge). Set to `1` if you want a review.
 - [x] **Require status checks to pass before merging**
   - **Create a PR first!** Checks only appear in the list after they have run once.
-  - Type **`web-quality-ci`** (or `test`, `lint`) in the search box.
-  - **Click the name** to add it to the list. You cannot leave the list empty.
+    - **"No results" found?** This means CI hasn't run yet.
+      1. Uncheck this rule for now.
+      2. Click Save.
+      3. Create your PR (Next Step below) and wait for tests to run.
+      4. Come back here and enable this rule.
 - [x] **Do not allow bypassing the above settings**
   - This ensures that even as an Admin/Owner, you must follow the PR flow.
 
