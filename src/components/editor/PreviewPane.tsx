@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, forwardRef, useImperativeHandle, memo } from "react"
-import { MonitorPlay, Play, Loader2 } from "lucide-react"
+import { MonitorPlay, Play, Loader2, PanelRightClose } from "lucide-react"
 import html2canvas from "html2canvas"
 
 import { Button } from "@/components/ui/button"
@@ -16,11 +16,12 @@ interface PreviewPaneProps {
   onAutoRefreshChange: (enabled: boolean) => void
   onRefresh: () => void
   isRefreshing?: boolean
+  onCollapse?: () => void
 }
 
 export const PreviewPane = memo(
   forwardRef<PreviewPaneHandle, PreviewPaneProps>(
-    ({ files, autoRefresh, onAutoRefreshChange, onRefresh, isRefreshing }, ref) => {
+    ({ files, autoRefresh, onAutoRefreshChange, onRefresh, isRefreshing, onCollapse }, ref) => {
       const iframeRef = useRef<HTMLIFrameElement>(null)
 
       useImperativeHandle(ref, () => ({
@@ -273,6 +274,21 @@ export const PreviewPane = memo(
                   <Play className="h-3.5 w-3.5 fill-current" />
                 )}
               </Button>
+
+              {onCollapse && (
+                <>
+                  <div className="h-4 w-px bg-border/50" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={onCollapse}
+                    title="Collapse Preview"
+                  >
+                    <PanelRightClose className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
             </div>
           </div>
           <div className="flex-1 bg-white">
