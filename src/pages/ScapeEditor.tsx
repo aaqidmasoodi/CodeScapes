@@ -17,7 +17,7 @@ import { db } from "@/lib/db"
 import { useFileSystem } from "@/hooks/useFileSystem"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
-import { MonitorPlay, Zap, LogOut } from "lucide-react"
+import { MonitorPlay, Zap, LogOut, PanelRightOpen } from "lucide-react"
 
 import {
   AlertDialog,
@@ -134,6 +134,9 @@ export default function ScapeEditor() {
     "codescape:ui:terminalTab",
     "terminal"
   )
+
+  // Preview Collapsed State
+  const [isPreviewOpen, setIsPreviewOpen] = usePersistentState("codescape:ui:isPreviewOpen", true)
 
   // Project Specific State
   const [activeFilePath, setActiveFilePath] = usePersistentState<string | null>(
@@ -438,7 +441,11 @@ export default function ScapeEditor() {
         }
         headerActions={
           <>
-            <Button variant="ghost" size="sm">
+            <Button
+              variant={isPreviewOpen ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+            >
               <MonitorPlay className="mr-2 h-4 w-4" />
               Preview
             </Button>
@@ -506,103 +513,128 @@ export default function ScapeEditor() {
             defaultSize={activeTool === "explorer" ? getSafeLayout()[1] : 100}
           >
             <div className="flex h-full flex-col">
-              <div className="flex-1 overflow-hidden">
-                <ResizablePanelGroup
-                  direction="horizontal"
-                  onLayout={(sizes) =>
-                    localStorage.setItem("codescape:layout:workspace", JSON.stringify(sizes))
-                  }
-                >
-                  <ResizablePanel
-                    defaultSize={getLayout("codescape:layout:workspace", [50, 50])[0]}
-                    minSize={30}
+              <div className="flex h-full flex-row overflow-hidden">
+                <div className="min-w-0 flex-1">
+                  <ResizablePanelGroup
+                    direction="horizontal"
+                    onLayout={(sizes) => {
+                      if (isPreviewOpen) {
+                        localStorage.setItem("codescape:layout:workspace", JSON.stringify(sizes))
+                      }
+                    }}
                   >
-                    <div className="flex h-full flex-col">
-                      <div className="min-h-0 flex-1">
-                        <ResizablePanelGroup
-                          direction="vertical"
-                          onLayout={(sizes) => {
-                            if (isTerminalOpen)
-                              localStorage.setItem(
-                                "codescape:layout:vertical",
-                                JSON.stringify(sizes)
-                              )
-                          }}
-                        >
-                          <ResizablePanel
-                            defaultSize={
-                              isTerminalOpen
-                                ? getLayout("codescape:layout:vertical", [75, 25])[0]
-                                : 100
-                            }
+                    <ResizablePanel
+                      defaultSize={getLayout("codescape:layout:workspace", [50, 50])[0]}
+                      minSize={30}
+                    >
+                      <div className="flex h-full flex-col">
+                        <div className="min-h-0 flex-1">
+                          <ResizablePanelGroup
+                            direction="vertical"
+                            onLayout={(sizes) => {
+                              if (isTerminalOpen)
+                                localStorage.setItem(
+                                  "codescape:layout:vertical",
+                                  JSON.stringify(sizes)
+                                )
+                            }}
                           >
-                            {activeFile ? (
-                              <CodeEditor
-                                key={activeFile.name}
-                                fileName={activeFile.name}
-                                initialValue={activeFile.content}
-                                language={activeFile.language}
-                                onChange={handleCodeChange}
-                                onValidate={handleValidate}
-                                files={files}
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center p-4 text-muted-foreground">
-                                <p className="text-sm">Select a file to start editing</p>
-                              </div>
-                            )}
-                          </ResizablePanel>
-                          <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
-                          {isTerminalOpen && (
                             <ResizablePanel
-                              defaultSize={getLayout("codescape:layout:vertical", [75, 25])[1]}
-                              minSize={10}
+                              defaultSize={
+                                isTerminalOpen
+                                  ? getLayout("codescape:layout:vertical", [75, 25])[0]
+                                  : 100
+                              }
                             >
-                              <TerminalPane
-                                activeTab={terminalTab}
-                                onTabChange={handleTerminalTabChange}
-                                onClose={() => setIsTerminalOpen(false)}
-                                problems={problems}
-                                isCollapsed={false}
-                                files={files}
-                                scapeName={scape?.name}
-                                onDeleteFile={deleteFileDirectly}
-                              />
+                              {activeFile ? (
+                                <CodeEditor
+                                  key={activeFile.name}
+                                  fileName={activeFile.name}
+                                  initialValue={activeFile.content}
+                                  language={activeFile.language}
+                                  onChange={handleCodeChange}
+                                  onValidate={handleValidate}
+                                  files={files}
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center p-4 text-muted-foreground">
+                                  <p className="text-sm">Select a file to start editing</p>
+                                </div>
+                              )}
                             </ResizablePanel>
-                          )}
-                        </ResizablePanelGroup>
-                      </div>
-                      {!isTerminalOpen && (
-                        <div className="h-9 shrink-0 border-t bg-background">
-                          <TerminalPane
-                            activeTab={terminalTab}
-                            onTabChange={handleTerminalTabChange}
-                            problems={problems}
-                            isCollapsed={true}
-                            files={files}
-                            scapeName={scape?.name}
-                            onDeleteFile={deleteFileDirectly}
-                          />
+                            <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
+                            {isTerminalOpen && (
+                              <ResizablePanel
+                                defaultSize={getLayout("codescape:layout:vertical", [75, 25])[1]}
+                                minSize={10}
+                              >
+                                <TerminalPane
+                                  activeTab={terminalTab}
+                                  onTabChange={handleTerminalTabChange}
+                                  onClose={() => setIsTerminalOpen(false)}
+                                  problems={problems}
+                                  isCollapsed={false}
+                                  files={files}
+                                  scapeName={scape?.name}
+                                  onDeleteFile={deleteFileDirectly}
+                                />
+                              </ResizablePanel>
+                            )}
+                          </ResizablePanelGroup>
                         </div>
-                      )}
-                    </div>
-                  </ResizablePanel>
+                        {!isTerminalOpen && (
+                          <div className="h-9 shrink-0 border-t bg-background">
+                            <TerminalPane
+                              activeTab={terminalTab}
+                              onTabChange={handleTerminalTabChange}
+                              problems={problems}
+                              isCollapsed={true}
+                              files={files}
+                              scapeName={scape?.name}
+                              onDeleteFile={deleteFileDirectly}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </ResizablePanel>
 
-                  <ResizableHandle />
+                    {isPreviewOpen && <ResizableHandle />}
 
-                  <ResizablePanel
-                    defaultSize={getLayout("codescape:layout:workspace", [50, 50])[1]}
-                    minSize={30}
+                    {isPreviewOpen && (
+                      <ResizablePanel
+                        defaultSize={getLayout("codescape:layout:workspace", [50, 50])[1]}
+                        minSize={30}
+                      >
+                        <PreviewPane
+                          ref={previewRef}
+                          files={debouncedFiles}
+                          autoRefresh={autoRefresh}
+                          onAutoRefreshChange={setAutoRefresh}
+                          onRefresh={handleManualRefresh}
+                          onCollapse={() => setIsPreviewOpen(false)}
+                        />
+                      </ResizablePanel>
+                    )}
+                  </ResizablePanelGroup>
+                </div>
+
+                {!isPreviewOpen && (
+                  <div
+                    className="flex w-9 cursor-pointer flex-col items-center border-l bg-muted/20 py-2 transition-colors hover:bg-muted/40"
+                    onClick={() => setIsPreviewOpen(true)}
+                    title="Show Preview"
                   >
-                    <PreviewPane
-                      ref={previewRef}
-                      files={debouncedFiles}
-                      autoRefresh={autoRefresh}
-                      onAutoRefreshChange={setAutoRefresh}
-                      onRefresh={handleManualRefresh}
-                    />
-                  </ResizablePanel>
-                </ResizablePanelGroup>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <PanelRightOpen className="h-4 w-4" />
+                    </Button>
+                    <span
+                      className="mt-4 select-none text-xs font-medium text-muted-foreground"
+                      style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+                    >
+                      Preview
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </ResizablePanel>
