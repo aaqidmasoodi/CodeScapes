@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, forwardRef, useImperativeHandle, memo } from "react"
+import { useEffect, useState, useMemo, useRef, forwardRef, useImperativeHandle, memo } from "react"
 import { MonitorPlay, Play, Loader2 } from "lucide-react"
 import html2canvas from "html2canvas"
 
@@ -52,6 +52,38 @@ export const PreviewPane = memo(
         },
       }))
 
+      // Navigation State
+      const [activePreviewPath, setActivePreviewPath] = useState("index.html")
+
+      // Listen for navigation requests from the iframe
+      useEffect(() => {
+        const handleMessage = (e: MessageEvent) => {
+          if (e.data?.type === "NAVIGATE") {
+            const path = e.data.path
+            // Simple resolution: remove leading ./ or /
+            // e.g. "./about.html" -> "about.html"
+            const cleanPath = path.replace(/^[./]+/, "")
+
+            // Check if file exists
+            if (files.some((f) => f.name === cleanPath)) {
+              setActivePreviewPath(cleanPath)
+            } else {
+              console.warn(`Preview navigation failed: File '${cleanPath}' not found.`)
+            }
+          }
+        }
+        window.addEventListener("message", handleMessage)
+        return () => window.removeEventListener("message", handleMessage)
+      }, [files])
+
+      // Reset to index.html if current file is deleted, but generally persist state
+      useEffect(() => {
+        if (files.length > 0 && !files.some((f) => f.name === activePreviewPath)) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setActivePreviewPath("index.html")
+        }
+      }, [files, activePreviewPath])
+
       // 1. Create Blob URLs for all files
       // We strip './' from imports in JS files to force them to be "bare modules"
       // This bypasses the "Invalid relative url" error in Blob/SrcDoc environments
@@ -90,9 +122,9 @@ export const PreviewPane = memo(
 
       // 2. Construct the HTML (using srcDoc for simplicity/stability)
       const srcDoc = useMemo(() => {
-        const htmlFile = files.find((f) => f.name === "index.html")
+        const htmlFile = files.find((f) => f.name === activePreviewPath)
         if (!htmlFile) {
-          return '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#666;">No index.html found</div>'
+          return `<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#666;">File '${activePreviewPath}' not found</div>`
         }
 
         // Build Import Map
@@ -112,7 +144,7 @@ export const PreviewPane = memo(
 
         let processedHtml = htmlFile.content
 
-        // Inject Import Map and WebGL Shim
+        // Inject Import Map, WebGL Shim, and Navigation Interceptor
         const importMapScript = `
       <script>
         // Force preserveDrawingBuffer for WebGL to enable screenshots
@@ -132,6 +164,26 @@ export const PreviewPane = memo(
             payload: { message: message, line: lineno, column: colno }
           }, '*');
         };
+
+        // Navigation Interceptor
+        document.addEventListener('click', (e) => {
+          const link = e.target.closest('a');
+          if (!link) return;
+          const href = link.getAttribute('href');
+          
+          // Ignore hashes (let browser handle scrolling)
+          if (!href || href.startsWith('#')) return;
+          
+          // Force external links to new tab
+          if (href.startsWith('http') || href.startsWith('//')) {
+            link.target = '_blank';
+            return;
+          }
+          
+          // Intercept relative navigation
+          e.preventDefault();
+          window.parent.postMessage({ type: 'NAVIGATE', path: href }, '*');
+        });
       </script>
       <script type="importmap">
         ${JSON.stringify(importMap, null, 2)}
@@ -171,7 +223,7 @@ export const PreviewPane = memo(
         )
 
         return processedHtml
-      }, [files, blobUrls])
+      }, [files, blobUrls, activePreviewPath])
 
       return (
         <div className="flex h-full flex-col border-l bg-white dark:border-zinc-800 dark:bg-zinc-950">
