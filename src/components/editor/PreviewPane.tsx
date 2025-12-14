@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useMemo } from "react"
 import { MonitorPlay, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
@@ -8,12 +8,10 @@ interface PreviewPaneProps {
 }
 
 export function PreviewPane({ files }: PreviewPaneProps) {
-  const [blobUrls, setBlobUrls] = useState<Record<string, string>>({})
-
   // 1. Create Blob URLs for all files
   // We strip './' from imports in JS files to force them to be "bare modules"
   // This bypasses the "Invalid relative url" error in Blob/SrcDoc environments
-  useEffect(() => {
+  const blobUrls = useMemo(() => {
     const newUrls: Record<string, string> = {}
 
     files.forEach((file) => {
@@ -36,12 +34,15 @@ export function PreviewPane({ files }: PreviewPaneProps) {
       newUrls[file.name] = URL.createObjectURL(blob)
     })
 
-    setBlobUrls(newUrls)
-
-    return () => {
-      Object.values(newUrls).forEach((url) => URL.revokeObjectURL(url))
-    }
+    return newUrls
   }, [files])
+
+  // Cleanup Blob URLs when they change or component unmounts
+  useEffect(() => {
+    return () => {
+      Object.values(blobUrls).forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [blobUrls])
 
   // 2. Construct the HTML (using srcDoc for simplicity/stability)
   const srcDoc = useMemo(() => {
