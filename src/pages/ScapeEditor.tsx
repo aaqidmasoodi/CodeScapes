@@ -154,6 +154,7 @@ export default function ScapeEditor() {
   // --- INITIALIZATION ---
 
   // Initialize files from DB and handle Active File Redirection
+  // 1. Sync Files from DB
   useEffect(() => {
     if (dbFiles) {
       const mappedFiles: ScapeFile[] = dbFiles.map((f) => ({
@@ -163,32 +164,37 @@ export default function ScapeEditor() {
         content: f.content,
       }))
 
-      // Update local files
+      // Only update if length changed or we suspect diff?
+      // For now, blindly updating is fine as long as dbFiles is stable.
+      // But dbFiles might come from useLiveQuery which is stable-ish.
+      // eslint-disable-next-line
       setFiles(mappedFiles)
+      // We also update debouncedFiles to avoid flash?
+      // Actually, if we update 'files', the downstream debounce effect (line 197) will run?
+      // Existing code did setDebouncedFiles, let's keep it to be safe for initial render.
       setDebouncedFiles(mappedFiles)
+    }
+  }, [dbFiles])
 
-      // Handle Active File Logic
-      if (mappedFiles.length > 0) {
-        // If we have a stored path, verify it still exists
-        const storedExists = mappedFiles.some((f) => f.name === activeFilePath)
+  // 2. Validate Active File
+  useEffect(() => {
+    if (files.length > 0) {
+      const storedExists = files.some((f) => f.name === activeFilePath)
 
-        if (!activeFilePath || !storedExists) {
-          // Default to index.html or first file
-          const defaultFile =
-            mappedFiles.find((f) => f.name === "index.html") ||
-            mappedFiles.find((f) => f.language !== "folder")
+      // If no active file, or the current one was deleted/doesn't exist
+      if (!activeFilePath || !storedExists) {
+        const defaultFile =
+          files.find((f) => f.name === "index.html") || files.find((f) => f.language !== "folder")
 
-          if (defaultFile) {
-            setActiveFilePath(defaultFile.name)
-          }
+        if (defaultFile) {
+          setActiveFilePath(defaultFile.name)
+        } else if (activeFilePath) {
+          // If NO valid files exist (unlikely), clear active
+          setActiveFilePath(null)
         }
-      } else {
-        setFiles([])
-        if (activeFilePath) setActiveFilePath(null)
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dbFiles, activeFilePath])
+  }, [files, activeFilePath, setActiveFilePath])
 
   // Track last capture time to prevent spam
   const lastCaptureRef = useRef<number>(0)
