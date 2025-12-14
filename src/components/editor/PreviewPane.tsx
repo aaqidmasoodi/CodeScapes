@@ -52,8 +52,8 @@ export function PreviewPane({ files }: PreviewPaneProps) {
 
     // Build Import Map
     const imports: Record<string, string> = {
-      "three": "https://esm.sh/three@0.160.0",
-      "three/": "https://esm.sh/three@0.160.0/"
+      three: "https://esm.sh/three@0.160.0",
+      "three/": "https://esm.sh/three@0.160.0/",
     }
 
     // Map bare filenames to Blob URLs
