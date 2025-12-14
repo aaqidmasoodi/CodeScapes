@@ -170,7 +170,9 @@ Check the following boxes:
 - [x] **Require a pull request before merging**
   - [x] **Require approvals**: Set to `0` if working solo (forces PR flow but allows self-merge). Set to `1` if you want a review.
 - [x] **Require status checks to pass before merging**
-  - Ensure your CI works first! Then search for `web-quality-ci` or `lint` in the search box and select them. This prevents merging broken code.
+  - **Create a PR first!** Checks only appear in the list after they have run once.
+  - Type **`web-quality-ci`** (or `test`, `lint`) in the search box.
+  - **Click the name** to add it to the list. You cannot leave the list empty.
 - [x] **Do not allow bypassing the above settings**
   - This ensures that even as an Admin/Owner, you must follow the PR flow.
 
