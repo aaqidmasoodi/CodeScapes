@@ -56,7 +56,7 @@ export function FileExplorer({
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    creationStart && inputRef.current?.focus()
+    if (creationStart) inputRef.current?.focus()
   }, [creationStart])
 
   const handleCommitCreation = () => {

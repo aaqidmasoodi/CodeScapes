@@ -64,7 +64,7 @@ const getLayout = (key: string, defaults: number[]) => {
     if (
       Array.isArray(parsed) &&
       parsed.length === defaults.length &&
-      parsed.every((n: any) => typeof n === "number")
+      parsed.every((n: unknown) => typeof n === "number")
     ) {
       return parsed
     }
@@ -158,7 +158,7 @@ export default function ScapeEditor() {
       const mappedFiles: ScapeFile[] = dbFiles.map((f) => ({
         id: f.id,
         name: f.name,
-        language: f.language as any,
+        language: f.language,
         content: f.content,
       }))
 
@@ -175,7 +175,7 @@ export default function ScapeEditor() {
           // Default to index.html or first file
           const defaultFile =
             mappedFiles.find((f) => f.name === "index.html") ||
-            mappedFiles.find((f) => f.language !== ("folder" as any))
+            mappedFiles.find((f) => f.language !== "folder")
 
           if (defaultFile) {
             setActiveFilePath(defaultFile.name)
@@ -186,6 +186,7 @@ export default function ScapeEditor() {
         if (activeFilePath) setActiveFilePath(null)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbFiles, activeFilePath])
 
   // Sync Debounced Files (Preview) & Save to DB
@@ -253,7 +254,7 @@ export default function ScapeEditor() {
     await db.files.add({
       scapeId: id,
       name: folderName,
-      language: "folder" as any,
+      language: "folder",
       content: "",
     })
     // Auto-expand
@@ -284,7 +285,7 @@ export default function ScapeEditor() {
   const handleMoveNode = async (oldPath: string, newPath: string) => {
     if (files.some((f) => f.name === newPath)) return
 
-    const folderEntry = files.find((f) => f.name === oldPath && f.language === ("folder" as any))
+    const folderEntry = files.find((f) => f.name === oldPath && f.language === "folder")
     if (folderEntry) await db.files.update(folderEntry.id!, { name: newPath })
 
     const filesToMove = files.filter((f) => f.name === oldPath || f.name.startsWith(oldPath + "/"))
@@ -352,7 +353,7 @@ export default function ScapeEditor() {
   )
   const handleValidate = useCallback(
     (fileProblems: Problem[]) => setSyntaxProblems(fileProblems),
-    []
+    [setSyntaxProblems]
   )
 
   const fileTree = useMemo(() => {

@@ -122,7 +122,7 @@ export function TerminalPane({
       case "clear":
         setHistory([])
         break
-      case "ls":
+      case "ls": {
         const fileList = files
           .map((f) => f.name)
           .sort()
@@ -132,6 +132,7 @@ export function TerminalPane({
           { type: "output", content: <div className="text-blue-400">{fileList || "(empty)"}</div> },
         ])
         break
+      }
       case "rm":
         if (!args[0]) {
           setHistory((prev) => [...prev, { type: "output", content: "Usage: rm <filename>" }])

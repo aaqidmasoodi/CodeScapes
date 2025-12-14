@@ -55,6 +55,7 @@ export function CodeEditor({
     const disposables = extraLibs.map((lib) => tsDefaults.addExtraLib(lib.content, lib.filePath))
 
     return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       disposables.forEach((d: any) => d.dispose())
     }
   }, [monaco, files, fileName])
