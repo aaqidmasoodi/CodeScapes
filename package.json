@@ -48,7 +48,6 @@
         "deb"
       ]
     },
-    ,
     "publish": [
       "github"
     ]
