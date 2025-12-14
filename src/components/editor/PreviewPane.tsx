@@ -169,19 +169,32 @@ export const PreviewPane = memo(
         document.addEventListener('click', (e) => {
           const link = e.target.closest('a');
           if (!link) return;
-          const href = link.getAttribute('href');
           
-          // Ignore hashes (let browser handle scrolling)
-          if (!href || href.startsWith('#')) return;
+          // Prevent default browser navigation for everything to avoid "Inception"
+          e.preventDefault();
+
+          const href = link.getAttribute('href');
+          // console.log('[Preview] Intercepted:', href);
+          
+          if (!href || href === '#' || href === '') {
+            // Dead link - do nothing
+            return;
+          }
+          
+          // Handle Hash Anchors manually to avoid reload
+          if (href.startsWith('#')) {
+             const target = document.querySelector(href);
+             if (target) target.scrollIntoView();
+             return;
+          }
           
           // Force external links to new tab
           if (href.startsWith('http') || href.startsWith('//')) {
-            link.target = '_blank';
+            window.open(href, '_blank');
             return;
           }
           
           // Intercept relative navigation
-          e.preventDefault();
           window.parent.postMessage({ type: 'NAVIGATE', path: href }, '*');
         });
       </script>
