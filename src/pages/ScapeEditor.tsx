@@ -86,6 +86,9 @@ export default function ScapeEditor() {
   const { files, isInitialized, createFile, updateFile, deleteFile, bulkRename } = useFileSystem(id)
 
   // Local State
+  // Preview Collapsed State (Lifted to top for safety)
+  const [isPreviewOpen, setIsPreviewOpen] = usePersistentState("codescape:ui:isPreviewOpen", true)
+
   const [debouncedFiles, setDebouncedFiles] = useState<ScapeFile[]>([])
   const [initialPreviewSynced, setInitialPreviewSynced] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
@@ -116,6 +119,7 @@ export default function ScapeEditor() {
 
   const previewRef = useRef<PreviewPaneHandle>(null)
   const mainLayoutGroupRef = useRef<ResizablePrimitive.ImperativePanelGroupHandle>(null)
+  const previewPanelRef = useRef<ResizablePrimitive.ImperativePanelHandle>(null)
 
   // Force strict layout when Sidebar opens
   useEffect(() => {
@@ -124,6 +128,23 @@ export default function ScapeEditor() {
       mainLayoutGroupRef.current.setLayout(target)
     }
   }, [activeTool])
+
+  // Sync Preview Collapse State
+  useEffect(() => {
+    const checkPanel = () => {
+      const panel = previewPanelRef.current
+      if (panel) {
+        if (isPreviewOpen) {
+          panel.expand()
+        } else {
+          panel.collapse()
+        }
+      }
+    }
+    // Small timeout to ensure refs are ready and initial layout is done
+    const t = setTimeout(checkPanel, 50)
+    return () => clearTimeout(t)
+  }, [isPreviewOpen])
 
   // Terminal State
   const [isTerminalOpen, setIsTerminalOpen] = usePersistentState(
@@ -134,9 +155,6 @@ export default function ScapeEditor() {
     "codescape:ui:terminalTab",
     "terminal"
   )
-
-  // Preview Collapsed State
-  const [isPreviewOpen, setIsPreviewOpen] = usePersistentState("codescape:ui:isPreviewOpen", true)
 
   // Project Specific State
   const [activeFilePath, setActiveFilePath] = usePersistentState<string | null>(
@@ -216,6 +234,9 @@ export default function ScapeEditor() {
     // If debouncedFiles changed, it means the preview updated (Auto or Manual).
     // We should try to capture.
     const capture = async () => {
+      // Don't capture if preview is collapsed (would be blank)
+      if (!isPreviewOpen) return
+
       if (!previewRef.current || !id) return
 
       // Cooldown check?
@@ -247,7 +268,7 @@ export default function ScapeEditor() {
     }
 
     capture()
-  }, [debouncedFiles, id, autoRefresh])
+  }, [debouncedFiles, id, autoRefresh, isPreviewOpen])
 
   const handleManualRefresh = useCallback(() => {
     setDebouncedFiles([...files]) // Force new reference to ensure update
@@ -524,7 +545,9 @@ export default function ScapeEditor() {
                     }}
                   >
                     <ResizablePanel
-                      defaultSize={getLayout("codescape:layout:workspace", [50, 50])[0]}
+                      defaultSize={
+                        isPreviewOpen ? getLayout("codescape:layout:workspace", [50, 50])[0] : 100
+                      }
                       minSize={30}
                     >
                       <div className="flex h-full flex-col">
@@ -598,23 +621,33 @@ export default function ScapeEditor() {
                       </div>
                     </ResizablePanel>
 
-                    {isPreviewOpen && <ResizableHandle />}
+                    <ResizableHandle className={!isPreviewOpen ? "hidden" : ""} />
 
-                    {isPreviewOpen && (
-                      <ResizablePanel
-                        defaultSize={getLayout("codescape:layout:workspace", [50, 50])[1]}
-                        minSize={30}
-                      >
-                        <PreviewPane
-                          ref={previewRef}
-                          files={debouncedFiles}
-                          autoRefresh={autoRefresh}
-                          onAutoRefreshChange={setAutoRefresh}
-                          onRefresh={handleManualRefresh}
-                          onCollapse={() => setIsPreviewOpen(false)}
-                        />
-                      </ResizablePanel>
-                    )}
+                    <ResizablePanel
+                      ref={previewPanelRef}
+                      defaultSize={
+                        isPreviewOpen ? getLayout("codescape:layout:workspace", [50, 50])[1] : 0
+                      }
+                      minSize={30}
+                      collapsible={true}
+                      collapsedSize={0}
+                      onCollapse={() => {
+                        if (isPreviewOpen) setIsPreviewOpen(false)
+                      }}
+                      onExpand={() => {
+                        if (!isPreviewOpen) setIsPreviewOpen(true)
+                      }}
+                      className={!isPreviewOpen ? "min-w-0" : ""}
+                    >
+                      <PreviewPane
+                        ref={previewRef}
+                        files={debouncedFiles}
+                        autoRefresh={autoRefresh}
+                        onAutoRefreshChange={setAutoRefresh}
+                        onRefresh={handleManualRefresh}
+                        onCollapse={() => setIsPreviewOpen(false)}
+                      />
+                    </ResizablePanel>
                   </ResizablePanelGroup>
                 </div>
 
