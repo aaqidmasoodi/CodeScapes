@@ -190,6 +190,9 @@ export default function ScapeEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbFiles, activeFilePath])
 
+  // Track last capture time to prevent spam
+  const lastCaptureRef = useRef<number>(0)
+
   // Sync Debounced Files (Preview) & Save to DB
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -203,36 +206,37 @@ export default function ScapeEditor() {
         let hasChanges = false
         files.forEach((file) => {
           const dbFile = dbFiles?.find((df) => df.name === file.name)
-          if (dbFile && dbFile.content !== file.content) {
+          // Normalize line endings and whitespace to prevent false positives on load
+          const normalize = (str: string) => str.replace(/\r\n/g, "\n").trim()
+
+          if (dbFile && normalize(dbFile.content) !== normalize(file.content)) {
+            // console.log(`[Diff Detected] ${file.name}`)
             db.files.update(dbFile.id, { content: file.content })
             hasChanges = true
           }
         })
 
         const updateData: Partial<Scape> = { updatedAt: new Date() }
+        const now = Date.now()
 
-        // Attempt to capture thumbnail ONLY if content changed
-        if (hasChanges && previewRef.current) {
+        // INTELLIGENT CAPTURE STRATEGY:
+        // 1. Only if content strictly changed (hasChanges)
+        // 2. Rate limited to once per minute (prevent spamming while typing/playing)
+        // 3. Or forced via "Exit" (handled separately)
+        if (hasChanges && now - lastCaptureRef.current > 60000 && previewRef.current) {
           try {
-            // Wait a bit more for the renderer to catch up with the new code
-            // Since we just updated the DB, the PreviewPane might re-render soon via debouncedFiles
-            // However, debouncedFiles is set above at line 199 synchronously
             const thumb = await previewRef.current.captureThumbnail()
             if (thumb) {
               updateData.thumbnail = thumb
-              console.log("Thumbnail captured (Content Changed)")
+              lastCaptureRef.current = now
+              console.log("Thumbnail Auto-Captured (Scheduled)")
             }
           } catch (e) {
             console.error("Auto-capture failed", e)
           }
         }
 
-        // Always update timestamp if we checked, or maybe only if changed?
-        // Usually good to update 'updatedAt' on access or save?
-        // Let's update it if changes occurred OR just periodic keep-alive?
-        // For now, let's keep the existing logic of always updating the scape record
-        // actually, if we want to minimize DB writes, we might want to gate this too,
-        // but 'updatedAt' is useful. Let's gate it to hasChanges to be super efficient.
+        // Always update timestamp if content changed
         if (hasChanges) {
           await db.scapes.update(id, updateData)
         }
@@ -452,13 +456,7 @@ export default function ScapeEditor() {
           <Button
             variant="destructive"
             size="sm"
-            onClick={async () => {
-              if (previewRef.current) {
-                const thumb = await previewRef.current.captureThumbnail()
-                if (thumb && id) {
-                  await db.scapes.update(id, { thumbnail: thumb })
-                }
-              }
+            onClick={() => {
               window.location.href = "/dashboard"
             }}
             title="Exit to Dashboard"

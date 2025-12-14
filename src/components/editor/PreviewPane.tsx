@@ -22,14 +22,23 @@ export const PreviewPane = forwardRef<PreviewPaneHandle, PreviewPaneProps>(({ fi
       if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) return null
 
       try {
-        // We capture the body of the iframe
+        // OPTIMIZATION: If the scape has a <canvas> (WebGL/Three.js/p5.js),
+        // capture it directly! It's faster and avoids CSS parsing issues.
+        const canvasEl = iframe.contentDocument.querySelector("canvas")
+        if (canvasEl) {
+          return canvasEl.toDataURL("image/jpeg", 0.7)
+        }
+
+        // Fallback: Use html2canvas for HTML/CSS scapes
         const canvas = await html2canvas(iframe.contentDocument.body, {
-          useCORS: true, // Important if using external images (though difficult in sandboxed iframe)
+          useCORS: true,
           logging: false,
+          ignoreElements: (element) => element.tagName === "SCRIPT" || element.tagName === "LINK", // Avoid parsing external resources if possible
         })
-        return canvas.toDataURL("image/jpeg", 0.7) // Compress slightly
-      } catch (error) {
-        console.error("Thumbnail capture failed:", error)
+        return canvas.toDataURL("image/jpeg", 0.7)
+      } catch {
+        // Silently fail to avoid console spam during live editing
+        // console.warn("Thumbnail capture failed", error)
         return null
       }
     },

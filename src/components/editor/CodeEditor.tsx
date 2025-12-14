@@ -106,7 +106,13 @@ export function CodeEditor({
         theme={effectiveTheme}
         onMount={handleEditorDidMount}
         onChange={onChange}
-        onValidate={handleValidate}
+        onValidate={(markers) => {
+          try {
+            handleValidate(markers)
+          } catch {
+            // Suppress cancellation errors
+          }
+        }}
         options={{
           automaticLayout: true,
         }}
