@@ -160,8 +160,10 @@ export default function ScapeEditor() {
 
   // Initialize files from DB and handle Active File Redirection
   // 1. Sync Files from DB
+  // Initialize files from DB and handle Active File Redirection
+  // 1. Sync Files from DB
   useEffect(() => {
-    if (dbFiles && !isInitialized) {
+    if (dbFiles) {
       const mappedFiles: ScapeFile[] = dbFiles.map((f) => ({
         id: f.id,
         name: f.name,
@@ -169,12 +171,47 @@ export default function ScapeEditor() {
         content: f.content,
       }))
 
-      // eslint-disable-next-line
-      setFiles(mappedFiles)
-      setDebouncedFiles(mappedFiles)
-      setIsInitialized(true)
+      if (!isInitialized) {
+        // First Load: Trust DB entirely
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setFiles(mappedFiles)
+        setDebouncedFiles(mappedFiles)
+        setIsInitialized(true)
+      } else {
+        // Subsequent Updates: Smart Sync
+        // Only update if the *structure* (file list/names) changed.
+        // Ignore pure content updates to prevent the "Auto-Save Loop".
+
+        const currentStructure = files
+          .map((f) => `${f.id}:${f.name}`)
+          .sort()
+          .join("|")
+        const newStructure = mappedFiles
+          .map((f) => `${f.id}:${f.name}`)
+          .sort()
+          .join("|")
+
+        if (currentStructure !== newStructure) {
+          // Structure Changed (New file, deleted file, renamed file)
+          // MERGE STRATEGY: Take structure from DB, but keep local content for existing files
+          // to preserve any unsaved typing.
+          const mergedFiles = mappedFiles.map((dbFile) => {
+            const localFile = files.find((f) => f.id === dbFile.id)
+            if (localFile) {
+              // Keep local content, but accept new Name/Metadata from DB
+              return { ...dbFile, content: localFile.content }
+            }
+            // New file? Use DB content (usually empty)
+            return dbFile
+          })
+
+          setFiles(mergedFiles)
+          // Update preview only if structure changed (e.g. new file might be imported)
+          setDebouncedFiles(mergedFiles)
+        }
+      }
     }
-  }, [dbFiles, isInitialized])
+  }, [dbFiles, isInitialized, files])
 
   // 2. Validate Active File
   useEffect(() => {
