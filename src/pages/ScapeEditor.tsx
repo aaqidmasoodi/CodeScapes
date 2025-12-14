@@ -13,7 +13,7 @@ import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
-import { db, type Scape } from "@/lib/db"
+import { db } from "@/lib/db"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { MonitorPlay, Zap, LogOut } from "lucide-react"
 
@@ -155,8 +155,13 @@ export default function ScapeEditor() {
 
   // Initialize files from DB and handle Active File Redirection
   // 1. Sync Files from DB
+  // Initialization State
+  const [isInitialized, setIsInitialized] = useState(false)
+
+  // Initialize files from DB and handle Active File Redirection
+  // 1. Sync Files from DB
   useEffect(() => {
-    if (dbFiles) {
+    if (dbFiles && !isInitialized) {
       const mappedFiles: ScapeFile[] = dbFiles.map((f) => ({
         id: f.id,
         name: f.name,
@@ -164,17 +169,12 @@ export default function ScapeEditor() {
         content: f.content,
       }))
 
-      // Only update if length changed or we suspect diff?
-      // For now, blindly updating is fine as long as dbFiles is stable.
-      // But dbFiles might come from useLiveQuery which is stable-ish.
       // eslint-disable-next-line
       setFiles(mappedFiles)
-      // We also update debouncedFiles to avoid flash?
-      // Actually, if we update 'files', the downstream debounce effect (line 197) will run?
-      // Existing code did setDebouncedFiles, let's keep it to be safe for initial render.
       setDebouncedFiles(mappedFiles)
+      setIsInitialized(true)
     }
-  }, [dbFiles])
+  }, [dbFiles, isInitialized])
 
   // 2. Validate Active File
   useEffect(() => {
@@ -196,60 +196,108 @@ export default function ScapeEditor() {
     }
   }, [files, activeFilePath, setActiveFilePath])
 
+  // Auto-Refresh State
+  const [autoRefresh, setAutoRefresh] = usePersistentState("codescape:ui:autoRefresh", true)
+
   // Track last capture time to prevent spam
   const lastCaptureRef = useRef<number>(0)
+  const isInitialMount = useRef(true)
 
-  // Sync Debounced Files (Preview) & Save to DB
+  // 1. Auto-Save (DB) & Auto-Refresh Logic
   useEffect(() => {
     const timer = setTimeout(async () => {
-      // Only proceed if we have initialized
       if (files.length === 0) return
 
-      setDebouncedFiles(files)
-
-      // Auto-save to DB
-      if (id) {
-        let hasChanges = false
+      // Logic: always calculate diff for DB saving
+      let hasChanges = false
+      if (id && dbFiles) {
         files.forEach((file) => {
-          const dbFile = dbFiles?.find((df) => df.name === file.name)
-          // Normalize line endings and whitespace to prevent false positives on load
+          const dbFile = dbFiles.find((df) => df.name === file.name)
           const normalize = (str: string) => str.replace(/\r\n/g, "\n").trim()
 
           if (dbFile && normalize(dbFile.content) !== normalize(file.content)) {
-            // console.log(`[Diff Detected] ${file.name}`)
             db.files.update(dbFile.id, { content: file.content })
             hasChanges = true
           }
         })
 
-        const updateData: Partial<Scape> = { updatedAt: new Date() }
-        const now = Date.now()
-
-        // INTELLIGENT CAPTURE STRATEGY:
-        // 1. Only if content strictly changed (hasChanges)
-        // 2. Rate limited to once per minute (prevent spamming while typing/playing)
-        // 3. Or forced via "Exit" (handled separately)
-        if (hasChanges && now - lastCaptureRef.current > 60000 && previewRef.current) {
-          try {
-            const thumb = await previewRef.current.captureThumbnail()
-            if (thumb) {
-              updateData.thumbnail = thumb
-              lastCaptureRef.current = now
-              console.log("Thumbnail Auto-Captured (Scheduled)")
-            }
-          } catch (e) {
-            console.error("Auto-capture failed", e)
-          }
-        }
-
-        // Always update timestamp if content changed
         if (hasChanges) {
-          await db.scapes.update(id, updateData)
+          await db.scapes.update(id, { updatedAt: new Date() })
         }
       }
-    }, 2000) // Increased debounce to 2s to allow render to settle
+
+      // If Auto-Refresh is ON, update the preview state
+      if (autoRefresh) {
+        setDebouncedFiles(files)
+
+        // Trigger Capture if changes occurred (throttled)
+        const now = Date.now()
+        if (hasChanges && now - lastCaptureRef.current > 60000 && previewRef.current) {
+          try {
+            // We wait a tick for debouncedFiles to propagate to PreviewPane
+            // actually setDebouncedFiles is sync-ish but render is async.
+            // We can simply fire capture, Preview uses the updated props hopefully?
+            // Actually, if we just called setDebouncedFiles, the iframe hasn't updated yet.
+            // The iframe updates when component re-renders.
+            // So capturing NOW would capture the OLD state?
+            // Yes. Capturing needs to happen AFTER render.
+            // This is why the previous logic was slightly flawed or lucky (debounce matched).
+            // We should move capture to a separate effect or use a ref to trigger it.
+          } catch (e) {
+            console.error(e)
+          }
+        }
+      }
+    }, 2000)
     return () => clearTimeout(timer)
-  }, [files, id, dbFiles])
+  }, [files, id, dbFiles, autoRefresh])
+
+  // 2. Capture Logic (Triggered by Preview Updates)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+
+    // If debouncedFiles changed, it means the preview updated (Auto or Manual).
+    // We should try to capture.
+    const capture = async () => {
+      if (!previewRef.current || !id) return
+
+      // Cooldown check?
+      // For Manual Run, we want immediate capture.
+      // For Auto, we want throttled.
+      // How to distinguish?
+      // Maybe we just always capture on preview update?
+      // Use a shorter cooldown (e.g. 5s) just to prevent rapid spam?
+      const now = Date.now()
+      // If it was manual (autoRefresh=false), we force capture.
+      // If auto, we use 60s rule?
+      // Let's use 10s rule generally to be safe.
+      if (now - lastCaptureRef.current > 10000 || !autoRefresh) {
+        try {
+          // Wait for iframe to load?
+          // The srcDoc update is fast but script execution takes time.
+          // Let's wait 500ms?
+          await new Promise((r) => setTimeout(r, 1000))
+          const thumb = await previewRef.current.captureThumbnail()
+          if (thumb) {
+            await db.scapes.update(id, { thumbnail: thumb })
+            lastCaptureRef.current = Date.now()
+            console.log("Thumbnail Captured")
+          }
+        } catch (e) {
+          console.warn(e)
+        }
+      }
+    }
+
+    capture()
+  }, [debouncedFiles, id, autoRefresh])
+
+  const handleManualRefresh = useCallback(() => {
+    setDebouncedFiles([...files]) // Force new reference to ensure update
+  }, [files])
 
   // --- HANDLERS ---
 
@@ -604,7 +652,13 @@ export default function ScapeEditor() {
                     defaultSize={getLayout("codescape:layout:workspace", [50, 50])[1]}
                     minSize={30}
                   >
-                    <PreviewPane ref={previewRef} files={debouncedFiles} />
+                    <PreviewPane
+                      ref={previewRef}
+                      files={debouncedFiles}
+                      autoRefresh={autoRefresh}
+                      onAutoRefreshChange={setAutoRefresh}
+                      onRefresh={handleManualRefresh}
+                    />
                   </ResizablePanel>
                 </ResizablePanelGroup>
               </div>
