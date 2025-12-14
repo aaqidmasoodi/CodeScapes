@@ -24,8 +24,6 @@ export const PreviewPane = forwardRef<PreviewPaneHandle, PreviewPaneProps>(({ fi
       try {
         // We capture the body of the iframe
         const canvas = await html2canvas(iframe.contentDocument.body, {
-          width: 1200, // Standardize width
-          height: 630, // Standardize Open Graph size aspect ratio if possible, or just strict dimensions
           useCORS: true, // Important if using external images (though difficult in sandboxed iframe)
           logging: false,
         })
@@ -97,18 +95,29 @@ export const PreviewPane = forwardRef<PreviewPaneHandle, PreviewPaneProps>(({ fi
 
     let processedHtml = htmlFile.content
 
-    // Inject Import Map
+    // Inject Import Map and WebGL Shim
     const importMapScript = `
-      <script type="importmap">
-        ${JSON.stringify(importMap, null, 2)}
-      </script>
       <script>
+        // Force preserveDrawingBuffer for WebGL to enable screenshots
+        const originalGetContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function(type, options) {
+          if (type === 'webgl' || type === 'webgl2') {
+            options = options || {};
+            options.preserveDrawingBuffer = true;
+          }
+          return originalGetContext.call(this, type, options);
+        };
+
+        // Error Handling
         window.onerror = function(message, source, lineno, colno, error) { 
           window.parent.postMessage({
             type: 'RUNTIME_ERROR',
             payload: { message: message, line: lineno, column: colno }
           }, '*');
         };
+      </script>
+      <script type="importmap">
+        ${JSON.stringify(importMap, null, 2)}
       </script>
     `
 

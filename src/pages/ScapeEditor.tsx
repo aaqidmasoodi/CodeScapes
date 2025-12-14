@@ -13,7 +13,7 @@ import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
-import { db } from "@/lib/db"
+import { db, type Scape } from "@/lib/db"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { MonitorPlay, Zap, LogOut } from "lucide-react"
 
@@ -192,7 +192,7 @@ export default function ScapeEditor() {
 
   // Sync Debounced Files (Preview) & Save to DB
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       // Only proceed if we have initialized
       if (files.length === 0) return
 
@@ -206,9 +206,25 @@ export default function ScapeEditor() {
             db.files.update(dbFile.id, { content: file.content })
           }
         })
-        db.scapes.update(id, { updatedAt: new Date() })
+
+        const updateData: Partial<Scape> = { updatedAt: new Date() }
+
+        // Attempt to capture thumbnail
+        if (previewRef.current) {
+          try {
+            const thumb = await previewRef.current.captureThumbnail()
+            if (thumb) {
+              updateData.thumbnail = thumb
+              console.log("Thumbnail captured")
+            }
+          } catch (e) {
+            console.error("Auto-capture failed", e)
+          }
+        }
+
+        await db.scapes.update(id, updateData)
       }
-    }, 1000)
+    }, 2000) // Increased debounce to 2s to allow render to settle
     return () => clearTimeout(timer)
   }, [files, id, dbFiles])
 
