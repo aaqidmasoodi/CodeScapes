@@ -14,6 +14,7 @@ import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
 import { db } from "@/lib/db"
+import { useFileSystem } from "@/hooks/useFileSystem"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { MonitorPlay, Zap, LogOut } from "lucide-react"
 
@@ -81,11 +82,11 @@ export default function ScapeEditor() {
 
   // Load Scape and Files
   const scape = useLiveQuery(() => db.scapes.get(id), [id])
-  const dbFiles = useLiveQuery(() => db.files.where("scapeId").equals(id).toArray(), [id])
+  const { files, isInitialized, createFile, updateFile, deleteFile, bulkRename } = useFileSystem(id)
 
   // Local State
-  const [files, setFiles] = useState<ScapeFile[]>([])
   const [debouncedFiles, setDebouncedFiles] = useState<ScapeFile[]>([])
+  const [initialPreviewSynced, setInitialPreviewSynced] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
 
   // --- PERSISTENT STATE ---
@@ -152,66 +153,7 @@ export default function ScapeEditor() {
   )
 
   // --- INITIALIZATION ---
-
-  // Initialize files from DB and handle Active File Redirection
-  // 1. Sync Files from DB
-  // Initialization State
-  const [isInitialized, setIsInitialized] = useState(false)
-
-  // Initialize files from DB and handle Active File Redirection
-  // 1. Sync Files from DB
-  // Initialize files from DB and handle Active File Redirection
-  // 1. Sync Files from DB
-  useEffect(() => {
-    if (dbFiles) {
-      const mappedFiles: ScapeFile[] = dbFiles.map((f) => ({
-        id: f.id,
-        name: f.name,
-        language: f.language as unknown as ScapeFile["language"],
-        content: f.content,
-      }))
-
-      if (!isInitialized) {
-        // First Load: Trust DB entirely
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setFiles(mappedFiles)
-        setDebouncedFiles(mappedFiles)
-        setIsInitialized(true)
-      } else {
-        // Subsequent Updates: Smart Sync
-        // Only update if the *structure* (file list/names) changed.
-        // Ignore pure content updates to prevent the "Auto-Save Loop".
-
-        const currentStructure = files
-          .map((f) => `${f.id}:${f.name}`)
-          .sort()
-          .join("|")
-        const newStructure = mappedFiles
-          .map((f) => `${f.id}:${f.name}`)
-          .sort()
-          .join("|")
-
-        if (currentStructure !== newStructure) {
-          // Structure Changed (New file, deleted file, renamed file)
-          // MERGE STRATEGY: Take structure from DB, but keep local content for existing files
-          // to preserve any unsaved typing.
-          const mergedFiles = mappedFiles.map((dbFile) => {
-            const localFile = files.find((f) => f.id === dbFile.id)
-            if (localFile) {
-              // Keep local content, but accept new Name/Metadata from DB
-              return { ...dbFile, content: localFile.content }
-            }
-            // New file? Use DB content (usually empty)
-            return dbFile
-          })
-
-          setFiles(mergedFiles)
-          // Update preview only if structure changed (e.g. new file might be imported)
-          setDebouncedFiles(mergedFiles)
-        }
-      }
-    }
-  }, [dbFiles, isInitialized, files])
+  // File sync is handled by useFileSystem hook
 
   // 2. Validate Active File
   useEffect(() => {
@@ -240,54 +182,22 @@ export default function ScapeEditor() {
   const lastCaptureRef = useRef<number>(0)
   const isInitialMount = useRef(true)
 
-  // 1. Auto-Save (DB) & Auto-Refresh Logic
+  // Initial Preview Sync: Always show content on load, regardless of Auto-Refresh setting
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (files.length === 0) return
+    if (!initialPreviewSynced && files.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDebouncedFiles(files)
+      setInitialPreviewSynced(true)
+    }
+  }, [files, initialPreviewSynced])
 
-      // Logic: always calculate diff for DB saving
-      let hasChanges = false
-      if (id && dbFiles) {
-        files.forEach((file) => {
-          const dbFile = dbFiles.find((df) => df.name === file.name)
-          const normalize = (str: string) => str.replace(/\r\n/g, "\n").trim()
-
-          if (dbFile && normalize(dbFile.content) !== normalize(file.content)) {
-            db.files.update(dbFile.id, { content: file.content })
-            hasChanges = true
-          }
-        })
-
-        if (hasChanges) {
-          await db.scapes.update(id, { updatedAt: new Date() })
-        }
-      }
-
-      // If Auto-Refresh is ON, update the preview state
-      if (autoRefresh) {
-        setDebouncedFiles(files)
-
-        // Trigger Capture if changes occurred (throttled)
-        const now = Date.now()
-        if (hasChanges && now - lastCaptureRef.current > 60000 && previewRef.current) {
-          try {
-            // We wait a tick for debouncedFiles to propagate to PreviewPane
-            // actually setDebouncedFiles is sync-ish but render is async.
-            // We can simply fire capture, Preview uses the updated props hopefully?
-            // Actually, if we just called setDebouncedFiles, the iframe hasn't updated yet.
-            // The iframe updates when component re-renders.
-            // So capturing NOW would capture the OLD state?
-            // Yes. Capturing needs to happen AFTER render.
-            // This is why the previous logic was slightly flawed or lucky (debounce matched).
-            // We should move capture to a separate effect or use a ref to trigger it.
-          } catch (e) {
-            console.error(e)
-          }
-        }
-      }
-    }, 2000)
-    return () => clearTimeout(timer)
-  }, [files, id, dbFiles, autoRefresh])
+  // Auto-Refresh Preview State
+  useEffect(() => {
+    if (autoRefresh) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDebouncedFiles(files)
+    }
+  }, [files, autoRefresh])
 
   // 2. Capture Logic (Triggered by Preview Updates)
   useEffect(() => {
@@ -344,9 +254,7 @@ export default function ScapeEditor() {
 
   const handleCodeChange = (newContent: string | undefined) => {
     if (!activeFile || newContent === undefined) return
-    setFiles((prev) =>
-      prev.map((f) => (f.name === activeFile.name ? { ...f, content: newContent } : f))
-    )
+    updateFile(activeFile.name, newContent)
     setRuntimeProblems([])
   }
 
@@ -362,12 +270,7 @@ export default function ScapeEditor() {
         ? "html"
         : "javascript"
 
-    await db.files.add({
-      scapeId: id,
-      name: fileName,
-      language: language,
-      content: "",
-    })
+    await createFile(fileName, language)
     // Auto-select new file
     setActiveFilePath(fileName)
   }
@@ -376,12 +279,7 @@ export default function ScapeEditor() {
     if (!folderName) return
     if (files.some((f) => f.name === folderName)) return
 
-    await db.files.add({
-      scapeId: id,
-      name: folderName,
-      language: "folder",
-      content: "",
-    })
+    await createFile(folderName, "folder")
     // Auto-expand
     handleToggleFolder(folderName)
   }
@@ -395,12 +293,7 @@ export default function ScapeEditor() {
   }
 
   const deleteFileDirectly = async (path: string) => {
-    const filesToDelete = files.filter((f) => f.name === path || f.name.startsWith(path + "/"))
-    const dbFilesToDelete = dbFiles?.filter((df) => filesToDelete.some((f) => f.name === df.name))
-
-    if (dbFilesToDelete && dbFilesToDelete.length > 0) {
-      await db.files.bulkDelete(dbFilesToDelete.map((f) => f.id))
-    }
+    await deleteFile(path)
 
     if (activeFilePath && (activeFilePath === path || activeFilePath.startsWith(path + "/"))) {
       setActiveFilePath(null)
@@ -410,16 +303,24 @@ export default function ScapeEditor() {
   const handleMoveNode = async (oldPath: string, newPath: string) => {
     if (files.some((f) => f.name === newPath)) return
 
-    const folderEntry = files.find((f) => f.name === oldPath && f.language === "folder")
-    if (folderEntry) await db.files.update(folderEntry.id!, { name: newPath })
+    const updates: { id: number; name: string }[] = []
 
-    const filesToMove = files.filter((f) => f.name === oldPath || f.name.startsWith(oldPath + "/"))
-    if (filesToMove.length > 0) {
-      const updates = filesToMove.map((f) => ({
-        key: f.id!,
-        changes: { name: newPath + f.name.slice(oldPath.length) },
-      }))
-      await Promise.all(updates.map((u) => db.files.update(u.key, u.changes)))
+    // Rename folder itself if it exists as a node
+    const folderEntry = files.find((f) => f.name === oldPath && f.language === "folder")
+    if (folderEntry && folderEntry.id) {
+      updates.push({ id: folderEntry.id, name: newPath })
+    }
+
+    // Rename children
+    const filesToMove = files.filter((f) => f.name.startsWith(oldPath + "/"))
+    filesToMove.forEach((f) => {
+      if (f.id) {
+        updates.push({ id: f.id, name: newPath + f.name.slice(oldPath.length) })
+      }
+    })
+
+    if (updates.length > 0) {
+      await bulkRename(updates)
     }
 
     if (
@@ -499,7 +400,7 @@ export default function ScapeEditor() {
         Invalid API ID
       </div>
     )
-  if (!scape && !dbFiles)
+  if (!scape || !isInitialized)
     return (
       <div className="flex h-screen items-center justify-center bg-background text-foreground">
         <div className="flex flex-col items-center gap-4">
@@ -508,7 +409,7 @@ export default function ScapeEditor() {
         </div>
       </div>
     )
-  if (!scape && dbFiles)
+  if (!scape)
     return (
       <div className="flex h-screen items-center justify-center text-muted-foreground">
         Scape not found
