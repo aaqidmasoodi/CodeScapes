@@ -15,6 +15,7 @@ import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
 import { db } from "@/lib/db"
 import { useFileSystem } from "@/hooks/useFileSystem"
+import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { MonitorPlay, Zap, LogOut } from "lucide-react"
 
@@ -178,6 +179,9 @@ export default function ScapeEditor() {
   // Auto-Refresh State
   const [autoRefresh, setAutoRefresh] = usePersistentState("codescape:ui:autoRefresh", true)
 
+  // Use debounce hook to prevent instant updates
+  const deferredFiles = useDebounce(files, 750)
+
   // Track last capture time to prevent spam
   const lastCaptureRef = useRef<number>(0)
   const isInitialMount = useRef(true)
@@ -195,9 +199,9 @@ export default function ScapeEditor() {
   useEffect(() => {
     if (autoRefresh) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDebouncedFiles(files)
+      setDebouncedFiles(deferredFiles)
     }
-  }, [files, autoRefresh])
+  }, [deferredFiles, autoRefresh])
 
   // 2. Capture Logic (Triggered by Preview Updates)
   useEffect(() => {
