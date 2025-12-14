@@ -200,29 +200,42 @@ export default function ScapeEditor() {
 
       // Auto-save to DB
       if (id) {
+        let hasChanges = false
         files.forEach((file) => {
           const dbFile = dbFiles?.find((df) => df.name === file.name)
           if (dbFile && dbFile.content !== file.content) {
             db.files.update(dbFile.id, { content: file.content })
+            hasChanges = true
           }
         })
 
         const updateData: Partial<Scape> = { updatedAt: new Date() }
 
-        // Attempt to capture thumbnail
-        if (previewRef.current) {
+        // Attempt to capture thumbnail ONLY if content changed
+        if (hasChanges && previewRef.current) {
           try {
+            // Wait a bit more for the renderer to catch up with the new code
+            // Since we just updated the DB, the PreviewPane might re-render soon via debouncedFiles
+            // However, debouncedFiles is set above at line 199 synchronously
             const thumb = await previewRef.current.captureThumbnail()
             if (thumb) {
               updateData.thumbnail = thumb
-              console.log("Thumbnail captured")
+              console.log("Thumbnail captured (Content Changed)")
             }
           } catch (e) {
             console.error("Auto-capture failed", e)
           }
         }
 
-        await db.scapes.update(id, updateData)
+        // Always update timestamp if we checked, or maybe only if changed?
+        // Usually good to update 'updatedAt' on access or save?
+        // Let's update it if changes occurred OR just periodic keep-alive?
+        // For now, let's keep the existing logic of always updating the scape record
+        // actually, if we want to minimize DB writes, we might want to gate this too,
+        // but 'updatedAt' is useful. Let's gate it to hasChanges to be super efficient.
+        if (hasChanges) {
+          await db.scapes.update(id, updateData)
+        }
       }
     }, 2000) // Increased debounce to 2s to allow render to settle
     return () => clearTimeout(timer)
