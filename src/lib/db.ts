@@ -13,6 +13,7 @@ export interface Scape {
   thumbnail?: string // Base64 data URL
   createdAt: Date
   updatedAt: Date
+  dependencies?: string[] // Installed Package Names
 }
 
 export interface File {
@@ -74,6 +75,23 @@ db.version(4)
           }
         })
     )
+  })
+
+// Version 5: Package Manager
+db.version(5)
+  .stores({
+    scapes: "++id, name, environment, source, createdAt, updatedAt, *dependencies", // Index dependencies for searching
+    files: "++id, scapeId, name, [scapeId+name]",
+  })
+  .upgrade((tx) => {
+    return tx
+      .table("scapes")
+      .toCollection()
+      .modify((scape) => {
+        if (!scape.dependencies) {
+          scape.dependencies = []
+        }
+      })
   })
 
 // Helper to delete a scape and its files transactionally

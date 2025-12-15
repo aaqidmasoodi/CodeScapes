@@ -9,7 +9,13 @@ import { ScapeLayout } from "@/layouts/ScapeLayout"
 import { CodeEditor } from "@/components/editor/CodeEditor"
 import { FileExplorer } from "@/components/editor/FileExplorer"
 import { PreviewPane, type PreviewPaneHandle } from "@/components/editor/PreviewPane"
+import { PackagePane } from "@/components/editor/PackagePane"
 import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane"
+
+// ... (existing imports)
+
+// ... In Render ...
+
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
@@ -106,7 +112,7 @@ export default function ScapeEditor() {
   // --- PERSISTENT STATE ---
 
   // Activity Bar State
-  const [activeTool, setActiveTool] = usePersistentState<"explorer" | "search" | null>(
+  const [activeTool, setActiveTool] = usePersistentState<"explorer" | "search" | "packages" | null>(
     "codescape:ui:activeTool",
     "explorer"
   )
@@ -311,6 +317,65 @@ export default function ScapeEditor() {
     // but we can add visual feedback.
     console.log("Global Save Triggered")
   }, [])
+
+  const handleExecCommand = useCallback(
+    async (
+      cmd: string,
+      arg: string
+    ): Promise<{ success: boolean; warning?: string; error?: string }> => {
+      if (cmd === "pip-install") {
+        // 1. Install in Runtime
+        const result = (await previewRef.current?.installPackage?.(arg)) ?? {
+          success: false,
+          error: "Preview not ready",
+        }
+
+        if (result.success) {
+          // 2. Persist to DB
+          const currentDeps = scape?.dependencies || []
+          if (!currentDeps.includes(arg)) {
+            await db.scapes.update(id, { dependencies: [...currentDeps, arg] })
+          }
+        }
+        return result
+      }
+
+      if (cmd === "pip-uninstall") {
+        // Pyodide doesn't support runtime uninstall easily.
+        // We force a restart of the worker to reload with the new dependency list.
+        const currentDeps = scape?.dependencies || []
+        const newDeps = currentDeps.filter((d) => d !== arg)
+        await db.scapes.update(id, { dependencies: newDeps })
+
+        // Wait a tick for prop propagation (though ref-based restart pulls from parent props on re-render?)
+        // Actually, we should trigger restart. The restart logic in PythonRunner uses a ref for dependencies.
+        // If we update DB -> ScapeEditor re-renders -> passes new deps to PreviewPane -> PythonRunner updates its ref.
+        // Then we call restart.
+        // Ideally we await the DB update. The re-render might happen async.
+        // Safe bet: The restart will re-initialize. If the prop hasn't updated yet, it might re-install the old dep.
+        // But ScapeEditor re-render should be fast.
+        // Let's rely on React reactivity.
+
+        setTimeout(async () => {
+          if (previewRef.current?.restart) {
+            await previewRef.current.restart()
+          }
+        }, 100) // Slight delay to ensure props update
+
+        return { success: true }
+      }
+
+      return { success: false, error: "Unknown command handling" }
+    },
+    [id, scape?.dependencies]
+  )
+
+  const handleDeletePackage = useCallback(
+    async (pkg: string) => {
+      await handleExecCommand("pip-uninstall", pkg)
+    },
+    [handleExecCommand]
+  )
 
   // --- GLOBAL SHORTCUTS ---
   useEffect(() => {
@@ -532,6 +597,7 @@ export default function ScapeEditor() {
             activeTool={activeTool}
             onToolSelect={setActiveTool}
             onSettingsClick={() => setIsSettingsOpen(true)}
+            showPackages={scape && ENVIRONMENTS[scape.environment]?.capabilities.packages}
           />
         }
         headerTitle={
@@ -668,6 +734,15 @@ export default function ScapeEditor() {
                     Search coming soon...
                   </div>
                 )}
+                {/* Dynamically check capabilities before rendering packages UI in sidebar content */}
+                {activeTool === "packages" &&
+                  scape &&
+                  ENVIRONMENTS[scape.environment]?.capabilities.packages && (
+                    <PackagePane
+                      dependencies={scape?.dependencies || []}
+                      onDeletePackage={handleDeletePackage}
+                    />
+                  )}
               </ResizablePanel>
               <ResizableHandle />
             </>
@@ -747,6 +822,7 @@ export default function ScapeEditor() {
                                   scapeName={scape?.name}
                                   onDeleteFile={deleteFileDirectly}
                                   outputLogs={outputLogs}
+                                  onExecCommand={handleExecCommand}
                                 />
                               </ResizablePanel>
                             )}
@@ -763,6 +839,7 @@ export default function ScapeEditor() {
                               scapeName={scape?.name}
                               onDeleteFile={deleteFileDirectly}
                               outputLogs={outputLogs}
+                              onExecCommand={handleExecCommand}
                             />
                           </div>
                         )}
@@ -794,6 +871,7 @@ export default function ScapeEditor() {
                         environment={scape?.environment}
                         isRunning={isRunning}
                         onOutput={handleOutput}
+                        dependencies={scape?.dependencies}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>

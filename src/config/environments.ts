@@ -1,7 +1,18 @@
 import { Globe, Terminal } from "lucide-react"
 import type { EnvironmentConfig } from "@/types/environment"
 
-export const ENVIRONMENTS: Record<string, EnvironmentConfig> = {
+export interface EnvironmentCapabilities {
+  packages?: boolean
+  terminal?: boolean
+}
+
+// Update EnvironmentConfig interface implied here (referencing types/environment later)
+// For now, extending the object literal structure.
+
+export const ENVIRONMENTS: Record<
+  string,
+  EnvironmentConfig & { capabilities: EnvironmentCapabilities }
+> = {
   web: {
     id: "web",
     name: "Web Application",
@@ -11,6 +22,10 @@ export const ENVIRONMENTS: Record<string, EnvironmentConfig> = {
     allowedExtensions: [".html", ".css", ".js", ".json"],
     defaultLayout: "preview",
     runner: "web-runner",
+    capabilities: {
+      packages: false,
+      terminal: false,
+    },
     templates: [
       {
         id: "blank",
@@ -136,6 +151,10 @@ window.addEventListener('resize', () => {
     allowedExtensions: [".py", ".txt", ".json"],
     defaultLayout: "terminal",
     runner: "python-runner",
+    capabilities: {
+      packages: true,
+      terminal: true,
+    },
     templates: [
       {
         id: "blank",
