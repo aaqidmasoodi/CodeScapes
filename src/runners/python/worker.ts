@@ -31,7 +31,7 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
 
     try {
       // Dynamic import for module worker support
-      // @ts-expect-error: Importing from CDN is not supported by TS locally
+      // Using declaration in vite-env.d.ts to satisfy TS
       const { loadPyodide: pyodideLoader } =
         await import("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.mjs")
 

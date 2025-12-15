@@ -111,7 +111,6 @@ export const PythonRunner = memo(
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [restartTrigger, dependencies.join(",")]) // Run when restart triggered or deps change
-
       const dependenciesKey = dependencies.join(",")
 
       // Handle File Changes (Run Code)
