@@ -1,5 +1,5 @@
 import { useRef, useEffect, useImperativeHandle, forwardRef, memo } from "react"
-import { Terminal, PanelRightClose, Image } from "lucide-react"
+import { MonitorPlay, Box, PanelRightClose } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"
@@ -20,7 +20,10 @@ export const PythonRunner = memo(
   forwardRef<ScapeRunnerHandle, PythonRunnerProps>(
     ({ files, onOutput, onCollapse, dependencies = [], onBusyChange }, ref) => {
       const workerRef = useRef<Worker | null>(null)
-      const [images, setImages] = useState<string[]>([])
+      // Preview Items: Can be { type: "image", content: string } or { type: "html", content: string }
+      const [previewItems, setPreviewItems] = useState<
+        { type: "image" | "html"; content: string }[]
+      >([])
       const pendingInstalls = useRef<
         Map<string, (result: { success: boolean; error?: string }) => void>
       >(new Map()) // Map package name to resolver
@@ -96,7 +99,9 @@ export const PythonRunner = memo(
               timestamp: Date.now(),
             })
           } else if (type === "IMAGE") {
-            setImages((prev) => [...prev, payload])
+            setPreviewItems((prev) => [...prev, { type: "image", content: payload }])
+          } else if (type === "PREVIEW_HTML") {
+            setPreviewItems((prev) => [...prev, { type: "html", content: payload }])
           } else if (type === "DidRun") {
             // Execution / Init finished
             onBusyChange?.(false)
@@ -154,55 +159,120 @@ export const PythonRunner = memo(
               entryPoint,
             },
           })
-          setImages([]) // Clear old images
+          setPreviewItems([]) // Clear old previews
         } else {
           console.warn("No Python entry point found (main.py)")
         }
       }, [files, dependenciesKey])
 
+      // Render Logic
       return (
-        <div className="flex h-full flex-col border-l bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex h-full flex-col border-l border-border bg-white dark:border-zinc-800 dark:bg-zinc-950">
           <div className="flex h-10 items-center justify-between border-b border-zinc-200 bg-muted/20 px-2 dark:border-zinc-800 dark:bg-zinc-900/50">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Terminal className="h-3.5 w-3.5" />
-              <span>Preview (Python)</span>
+              <MonitorPlay className="h-3.5 w-3.5" />
+              <span className="max-w-[200px] truncate">Preview (Python)</span>
             </div>
-            {onCollapse && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                onClick={onCollapse}
-                title="Collapse Preview"
-              >
-                <PanelRightClose className="h-4 w-4" />
-              </Button>
-            )}
+
+            <div className="flex items-center gap-3">
+              {onCollapse && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                  onClick={onCollapse}
+                  title="Collapse Preview"
+                >
+                  <PanelRightClose className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
-          <div className="flex flex-1 flex-col items-center justify-start overflow-y-auto bg-white p-4 font-mono text-sm text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-            {images.length > 0 ? (
-              <div className="flex flex-col gap-4">
-                {images.map((img, i) => (
-                  <div
-                    key={i}
-                    className="overflow-hidden rounded-lg border bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-                  >
-                    <img src={`data:image/png;base64,${img}`} alt={`Plot ${i + 1}`} />
+          <div className="flex flex-1 flex-col overflow-auto p-4">
+            {previewItems.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+                <Box className="h-8 w-8 opacity-20" />
+                <p className="mt-2 text-xs">No graphical output generated.</p>
+                <p className="mt-1 text-[10px] opacity-75">
+                  Plots (matplotlib) and DataFrames (pandas) will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                {previewItems.map((item, i) => (
+                  <div key={i} className="flex justify-center overflow-auto">
+                    {item.type === "image" ? (
+                      <img
+                        src={`data:image/png;base64,${item.content}`}
+                        alt={`Plot ${i + 1}`}
+                        className="max-w-full rounded border border-border shadow-sm"
+                      />
+                    ) : (
+                      <div
+                        className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto rounded border border-border bg-card p-4 shadow-sm"
+                        dangerouslySetInnerHTML={{ __html: item.content }}
+                        // Pandas tables need some CSS injection to look good
+                        style={{ width: "100%" }}
+                      />
+                    )}
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2 pt-20 text-zinc-400 dark:text-zinc-500">
-                <Image className="h-10 w-10 opacity-20 dark:opacity-50" />
-                <span>Python Runtime Active</span>
-                <p className="mt-1 max-w-xs text-center text-xs text-zinc-500 dark:text-zinc-400">
-                  Output from <code>plt.show()</code> will appear here.
-                  <br />
-                  Standard output is available in the Terminal.
-                </p>
-              </div>
             )}
           </div>
+          {/* Add basic styles for Pandas tables if needed via style tag or global CSS */}
+          <style>{`
+            .dataframe {
+              width: 100%;
+              border-collapse: collapse;
+              border-spacing: 0;
+              font-size: 0.875rem; /* text-sm */
+              line-height: 1.25rem;
+            }
+            
+            /* Header Styling */
+            .dataframe thead th {
+              text-align: left;
+              padding: 0.75rem 1rem;
+              font-weight: 600;
+              color: var(--foreground);
+              background-color: var(--muted);
+              border-bottom: 2px solid var(--border);
+              white-space: nowrap;
+            }
+
+            /* Body Styling */
+            .dataframe tbody td {
+              padding: 0.75rem 1rem;
+              text-align: left;
+              border-bottom: 1px solid var(--border);
+              color: var(--foreground);
+              white-space: nowrap;
+              max-width: 300px;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+
+            /* Alternating Rows (Zebra Striping) */
+            .dataframe tbody tr:nth-child(even) {
+              background-color: hsl(var(--muted) / 0.3);
+            }
+
+            /* Hover Effect */
+            .dataframe tbody tr:hover {
+              background-color: hsl(var(--muted) / 0.6);
+            }
+
+            /* Index Column (optional, Pandas usually adds this) */
+            .dataframe tbody th {
+              font-weight: 500;
+              text-align: left;
+              padding: 0.75rem 1rem;
+              border-bottom: 1px solid var(--border);
+              background-color: transparent;
+              color: var(--muted-foreground);
+            }
+          `}</style>
         </div>
       )
     }
