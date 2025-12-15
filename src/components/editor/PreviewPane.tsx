@@ -81,7 +81,9 @@ const WebRunner = memo(
     }, [files, activePreviewPath])
 
     // 1. Create Blob URLs for all files
-    const blobUrls = useMemo(() => {
+    const [blobUrls, setBlobUrls] = useState<Record<string, string>>({})
+
+    useEffect(() => {
       const newUrls: Record<string, string> = {}
 
       files.forEach((file) => {
@@ -101,15 +103,17 @@ const WebRunner = memo(
         newUrls[file.name] = URL.createObjectURL(blob)
       })
 
-      return newUrls
-    }, [files])
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setBlobUrls(newUrls)
 
-    // Cleanup Blob URLs
-    useEffect(() => {
+      // Cleanup with delay to prevent 404s on rapid reloads
       return () => {
-        Object.values(blobUrls).forEach((url) => URL.revokeObjectURL(url))
+        const urlsToRevoke = Object.values(newUrls)
+        setTimeout(() => {
+          urlsToRevoke.forEach((url) => URL.revokeObjectURL(url))
+        }, 5000)
       }
-    }, [blobUrls])
+    }, [files])
 
     // 2. Construct the HTML
     const srcDoc = useMemo(() => {
