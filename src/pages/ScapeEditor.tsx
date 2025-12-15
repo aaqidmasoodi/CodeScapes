@@ -22,6 +22,8 @@ import { MonitorPlay, Zap, LogOut, PanelRightOpen, Play, Square, RotateCw } from
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
+import { SettingsModal } from "@/components/editor/SettingsModal"
+import { checkShortcut } from "@/config/shortcuts"
 
 import {
   AlertDialog,
@@ -104,10 +106,11 @@ export default function ScapeEditor() {
   // --- PERSISTENT STATE ---
 
   // Activity Bar State
-  const [activeTool, setActiveTool] = usePersistentState<"explorer" | "search" | "settings" | null>(
+  const [activeTool, setActiveTool] = usePersistentState<"explorer" | "search" | null>(
     "codescape:ui:activeTool",
     "explorer"
   )
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // 1. Validate Sidebar Constraint (10% - 30%)
   const SIDEBAR_MIN = 10
@@ -130,11 +133,17 @@ export default function ScapeEditor() {
   const previewPanelRef = useRef<ResizablePrimitive.ImperativePanelHandle>(null)
 
   // Force strict layout when Sidebar opens
+  const lastActiveTool = useRef<string | null>(activeTool)
   useEffect(() => {
-    if (activeTool === "explorer" && mainLayoutGroupRef.current) {
+    if (!mainLayoutGroupRef.current) return
+
+    if (activeTool === "explorer") {
+      // Revert to user's preferred explorer width
       const target = getSafeLayout()
       mainLayoutGroupRef.current.setLayout(target)
     }
+
+    lastActiveTool.current = activeTool
   }, [activeTool])
 
   // Sync Preview Collapse State
@@ -288,6 +297,56 @@ export default function ScapeEditor() {
     setDebouncedFiles([...files]) // Force new reference to ensure update
     setTimeout(() => setIsRefreshing(false), 500)
   }, [files])
+
+  const handleRun = useCallback(() => {
+    if (!isRunning) setIsRunning(true)
+    handleManualRefresh()
+  }, [isRunning, handleManualRefresh])
+
+  const handleSave = useCallback(() => {
+    // Logic handled in CodeEditor via Monaco Command mostly,
+    // but if we wanted a global save (e.g. from non-editor focus),
+    // we would need to trigger a "save all" or similar.
+    // For now, we just rely on auto-save behavior of the state,
+    // but we can add visual feedback.
+    console.log("Global Save Triggered")
+  }, [])
+
+  // --- GLOBAL SHORTCUTS ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // sidebar
+      if (checkShortcut(e, "toggleSidebar")) {
+        e.preventDefault()
+        setActiveTool((current) => (current === "explorer" ? null : "explorer"))
+        return
+      }
+
+      // terminal
+      if (checkShortcut(e, "toggleTerminal")) {
+        e.preventDefault()
+        setIsTerminalOpen((current) => !current)
+        return
+      }
+
+      // run
+      if (checkShortcut(e, "run")) {
+        e.preventDefault()
+        handleRun()
+        return
+      }
+
+      // save - intercept to prevent browser save even if not in editor
+      if (checkShortcut(e, "save")) {
+        e.preventDefault()
+        handleSave()
+        return
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [setActiveTool, setIsTerminalOpen, handleRun, handleSave])
 
   // --- HANDLERS ---
 
@@ -468,7 +527,13 @@ export default function ScapeEditor() {
   return (
     <>
       <ScapeLayout
-        sidebar={<EditorActivityBar activeTool={activeTool} onToolSelect={setActiveTool} />}
+        sidebar={
+          <EditorActivityBar
+            activeTool={activeTool}
+            onToolSelect={setActiveTool}
+            onSettingsClick={() => setIsSettingsOpen(true)}
+          />
+        }
         headerTitle={
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
@@ -573,7 +638,7 @@ export default function ScapeEditor() {
           }}
         >
           {/* Sidebar - Persistent Size */}
-          {activeTool === "explorer" && (
+          {activeTool && (
             <>
               <ResizablePanel
                 id="sidebar-panel"
@@ -583,16 +648,23 @@ export default function ScapeEditor() {
                 maxSize={SIDEBAR_MAX}
                 className="bg-muted/10"
               >
-                <FileExplorer
-                  files={fileTree}
-                  onFileSelect={handleFileSelect}
-                  activeFileId={activeFilePath || undefined}
-                  onToggleFolder={handleToggleFolder}
-                  onCreateFile={handleCreateFile}
-                  onCreateFolder={handleCreateFolder}
-                  onDelete={handleDelete}
-                  onMove={handleMoveNode}
-                />
+                {activeTool === "explorer" && (
+                  <FileExplorer
+                    files={fileTree}
+                    onFileSelect={handleFileSelect}
+                    activeFileId={activeFilePath || undefined}
+                    onToggleFolder={handleToggleFolder}
+                    onCreateFile={handleCreateFile}
+                    onCreateFolder={handleCreateFolder}
+                    onDelete={handleDelete}
+                    onMove={handleMoveNode}
+                  />
+                )}
+                {activeTool === "search" && (
+                  <div className="flex h-full items-center justify-center p-4 text-muted-foreground">
+                    Search coming soon...
+                  </div>
+                )}
               </ResizablePanel>
               <ResizableHandle />
             </>
@@ -601,7 +673,7 @@ export default function ScapeEditor() {
           <ResizablePanel
             id="editor-panel"
             order={2}
-            defaultSize={activeTool === "explorer" ? getSafeLayout()[1] : 100}
+            defaultSize={activeTool ? getSafeLayout()[1] : 100}
           >
             <div className="flex h-full flex-col">
               <div className="flex h-full flex-row overflow-hidden">
@@ -648,6 +720,7 @@ export default function ScapeEditor() {
                                   onChange={handleCodeChange}
                                   onValidate={handleValidate}
                                   files={files}
+                                  onRun={handleRun}
                                 />
                               ) : (
                                 <div className="flex h-full items-center justify-center p-4 text-muted-foreground">
@@ -767,6 +840,8 @@ export default function ScapeEditor() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SettingsModal open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
     </>
   )
 }
