@@ -63,7 +63,7 @@ const loadPyodide = async () => {
         },
       })
 
-      // Load Micropip and Pre-load Matplotlib
+      // Load Micropip
       postMessage({ type: "STATUS", payload: "Loading libraries..." })
       try {
         await pyodide.loadPackage(["micropip"])
@@ -74,22 +74,20 @@ const loadPyodide = async () => {
 
       // Verify micropip loading
       await pyodide.runPythonAsync(`
-      import sys
-      import importlib
-      
-      # Retry loop for micropip import
-      import time
-      for i in range(5):
-          try:
-              importlib.invalidate_caches()
-              import micropip
-              break
-          except ImportError:
-              if i == 4: raise
-              time.sleep(0.2)
-      
-      await micropip.install("matplotlib")
-    `)
+        import sys
+        import importlib
+        
+        # Retry loop for micropip import
+        import time
+        for i in range(5):
+            try:
+                importlib.invalidate_caches()
+                import micropip
+                break
+            except ImportError:
+                if i == 4: raise
+                time.sleep(0.2)
+      `)
 
       postMessage({ type: "STATUS", payload: "Ready" })
       return pyodide
@@ -106,7 +104,44 @@ self.onmessage = async (e: MessageEvent) => {
   const { type, payload } = e.data
 
   if (type === "INIT") {
-    await loadPyodide()
+    const py = await loadPyodide()
+    // Install initial dependencies
+    if (
+      payload.dependencies &&
+      Array.isArray(payload.dependencies) &&
+      payload.dependencies.length > 0
+    ) {
+      postMessage({
+        type: "STATUS",
+        payload: `Installing ${payload.dependencies.length} packages...`,
+      })
+      try {
+        await py.runPythonAsync(`
+          import micropip
+          await micropip.install(${JSON.stringify(payload.dependencies)})
+        `)
+        postMessage({ type: "STATUS", payload: "Packages installed" })
+      } catch (err: any) {
+        postMessage({ type: "ERROR", payload: `Failed to install dependencies: ${err.message}` })
+      }
+    }
+    postMessage({ type: "DidRun" }) // Signal ready
+  }
+
+  if (type === "INSTALL") {
+    const py = await loadPyodide()
+    const packageName = payload
+    try {
+      postMessage({ type: "STATUS", payload: `Installing ${packageName}...` })
+      await py.runPythonAsync(`
+          import micropip
+          await micropip.install("${packageName}")
+        `)
+      postMessage({ type: "INSTALL_SUCCESS", payload: packageName })
+    } catch (err: any) {
+      postMessage({ type: "ERROR", payload: `Failed to install ${packageName}: ${err.message}` })
+      postMessage({ type: "INSTALL_ERROR", payload: { pkg: packageName, error: err.message } }) // Signal failure to UI
+    }
   }
 
   if (type === "RUN") {
@@ -156,21 +191,25 @@ self.onmessage = async (e: MessageEvent) => {
 import os
 import base64
 import io
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 
-def show_hook(*args, **kwargs):
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    buf.seek(0)
-    img_str = base64.b64encode(buf.read()).decode('utf-8')
-    # Send image to JS
-    import js
-    js.postMessage(js.Object.fromEntries([['type', 'IMAGE'], ['payload', img_str]]))
-    plt.close()
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
 
-plt.show = show_hook
+    def show_hook(*args, **kwargs):
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        img_str = base64.b64encode(buf.read()).decode('utf-8')
+        # Send image to JS
+        import js
+        js.postMessage(js.Object.fromEntries([['type', 'IMAGE'], ['payload', img_str]]))
+        plt.close()
+
+    plt.show = show_hook
+except ImportError:
+    pass
 `
       await py.runPythonAsync(preamble)
 

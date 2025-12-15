@@ -11,6 +11,8 @@ import type { LogEntry } from "@/types/log"
 
 export interface PreviewPaneHandle {
   captureThumbnail: () => Promise<string | null>
+  installPackage?: (pkg: string) => Promise<{ success: boolean; error?: string }>
+  restart?: () => Promise<void>
 }
 
 interface PreviewPaneProps {
@@ -19,6 +21,7 @@ interface PreviewPaneProps {
   environment?: EnvironmentId
   isRunning?: boolean
   onOutput?: (log: LogEntry) => void
+  dependencies?: string[]
 }
 
 // --- WEB RUNNER (Original Logic) ---
@@ -50,6 +53,7 @@ const WebRunner = memo(
           return null
         }
       },
+      installPackage: async () => ({ success: false, error: "Not supported" }), // Web runner doesn't support packages yet
     }))
 
     // Navigation State
@@ -269,6 +273,17 @@ export const PreviewPane = memo(
           return await runnerRef.current.captureThumbnail()
         }
         return null
+      },
+      installPackage: async (pkg: string) => {
+        if (isRunning && runnerRef.current?.installPackage) {
+          return await runnerRef.current.installPackage(pkg)
+        }
+        return { success: false, error: "Environment not running or packages not supported" }
+      },
+      restart: async () => {
+        if (isRunning && runnerRef.current?.restart) {
+          await runnerRef.current.restart()
+        }
       },
     }))
 

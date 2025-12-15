@@ -18,6 +18,10 @@ interface TerminalPaneProps {
   scapeName?: string
   onDeleteFile?: (path: string) => void
   outputLogs?: LogEntry[]
+  onExecCommand?: (
+    cmd: string,
+    arg: string
+  ) => Promise<{ success: boolean; warning?: string; error?: string }>
 }
 
 type HistoryItem =
@@ -34,6 +38,7 @@ export function TerminalPane({
   scapeName = "project",
   onDeleteFile,
   outputLogs = [],
+  onExecCommand,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -138,6 +143,60 @@ export function TerminalPane({
           ...prev,
           { type: "output", content: <div className="text-blue-400">{fileList || "(empty)"}</div> },
         ])
+        break
+      }
+      case "pip": {
+        const subCmd = args[0]
+        const pkg = args[1]
+
+        if (subCmd === "install" && pkg) {
+          setHistory((prev) => [...prev, { type: "output", content: `Collecting ${pkg}...` }])
+          if (onExecCommand) {
+            onExecCommand("pip-install", pkg).then((result) => {
+              const { success, error } = result
+              setHistory((prev) => [
+                ...prev,
+                {
+                  type: "output",
+                  content: success
+                    ? `Successfully installed ${pkg}`
+                    : `Failed to install ${pkg}${error ? `: ${error}` : ""}`,
+                },
+              ])
+            })
+          } else {
+            setHistory((prev) => [
+              ...prev,
+              { type: "output", content: "Error: Package manager not connected." },
+            ])
+          }
+        } else if (subCmd === "uninstall" && pkg) {
+          setHistory((prev) => [...prev, { type: "output", content: `Uninstalling ${pkg}...` }])
+          if (onExecCommand) {
+            onExecCommand("pip-uninstall", pkg).then((result) => {
+              const { success, error } = result
+              setHistory((prev) => [
+                ...prev,
+                {
+                  type: "output",
+                  content: success
+                    ? `Successfully uninstalled ${pkg}`
+                    : `Failed to uninstall ${pkg}${error ? `: ${error}` : ""}`,
+                },
+              ])
+            })
+          } else {
+            setHistory((prev) => [
+              ...prev,
+              { type: "output", content: "Error: Package manager not connected." },
+            ])
+          }
+        } else {
+          setHistory((prev) => [
+            ...prev,
+            { type: "output", content: "Usage: pip install <package> | pip uninstall <package>" },
+          ])
+        }
         break
       }
       case "rm":
