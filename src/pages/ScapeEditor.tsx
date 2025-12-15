@@ -13,6 +13,7 @@ import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
+import type { LogEntry } from "@/types/log"
 import { db } from "@/lib/db"
 import { useFileSystem } from "@/hooks/useFileSystem"
 import { useDebounce } from "@/hooks/useDebounce"
@@ -98,6 +99,7 @@ export default function ScapeEditor() {
   const [initialPreviewSynced, setInitialPreviewSynced] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [outputLogs, setOutputLogs] = useState<LogEntry[]>([])
 
   // --- PERSISTENT STATE ---
 
@@ -281,6 +283,7 @@ export default function ScapeEditor() {
   }, [debouncedFiles, id, autoRefresh, isPreviewOpen])
 
   const handleManualRefresh = useCallback(() => {
+    setOutputLogs([]) // Clear output
     setIsRefreshing(true)
     setDebouncedFiles([...files]) // Force new reference to ensure update
     setTimeout(() => setIsRefreshing(false), 500)
@@ -382,6 +385,12 @@ export default function ScapeEditor() {
     setTerminalTab(tab)
     if (!isTerminalOpen) setIsTerminalOpen(true)
   }
+
+  const handleOutput = useCallback((log: LogEntry) => {
+    setOutputLogs((prev) => [...prev, log])
+    // Switch to output tab? Maybe.
+    // setActiveTab("output")
+  }, [])
 
   // --- PROBLEMS & VALIDATION ---
   const [syntaxProblems, setSyntaxProblems] = useState<Problem[]>([])
@@ -661,6 +670,7 @@ export default function ScapeEditor() {
                                   files={files}
                                   scapeName={scape?.name}
                                   onDeleteFile={deleteFileDirectly}
+                                  outputLogs={outputLogs}
                                 />
                               </ResizablePanel>
                             )}
@@ -676,6 +686,7 @@ export default function ScapeEditor() {
                               files={files}
                               scapeName={scape?.name}
                               onDeleteFile={deleteFileDirectly}
+                              outputLogs={outputLogs}
                             />
                           </div>
                         )}
@@ -706,6 +717,7 @@ export default function ScapeEditor() {
                         onCollapse={() => setIsPreviewOpen(false)}
                         environment={scape?.environment}
                         isRunning={isRunning}
+                        onOutput={handleOutput}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>

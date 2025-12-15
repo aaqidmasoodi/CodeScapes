@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Problem } from "@/types/problem"
 import type { ScapeFile } from "@/types/file"
+import type { LogEntry } from "@/types/log"
 
 export type TerminalTab = "terminal" | "output" | "problems"
 
@@ -16,6 +17,7 @@ interface TerminalPaneProps {
   files?: ScapeFile[]
   scapeName?: string
   onDeleteFile?: (path: string) => void
+  outputLogs?: LogEntry[]
 }
 
 type HistoryItem =
@@ -31,6 +33,7 @@ export function TerminalPane({
   files = [],
   scapeName = "project",
   onDeleteFile,
+  outputLogs = [],
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -51,13 +54,17 @@ export function TerminalPane({
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const outputBottomRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll
   useEffect(() => {
     if (activeTab === "terminal" && !isCollapsed) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" })
     }
-  }, [history, activeTab, isCollapsed])
+    if (activeTab === "output" && !isCollapsed) {
+      outputBottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [history, activeTab, isCollapsed, outputLogs])
 
   // Focus input on click
   const handleContainerClick = () => {
@@ -302,7 +309,28 @@ export function TerminalPane({
           )}
 
           {activeTab === "output" && (
-            <div className="text-muted-foreground">No output available.</div>
+            <div className="flex flex-col gap-0.5">
+              {outputLogs.length === 0 ? (
+                <div className="text-muted-foreground">No output available.</div>
+              ) : (
+                outputLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className={cn(
+                      "whitespace-pre-wrap break-words",
+                      log.type === "stderr"
+                        ? "text-red-400"
+                        : log.type === "system"
+                          ? "italic text-blue-400"
+                          : "text-foreground"
+                    )}
+                  >
+                    {log.content}
+                  </div>
+                ))
+              )}
+              <div ref={outputBottomRef} />
+            </div>
           )}
 
           {activeTab === "problems" && (

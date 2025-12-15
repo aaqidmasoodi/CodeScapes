@@ -1,11 +1,13 @@
 import { useEffect, useState, useMemo, useRef, forwardRef, useImperativeHandle, memo } from "react"
-import { MonitorPlay, PanelRightClose, Terminal } from "lucide-react"
+import { MonitorPlay, PanelRightClose } from "lucide-react"
 import html2canvas from "html2canvas"
 
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
 import { ENVIRONMENTS } from "@/config/environments"
 import type { EnvironmentId } from "@/types/environment"
+import { PythonRunner } from "@/runners/python/PythonRunner"
+import type { LogEntry } from "@/types/log"
 
 export interface PreviewPaneHandle {
   captureThumbnail: () => Promise<string | null>
@@ -16,6 +18,7 @@ interface PreviewPaneProps {
   onCollapse?: () => void
   environment?: EnvironmentId
   isRunning?: boolean
+  onOutput?: (log: LogEntry) => void
 }
 
 // --- WEB RUNNER (Original Logic) ---
@@ -254,40 +257,6 @@ const WebRunner = memo(
 )
 WebRunner.displayName = "WebRunner"
 
-// --- PYTHON RUNNER PLACEHOLDER ---
-const PythonRunnerPlaceholder = memo(
-  forwardRef<PreviewPaneHandle, PreviewPaneProps>(({ onCollapse }, ref) => {
-    useImperativeHandle(ref, () => ({
-      captureThumbnail: async () => null,
-    }))
-
-    return (
-      <div className="flex h-full flex-col border-l bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="flex h-10 items-center justify-between border-b border-zinc-200 bg-muted/20 px-2 dark:border-zinc-800 dark:bg-zinc-900/50">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Terminal className="h-3.5 w-3.5" />
-            <span>Python Runtime</span>
-          </div>
-          {onCollapse && (
-            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onCollapse}>
-              <PanelRightClose className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground">
-          <Terminal className="mb-4 h-12 w-12 opacity-20" />
-          <h3 className="text-lg font-medium text-foreground">Python Environment</h3>
-          <p className="mt-2 max-w-xs text-center text-sm">
-            Python runner is under construction. Output will appear in the Terminal pane or here if
-            using Turtle/PyGame.
-          </p>
-        </div>
-      </div>
-    )
-  })
-)
-PythonRunnerPlaceholder.displayName = "PythonRunnerPlaceholder"
-
 // --- SWITCHBOARD ---
 export const PreviewPane = memo(
   forwardRef<PreviewPaneHandle, PreviewPaneProps>((props, ref) => {
@@ -337,7 +306,7 @@ export const PreviewPane = memo(
     }
 
     const config = ENVIRONMENTS[environment]
-    const RunnerComponent = config?.runner === "python-runner" ? PythonRunnerPlaceholder : WebRunner
+    const RunnerComponent = config?.runner === "python-runner" ? PythonRunner : WebRunner
 
     return <RunnerComponent {...props} ref={runnerRef} />
   })
