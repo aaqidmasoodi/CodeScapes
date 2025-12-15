@@ -15,17 +15,19 @@ export type { ScapeRunnerHandle as PreviewPaneHandle }
 
 interface PreviewPaneProps {
   files: ScapeFile[]
-  onCollapse?: () => void
-  environment?: EnvironmentId
-  isRunning?: boolean
+  onCollapse: () => void
   onOutput?: (log: LogEntry) => void
+  environment: EnvironmentId
+  isRunning: boolean
   dependencies?: string[]
+  onBusyChange?: (isBusy: boolean) => void
 }
 
 // --- SWITCHBOARD ---
 export const PreviewPane = memo(
   forwardRef<ScapeRunnerHandle, PreviewPaneProps>((props, ref) => {
-    const { environment = "web", isRunning = true } = props
+    const { environment = "web", isRunning = true, onBusyChange } = props
+
     const runnerRef = useRef<ScapeRunnerHandle>(null)
 
     useImperativeHandle(ref, () => ({
@@ -82,9 +84,21 @@ export const PreviewPane = memo(
     }
 
     const config = ENVIRONMENTS[environment]
+    // Default to WebRunner if unknown, or specifically PythonRunner for python
+    // In future this can be dynamic based on 'runner' field in config
     const RunnerComponent = config?.runner === "python-runner" ? PythonRunner : WebRunner
 
-    return <RunnerComponent {...props} ref={runnerRef} />
+    return (
+      <RunnerComponent
+        files={props.files}
+        onCollapse={props.onCollapse}
+        onOutput={props.onOutput}
+        dependencies={props.dependencies}
+        onBusyChange={onBusyChange}
+        ref={runnerRef}
+      />
+    )
   })
 )
+
 PreviewPane.displayName = "PreviewPane"

@@ -11,13 +11,14 @@ interface PythonRunnerProps {
   onCollapse?: () => void
   onOutput?: (log: LogEntry) => void
   dependencies?: string[]
+  onBusyChange?: (isBusy: boolean) => void
 }
 
 import { useState } from "react"
 
 export const PythonRunner = memo(
   forwardRef<ScapeRunnerHandle, PythonRunnerProps>(
-    ({ files, onOutput, onCollapse, dependencies = [] }, ref) => {
+    ({ files, onOutput, onCollapse, dependencies = [], onBusyChange }, ref) => {
       const workerRef = useRef<Worker | null>(null)
       const [images, setImages] = useState<string[]>([])
       const pendingInstalls = useRef<
@@ -30,14 +31,21 @@ export const PythonRunner = memo(
       useImperativeHandle(ref, () => ({
         captureThumbnail: async () => null,
         restart: async () => {
+          onBusyChange?.(true)
           setRestartTrigger((prev) => prev + 1)
         },
         installPackage: async (pkg: string) => {
           if (!workerRef.current) return { success: false, error: "Worker not ready" }
 
+          // Installing is also a busy state
+          onBusyChange?.(true)
+
           return new Promise<{ success: boolean; error?: string }>((resolve) => {
             // Store resolver
-            pendingInstalls.current.set(pkg, resolve)
+            pendingInstalls.current.set(pkg, (result) => {
+              onBusyChange?.(false)
+              resolve(result)
+            })
 
             // Send Request
             workerRef.current?.postMessage({
@@ -50,6 +58,7 @@ export const PythonRunner = memo(
               if (pendingInstalls.current.has(pkg)) {
                 pendingInstalls.current.get(pkg)?.({ success: false, error: "Timeout" })
                 pendingInstalls.current.delete(pkg)
+                onBusyChange?.(false)
               }
             }, 30000)
           })
@@ -58,6 +67,9 @@ export const PythonRunner = memo(
 
       // Initialize Worker
       useEffect(() => {
+        // Initial load is busy
+        onBusyChange?.(true)
+
         // Spawn Worker
         const worker = new PythonWorker()
         workerRef.current = worker
@@ -75,6 +87,8 @@ export const PythonRunner = memo(
               timestamp: Date.now(),
             })
           } else if (type === "ERROR") {
+            // Error means execution stopped
+            onBusyChange?.(false)
             onOutput?.({
               id: crypto.randomUUID(),
               type: "stderr",
@@ -84,7 +98,8 @@ export const PythonRunner = memo(
           } else if (type === "IMAGE") {
             setImages((prev) => [...prev, payload])
           } else if (type === "DidRun") {
-            // Ready
+            // Execution / Init finished
+            onBusyChange?.(false)
           } else if (type === "INSTALL_SUCCESS") {
             const pkg = payload
             if (pendingInstalls.current.has(pkg)) {
@@ -111,11 +126,15 @@ export const PythonRunner = memo(
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [restartTrigger, dependencies.join(",")]) // Run when restart triggered or deps change
+
       const dependenciesKey = dependencies.join(",")
 
       // Handle File Changes (Run Code)
       useEffect(() => {
         if (!workerRef.current || files.length === 0) return
+
+        // NOTE: We do NOT trigger busy state here for auto-refresh
+        // as per user request to keep it subtle.
 
         // Find entry point? Default main.py
         // We pass all files and let worker handle FS
