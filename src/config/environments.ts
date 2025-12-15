@@ -205,6 +205,40 @@ while True:
           },
         ],
       },
+      {
+        id: "matplotlib",
+        name: "Data Visualization",
+        description: "Matplotlib Example",
+        files: [
+          {
+            name: "main.py",
+            language: "python",
+            content: `import matplotlib.pyplot as plt
+import numpy as np
+
+# 1. Simple Sine Wave
+t = np.arange(0.0, 2.0, 0.01)
+s = 1 + np.sin(2 * np.pi * t)
+
+plt.figure(1)
+plt.plot(t, s, color='blue')
+plt.title('Plot 1: Sine Wave')
+plt.grid(True)
+print("Showing Plot 1...")
+plt.show()
+
+# 2. Histogram
+plt.figure(2)
+data = np.random.randn(1000)
+plt.hist(data, bins=30, color='green', alpha=0.7)
+plt.title('Plot 2: Histogram')
+print("Showing Plot 2...")
+plt.show()
+
+print("All Done!")`,
+          },
+        ],
+      },
     ],
   },
 }

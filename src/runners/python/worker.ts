@@ -20,52 +20,86 @@ interface PyodideInterface {
 }
 
 let pyodide: PyodideInterface | null = null
+let loadPromise: Promise<PyodideInterface> | null = null
 
 const loadPyodide = async () => {
   if (pyodide) return pyodide
+  if (loadPromise) return loadPromise
 
-  postMessage({ type: "STATUS", payload: "Loading Pyodide..." })
+  loadPromise = (async () => {
+    postMessage({ type: "STATUS", payload: "Loading Pyodide..." })
 
-  // Load from CDN
-  // Using importScripts because this is a classic worker context usually,
-  // but Vite creates Module Workers. We might need a slightly different approach for Vite?
-  // Actually, Vite supports explicit worker imports.
-  // But Pyodide itself is best loaded via CDN to capture the WASM correctly.
+    // Load from CDN
+    // Using importScripts because this is a classic worker context usually,
+    // but Vite creates Module Workers. We might need a slightly different approach for Vite?
+    // Actually, Vite supports explicit worker imports.
+    // But Pyodide itself is best loaded via CDN to capture the WASM correctly.
 
-  // We'll trust the global `loadPyodide` function becomes available after importing the script.
-  // In a module worker, we might need to import it.
-  // Let's try flexible loading.
+    // We'll trust the global `loadPyodide` function becomes available after importing the script.
+    // In a module worker, we might need to import it.
+    // Let's try flexible loading.
 
-  try {
-    // Dynamic import for module worker support
-    const { loadPyodide: pyodideLoader } =
-      // @ts-expect-error: Importing from CDN is not supported by TS locally
-      await import("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.mjs")
+    try {
+      // Dynamic import for module worker support
+      const { loadPyodide: pyodideLoader } =
+        // @ts-expect-error: Importing from CDN is not supported by TS locally
+        await import("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.mjs")
 
-    pyodide = await pyodideLoader({
-      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/",
-    })
+      pyodide = await pyodideLoader({
+        indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/",
+      })
 
-    if (!pyodide) throw new Error("Failed to initialize Pyodide")
+      if (!pyodide) throw new Error("Failed to initialize Pyodide")
 
-    // Setup I/O
-    pyodide.setStdout({
-      batched: (msg: string) => {
-        postMessage({ type: "OUTPUT", payload: msg })
-      },
-    })
-    pyodide.setStderr({
-      batched: (msg: string) => {
-        postMessage({ type: "ERROR", payload: msg })
-      },
-    })
+      // Setup I/O
+      pyodide.setStdout({
+        batched: (msg: string) => {
+          postMessage({ type: "OUTPUT", payload: msg })
+        },
+      })
+      pyodide.setStderr({
+        batched: (msg: string) => {
+          postMessage({ type: "ERROR", payload: msg })
+        },
+      })
 
-    postMessage({ type: "STATUS", payload: "Ready" })
-    return pyodide
-  } catch (error: any) {
-    postMessage({ type: "ERROR", payload: `Failed to load Pyodide: ${error.message}` })
-    throw error
-  }
+      // Load Micropip and Pre-load Matplotlib
+      postMessage({ type: "STATUS", payload: "Loading libraries..." })
+      try {
+        await pyodide.loadPackage(["micropip"])
+      } catch {
+        // Retry?
+        await pyodide.loadPackage(["micropip"])
+      }
+
+      // Verify micropip loading
+      await pyodide.runPythonAsync(`
+      import sys
+      import importlib
+      
+      # Retry loop for micropip import
+      import time
+      for i in range(5):
+          try:
+              importlib.invalidate_caches()
+              import micropip
+              break
+          except ImportError:
+              if i == 4: raise
+              time.sleep(0.2)
+      
+      await micropip.install("matplotlib")
+    `)
+
+      postMessage({ type: "STATUS", payload: "Ready" })
+      return pyodide
+    } catch (error: any) {
+      postMessage({ type: "ERROR", payload: `Failed to load Pyodide: ${error.message}` })
+      throw error
+    }
+  })()
+
+  return loadPromise
 }
 
 self.onmessage = async (e: MessageEvent) => {
@@ -117,7 +151,30 @@ self.onmessage = async (e: MessageEvent) => {
         throw new Error(`Entry point ${entryPoint} not found`)
       }
 
-      // Execute
+      // Preamble: Patch Matplotlib show()
+      const preamble = `
+import os
+import base64
+import io
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+def show_hook(*args, **kwargs):
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    img_str = base64.b64encode(buf.read()).decode('utf-8')
+    # Send image to JS
+    import js
+    js.postMessage(js.Object.fromEntries([['type', 'IMAGE'], ['payload', img_str]]))
+    plt.close()
+
+plt.show = show_hook
+`
+      await py.runPythonAsync(preamble)
+
+      // Execute User Code
       // We use runPythonAsync to allow top-level await
       await py.runPythonAsync(mainFile.content)
 

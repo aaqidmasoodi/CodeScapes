@@ -581,7 +581,10 @@ export default function ScapeEditor() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsRunning(!isRunning)}
+                onClick={() => {
+                  if (!isRunning) setOutputLogs([]) // Clear output on start
+                  setIsRunning(!isRunning)
+                }}
                 className={cn(
                   "h-8 w-8 px-0 transition-colors",
                   isRunning

@@ -12,9 +12,12 @@ interface PythonRunnerProps {
   onOutput?: (log: LogEntry) => void
 }
 
+import { useState } from "react"
+
 export const PythonRunner = memo(
   forwardRef<PreviewPaneHandle, PythonRunnerProps>(({ files, onOutput, onCollapse }, ref) => {
     const workerRef = useRef<Worker | null>(null)
+    const [images, setImages] = useState<string[]>([])
 
     // Expose handle (Thumbnail not supported yet for text output)
     useImperativeHandle(ref, () => ({
@@ -46,6 +49,8 @@ export const PythonRunner = memo(
             content: payload,
             timestamp: Date.now(),
           })
+        } else if (type === "IMAGE") {
+          setImages((prev) => [...prev, payload])
         } else if (type === "DidRun") {
           // Ready
         }
@@ -83,6 +88,7 @@ export const PythonRunner = memo(
             entryPoint,
           },
         })
+        setImages([]) // Clear old images
       } else {
         console.warn("No Python entry point found (main.py)")
       }
@@ -107,16 +113,29 @@ export const PythonRunner = memo(
             </Button>
           )}
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center bg-white font-mono text-sm text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-          <div className="flex flex-col items-center gap-2 text-zinc-400 dark:text-zinc-500">
-            <Image className="h-10 w-10 opacity-20 dark:opacity-50" />
-            <span>Python Runtime Active</span>
-            <p className="mt-1 max-w-xs text-center text-xs text-zinc-500 dark:text-zinc-400">
-              Graphical output (Matplotlib, Turtle, etc.) will appear here.
-              <br />
-              Standard output is available in the Terminal.
-            </p>
-          </div>
+        <div className="flex flex-1 flex-col items-center justify-start overflow-y-auto bg-white p-4 font-mono text-sm text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+          {images.length > 0 ? (
+            <div className="flex flex-col gap-4">
+              {images.map((img, i) => (
+                <div
+                  key={i}
+                  className="overflow-hidden rounded-lg border bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  <img src={`data:image/png;base64,${img}`} alt={`Plot ${i + 1}`} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 pt-20 text-zinc-400 dark:text-zinc-500">
+              <Image className="h-10 w-10 opacity-20 dark:opacity-50" />
+              <span>Python Runtime Active</span>
+              <p className="mt-1 max-w-xs text-center text-xs text-zinc-500 dark:text-zinc-400">
+                Output from <code>plt.show()</code> will appear here.
+                <br />
+                Standard output is available in the Terminal.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     )
