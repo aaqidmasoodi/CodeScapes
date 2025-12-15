@@ -18,6 +18,7 @@ import { useFileSystem } from "@/hooks/useFileSystem"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { MonitorPlay, Zap, LogOut, PanelRightOpen } from "lucide-react"
+import { ENVIRONMENTS } from "@/config/environments"
 
 import {
   AlertDialog,
@@ -179,13 +180,17 @@ export default function ScapeEditor() {
 
   // 2. Validate Active File
   useEffect(() => {
-    if (files.length > 0) {
+    if (files.length > 0 && scape) {
       const storedExists = files.some((f) => f.name === activeFilePath)
 
       // If no active file, or the current one was deleted/doesn't exist
       if (!activeFilePath || !storedExists) {
+        // Resolve Entry Point based on Environment
+        const envConfig = ENVIRONMENTS[scape.environment]
+        const entryPoint = envConfig ? envConfig.entryPoint : "index.html"
+
         const defaultFile =
-          files.find((f) => f.name === "index.html") || files.find((f) => f.language !== "folder")
+          files.find((f) => f.name === entryPoint) || files.find((f) => f.language !== "folder")
 
         if (defaultFile) {
           setActiveFilePath(defaultFile.name)
@@ -195,7 +200,7 @@ export default function ScapeEditor() {
         }
       }
     }
-  }, [files, activeFilePath, setActiveFilePath])
+  }, [files, activeFilePath, setActiveFilePath, scape])
 
   // Auto-Refresh State
   const [autoRefresh, setAutoRefresh] = usePersistentState("codescape:ui:autoRefresh", true)
@@ -646,6 +651,7 @@ export default function ScapeEditor() {
                         onAutoRefreshChange={setAutoRefresh}
                         onRefresh={handleManualRefresh}
                         onCollapse={() => setIsPreviewOpen(false)}
+                        environment={scape?.environment}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>

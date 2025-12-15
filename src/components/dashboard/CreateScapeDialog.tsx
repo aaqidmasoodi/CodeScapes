@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Plus, Layout, Box, Paintbrush, Code2, Laptop, Cloud, Lock } from "lucide-react"
+import { Plus, Laptop, Cloud, Lock, Layout, Box, Paintbrush, Code2 } from "lucide-react"
 
 import {
   Dialog,
@@ -16,20 +16,31 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import { db } from "@/lib/db"
-import { TEMPLATES, type TemplateType, type TemplateFile } from "@/lib/templates"
 import { cn } from "@/lib/utils"
-// import { useAuthStore } from "@/store/useAuthStore" // Temporarily disabled for clean build or use if needed
+import { ENVIRONMENTS } from "@/config/environments"
+import type { EnvironmentId } from "@/types/environment"
 
 export function CreateScapeDialog() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateType>("blank")
+
+  const [selectedEnv, setSelectedEnv] = useState<EnvironmentId>("web")
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("blank")
+
   const [source, setSource] = useState<"local" | "cloud">("local")
   const [loading, setLoading] = useState(false)
 
-  // Auth placeholder (can integrate store later for real checks)
-  const isAuthenticated = false // Mock
+  // Auth placeholder
+  const isAuthenticated = false
+
+  // Reset template when env changes
+  useEffect(() => {
+    const templates = ENVIRONMENTS[selectedEnv].templates
+    if (templates.length > 0) {
+      setSelectedTemplate(templates[0].id)
+    }
+  }, [selectedEnv])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,19 +48,24 @@ export function CreateScapeDialog() {
 
     setLoading(true)
     try {
+      const envConfig = ENVIRONMENTS[selectedEnv]
+      const templateConfig = envConfig.templates.find((t) => t.id === selectedTemplate)
+
+      if (!templateConfig) throw new Error("Template not found")
+
       // 1. Create Scape
       const scapeId = await db.scapes.add({
         name: name.trim(),
-        type: selectedTemplate,
-        source: source, // 'local' or 'cloud'
+        environment: selectedEnv,
+        template: selectedTemplate,
+        source: source,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
 
       // 2. Create Files from Template
-      const template = TEMPLATES[selectedTemplate]
       await db.files.bulkAdd(
-        template.files.map((file: TemplateFile) => ({
+        templateConfig.files.map((file) => ({
           scapeId: scapeId as number,
           name: file.name,
           content: file.content,
@@ -63,8 +79,8 @@ export function CreateScapeDialog() {
 
       // Reset form
       setName("")
-      setSelectedTemplate("blank")
       setSource("local")
+      // Env/Template reset not strictly needed but good practice
     } catch (error) {
       console.error("Failed to create scape:", error)
       alert("Failed to create scape. Please try again.")
@@ -73,17 +89,12 @@ export function CreateScapeDialog() {
     }
   }
 
-  const TemplateIcon = ({ type }: { type: TemplateType }) => {
-    switch (type) {
-      case "blank":
-        return <Layout className="h-6 w-6" />
-      case "three":
-        return <Box className="h-6 w-6" />
-      case "p5":
-        return <Paintbrush className="h-6 w-6" />
-      case "html":
-        return <Code2 className="h-6 w-6" />
-    }
+  // Helper for Template Icons (Optional visual flair)
+  const getTemplateIcon = (id: string) => {
+    if (id === "threejs") return <Box className="h-5 w-5" />
+    if (id === "p5") return <Paintbrush className="h-5 w-5" />
+    if (id === "videogame") return <Code2 className="h-5 w-5" />
+    return <Layout className="h-5 w-5" />
   }
 
   return (
@@ -94,15 +105,16 @@ export function CreateScapeDialog() {
           New Scape
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[650px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Create New Scape</DialogTitle>
             <DialogDescription>
-              Choose a template and location for your new project.
+              Select an environment and template to start your project.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-6 py-4">
+            {/* Name Input */}
             <div className="grid gap-2">
               <Label htmlFor="name">Scape Name</Label>
               <Input
@@ -114,9 +126,72 @@ export function CreateScapeDialog() {
               />
             </div>
 
+            {/* Environment Selector */}
+            <div className="grid gap-2">
+              <Label>Environment</Label>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {Object.values(ENVIRONMENTS).map((env) => {
+                  const Icon = env.icon
+                  return (
+                    <Card
+                      key={env.id}
+                      className={cn(
+                        "flex cursor-pointer flex-col gap-2 p-3 transition-all hover:border-primary",
+                        selectedEnv === env.id
+                          ? "border-primary bg-primary/5 ring-1 ring-primary"
+                          : "hover:bg-muted/50"
+                      )}
+                      onClick={() => setSelectedEnv(env.id)}
+                    >
+                      <div className="w-fit rounded-md bg-background p-2 shadow-sm">
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold">{env.name}</div>
+                        <div className="line-clamp-2 text-[10px] text-muted-foreground">
+                          {env.description}
+                        </div>
+                      </div>
+                    </Card>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Template Selector */}
+            <div className="grid gap-2">
+              <Label>Starting Template</Label>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+                {ENVIRONMENTS[selectedEnv].templates.map((template) => (
+                  <Card
+                    key={template.id}
+                    className={cn(
+                      "cursor-pointer p-3 transition-all hover:border-primary",
+                      selectedTemplate === template.id
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "hover:bg-muted/50"
+                    )}
+                    onClick={() => setSelectedTemplate(template.id)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-md bg-background p-2 shadow-sm">
+                        {getTemplateIcon(template.id)}
+                      </div>
+                      <div className="space-y-1">
+                        <div className="text-sm font-semibold">{template.name}</div>
+                        <div className="line-clamp-2 text-xs text-muted-foreground">
+                          {template.description}
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
             {/* Location Selector */}
             <div className="grid gap-2">
-              <Label>storage Location</Label>
+              <Label>Storage Location</Label>
               <div className="grid grid-cols-2 gap-4">
                 <Card
                   className={cn(
@@ -148,7 +223,7 @@ export function CreateScapeDialog() {
                   )}
                   onClick={() => {
                     if (isAuthenticated) setSource("cloud")
-                    else alert("Please login to create cloud scapes (Coming Soon)")
+                    else alert("CodeScape Cloud Coming Soon")
                   }}
                 >
                   <div className="flex items-center gap-3">
@@ -166,36 +241,6 @@ export function CreateScapeDialog() {
                     </div>
                   )}
                 </Card>
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Template</Label>
-              <div className="grid grid-cols-2 gap-4">
-                {(Object.keys(TEMPLATES) as TemplateType[]).map((type) => (
-                  <Card
-                    key={type}
-                    className={cn(
-                      "cursor-pointer p-4 transition-all hover:border-primary",
-                      selectedTemplate === type
-                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                        : "hover:bg-muted/50"
-                    )}
-                    onClick={() => setSelectedTemplate(type)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="rounded-md bg-background p-2 shadow-sm">
-                        <TemplateIcon type={type} />
-                      </div>
-                      <div className="space-y-1">
-                        <div className="text-sm font-semibold">{TEMPLATES[type].name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {TEMPLATES[type].description}
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
               </div>
             </div>
           </div>

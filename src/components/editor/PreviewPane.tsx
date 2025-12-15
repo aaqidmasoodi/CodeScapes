@@ -1,10 +1,12 @@
 import { useEffect, useState, useMemo, useRef, forwardRef, useImperativeHandle, memo } from "react"
-import { MonitorPlay, Play, Loader2, PanelRightClose } from "lucide-react"
+import { MonitorPlay, Play, Loader2, PanelRightClose, Terminal } from "lucide-react"
 import html2canvas from "html2canvas"
 
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import type { ScapeFile } from "@/types/file"
+import { ENVIRONMENTS } from "@/config/environments"
+import type { EnvironmentId } from "@/types/environment"
 
 export interface PreviewPaneHandle {
   captureThumbnail: () => Promise<string | null>
@@ -17,9 +19,11 @@ interface PreviewPaneProps {
   onRefresh: () => void
   isRefreshing?: boolean
   onCollapse?: () => void
+  environment?: EnvironmentId
 }
 
-export const PreviewPane = memo(
+// --- WEB RUNNER (Original Logic) ---
+const WebRunner = memo(
   forwardRef<PreviewPaneHandle, PreviewPaneProps>(
     ({ files, autoRefresh, onAutoRefreshChange, onRefresh, isRefreshing, onCollapse }, ref) => {
       const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -46,8 +50,6 @@ export const PreviewPane = memo(
             })
             return canvas.toDataURL("image/jpeg", 0.7)
           } catch {
-            // Silently fail to avoid console spam during live editing
-            // console.warn("Thumbnail capture failed", error)
             return null
           }
         },
@@ -62,7 +64,6 @@ export const PreviewPane = memo(
           if (e.data?.type === "NAVIGATE") {
             const path = e.data.path
             // Simple resolution: remove leading ./ or /
-            // e.g. "./about.html" -> "about.html"
             const cleanPath = path.replace(/^[./]+/, "")
 
             // Check if file exists
@@ -86,8 +87,6 @@ export const PreviewPane = memo(
       }, [files, activePreviewPath])
 
       // 1. Create Blob URLs for all files
-      // We strip './' from imports in JS files to force them to be "bare modules"
-      // This bypasses the "Invalid relative url" error in Blob/SrcDoc environments
       const blobUrls = useMemo(() => {
         const newUrls: Record<string, string> = {}
 
@@ -97,10 +96,7 @@ export const PreviewPane = memo(
 
           if (file.name.endsWith(".js")) {
             // Rewrite relative imports to bare imports
-            // e.g. import { x } from './scene.js' -> import { x } from 'scene.js'
             content = content.replace(/from\s+['"]\.\/([^'"]+)['"]/g, "from '$1'")
-            // Also handle import './style.css' ?
-            // Usually side-effect imports: import './interaction.js'
             content = content.replace(/import\s+['"]\.\/([^'"]+)['"]/g, "import '$1'")
           }
 
@@ -114,14 +110,14 @@ export const PreviewPane = memo(
         return newUrls
       }, [files])
 
-      // Cleanup Blob URLs when they change or component unmounts
+      // Cleanup Blob URLs
       useEffect(() => {
         return () => {
           Object.values(blobUrls).forEach((url) => URL.revokeObjectURL(url))
         }
       }, [blobUrls])
 
-      // 2. Construct the HTML (using srcDoc for simplicity/stability)
+      // 2. Construct the HTML
       const srcDoc = useMemo(() => {
         const htmlFile = files.find((f) => f.name === activePreviewPath)
         if (!htmlFile) {
@@ -170,32 +166,18 @@ export const PreviewPane = memo(
         document.addEventListener('click', (e) => {
           const link = e.target.closest('a');
           if (!link) return;
-          
-          // Prevent default browser navigation for everything to avoid "Inception"
           e.preventDefault();
-
           const href = link.getAttribute('href');
-          // console.log('[Preview] Intercepted:', href);
-          
-          if (!href || href === '#' || href === '') {
-            // Dead link - do nothing
-            return;
-          }
-          
-          // Handle Hash Anchors manually to avoid reload
+          if (!href || href === '#' || href === '') return;
           if (href.startsWith('#')) {
              const target = document.querySelector(href);
              if (target) target.scrollIntoView();
              return;
           }
-          
-          // Force external links to new tab
           if (href.startsWith('http') || href.startsWith('//')) {
             window.open(href, '_blank');
             return;
           }
-          
-          // Intercept relative navigation
           window.parent.postMessage({ type: 'NAVIGATE', path: href }, '*');
         });
       </script>
@@ -228,8 +210,6 @@ export const PreviewPane = memo(
           (match, src) => {
             const cleanName = src.replace(/^\.\//, "")
             if (blobUrls[cleanName] && cleanName.endsWith(".js")) {
-              // Replace with bare import if we want, OR just direct Blob URL source associated with the file
-              // Since it's a top-level script tag, we can use the Blob URL directly
               return match.replace(src, blobUrls[cleanName])
             }
             return match
@@ -244,7 +224,7 @@ export const PreviewPane = memo(
           <div className="flex h-10 items-center justify-between border-b border-zinc-200 bg-muted/20 px-2 dark:border-zinc-800 dark:bg-zinc-900/50">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <MonitorPlay className="h-3.5 w-3.5" />
-              <span className="max-w-[200px] truncate">Preview</span>
+              <span className="max-w-[200px] truncate">Preview (Web)</span>
             </div>
 
             <div className="flex items-center gap-3">
@@ -304,5 +284,63 @@ export const PreviewPane = memo(
       )
     }
   )
+)
+WebRunner.displayName = "WebRunner"
+
+// --- PYTHON RUNNER PLACEHOLDER ---
+const PythonRunnerPlaceholder = memo(
+  forwardRef<PreviewPaneHandle, PreviewPaneProps>(({ onCollapse }, ref) => {
+    useImperativeHandle(ref, () => ({
+      captureThumbnail: async () => null,
+    }))
+
+    return (
+      <div className="flex h-full flex-col border-l bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div className="flex h-10 items-center justify-between border-b border-zinc-200 bg-muted/20 px-2 dark:border-zinc-800 dark:bg-zinc-900/50">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Terminal className="h-3.5 w-3.5" />
+            <span>Python Runtime</span>
+          </div>
+          {onCollapse && (
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={onCollapse}>
+              <PanelRightClose className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground">
+          <Terminal className="mb-4 h-12 w-12 opacity-20" />
+          <h3 className="text-lg font-medium text-foreground">Python Environment</h3>
+          <p className="mt-2 max-w-xs text-center text-sm">
+            Python runner is under construction. Output will appear in the Terminal pane or here if
+            using Turtle/PyGame.
+          </p>
+        </div>
+      </div>
+    )
+  })
+)
+PythonRunnerPlaceholder.displayName = "PythonRunnerPlaceholder"
+
+// --- SWITCHBOARD ---
+export const PreviewPane = memo(
+  forwardRef<PreviewPaneHandle, PreviewPaneProps>((props, ref) => {
+    const { environment = "web" } = props
+    const runnerRef = useRef<PreviewPaneHandle>(null)
+
+    useImperativeHandle(ref, () => ({
+      captureThumbnail: async () => {
+        if (runnerRef.current) {
+          return await runnerRef.current.captureThumbnail()
+        }
+        return null
+      },
+    }))
+
+    const config = ENVIRONMENTS[environment]
+    // Default to WebRunner if unknown or web
+    const RunnerComponent = config?.runner === "python-runner" ? PythonRunnerPlaceholder : WebRunner
+
+    return <RunnerComponent {...props} ref={runnerRef} />
+  })
 )
 PreviewPane.displayName = "PreviewPane"

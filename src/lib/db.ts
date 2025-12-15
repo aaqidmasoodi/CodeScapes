@@ -1,9 +1,11 @@
 import Dexie, { type EntityTable } from "dexie"
+import type { EnvironmentId } from "@/types/environment"
 
 export interface Scape {
   id: number
   name: string
-  type: string // 'blank' | 'three' | 'p5' | 'html'
+  environment: EnvironmentId
+  template: string // The ID of the template used (e.g. 'blank', 'threejs')
   source: "local" | "cloud"
   syncStatus?: "synced" | "dirty" | "offline"
   authorId?: string
@@ -43,13 +45,35 @@ db.version(2)
   })
 
 // Version 3: Added thumbnail
-db.version(3)
+db.version(3).stores({
+  scapes: "++id, name, type, source, createdAt, updatedAt",
+  files: "++id, scapeId, name, [scapeId+name]",
+})
+
+// Version 4: Environments Architecture
+db.version(4)
   .stores({
-    scapes: "++id, name, type, source, createdAt, updatedAt", // thumbnail is not indexed
+    scapes: "++id, name, environment, source, createdAt, updatedAt", // Replaced 'type' with 'environment'
     files: "++id, scapeId, name, [scapeId+name]",
   })
-  .upgrade(() => {
-    // No migration needed for new optional field, but we can init it if we wanted
+  .upgrade((tx) => {
+    return (
+      tx
+        .table("scapes")
+        .toCollection()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .modify((scape: any) => {
+          // Default to Web environment for existing projects
+          scape.environment = "web"
+          // Migrate old 'type' to 'template'
+          if (scape.type) {
+            scape.template = scape.type
+            delete scape.type
+          } else {
+            scape.template = "blank"
+          }
+        })
+    )
   })
 
 // Helper to delete a scape and its files transactionally
