@@ -224,7 +224,26 @@ except ImportError:
       await py.runPythonAsync(preamble)
 
       // Execute User Code
-      await py.runPythonAsync(mainFile.content)
+      // output handling is done via setStdout/setStderr
+      // runPythonAsync returns the result of the last expression
+      const result = await py.runPythonAsync(mainFile.content)
+
+      // CHECK FOR RICH OUTPUT (Implicit Return)
+      if (result && typeof result === "object") {
+        try {
+          // Check for _repr_html_ method (Jupyter standard)
+          // Note: Pyodide proxies have these methods if the python object has them
+          if (result._repr_html_) {
+            const html = result._repr_html_()
+            postMessage({ type: "PREVIEW_HTML", payload: html })
+          }
+        } catch (e) {
+          console.warn("Failed to extract rich repr", e)
+        } finally {
+          // Important: Destroy the proxy to free memory
+          result.destroy?.()
+        }
+      }
 
       postMessage({ type: "DidRun" })
     } catch (error: any) {
