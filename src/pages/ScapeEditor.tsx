@@ -17,7 +17,8 @@ import { db } from "@/lib/db"
 import { useFileSystem } from "@/hooks/useFileSystem"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
-import { MonitorPlay, Zap, LogOut, PanelRightOpen } from "lucide-react"
+import { MonitorPlay, Zap, LogOut, PanelRightOpen, Play } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import { ENVIRONMENTS } from "@/config/environments"
 
 import {
@@ -467,6 +468,25 @@ export default function ScapeEditor() {
         }
         headerActions={
           <>
+            <div className="mr-2 flex items-center gap-2 border-r border-border/50 pr-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Auto</span>
+                <Switch
+                  checked={autoRefresh}
+                  onCheckedChange={setAutoRefresh}
+                  className="scale-75 data-[state=checked]:bg-green-500"
+                />
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleManualRefresh}
+                className="h-8 w-8 px-0 text-muted-foreground hover:text-green-500"
+                title="Run"
+              >
+                <Play className="h-4 w-4 fill-current" />
+              </Button>
+            </div>
             <Button
               variant={isPreviewOpen ? "secondary" : "ghost"}
               size="sm"
@@ -647,9 +667,6 @@ export default function ScapeEditor() {
                       <PreviewPane
                         ref={previewRef}
                         files={debouncedFiles}
-                        autoRefresh={autoRefresh}
-                        onAutoRefreshChange={setAutoRefresh}
-                        onRefresh={handleManualRefresh}
                         onCollapse={() => setIsPreviewOpen(false)}
                         environment={scape?.environment}
                       />
