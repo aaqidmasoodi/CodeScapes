@@ -144,7 +144,6 @@ const WebRunner = memo(
 
       // Inject Import Map, WebGL Shim, and Navigation Interceptor
       const importMapScript = `
-      <style>html { background-color: transparent; }</style>
       <script>
         // Force preserveDrawingBuffer for WebGL to enable screenshots
         const originalGetContext = HTMLCanvasElement.prototype.getContext;
@@ -243,15 +242,13 @@ const WebRunner = memo(
             )}
           </div>
         </div>
-        <div className="flex-1 bg-white dark:bg-zinc-950">
+        <div className="flex-1 bg-white">
           <iframe
             ref={iframeRef}
             title="preview"
             srcDoc={srcDoc}
             className="h-full w-full border-0"
             sandbox="allow-scripts allow-same-origin allow-modals allow-popups"
-            allowTransparency
-            style={{ backgroundColor: "transparent" }}
           />
         </div>
       </div>
