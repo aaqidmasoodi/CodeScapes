@@ -9,8 +9,11 @@ import type { ScapeRunnerHandle } from "@/runners/types"
 interface WebRunnerProps {
   files: ScapeFile[]
   onCollapse?: () => void
+  onBusyChange?: (isBusy: boolean) => void
 }
 
+// WebRunner doesn't need to report busy state currently, but we accept the prop
+// to match the interface.
 export const WebRunner = memo(
   forwardRef<ScapeRunnerHandle, WebRunnerProps>(({ files, onCollapse }, ref) => {
     const iframeRef = useRef<HTMLIFrameElement>(null)

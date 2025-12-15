@@ -24,7 +24,16 @@ import { db } from "@/lib/db"
 import { useFileSystem } from "@/hooks/useFileSystem"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
-import { MonitorPlay, Zap, LogOut, PanelRightOpen, Play, Square, RotateCw } from "lucide-react"
+import {
+  MonitorPlay,
+  Zap,
+  LogOut,
+  PanelRightOpen,
+  Play,
+  Square,
+  RotateCw,
+  Loader2,
+} from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
@@ -101,6 +110,7 @@ export default function ScapeEditor() {
   // Preview Collapsed State (Lifted to top for safety)
   // Run Lifecycle State
   const [isRunning, setIsRunning] = useState(true)
+  const [isRunnerBusy, setIsRunnerBusy] = useState(false)
   const [isPreviewOpen, setIsPreviewOpen] = usePersistentState("scape-preview-open", true)
 
   const [debouncedFiles, setDebouncedFiles] = useState<ScapeFile[]>([])
@@ -657,10 +667,14 @@ export default function ScapeEditor() {
                     ? "text-red-500 hover:bg-red-500/10 hover:text-red-600"
                     : "text-green-500 hover:bg-green-500/10 hover:text-green-600"
                 )}
-                title={isRunning ? "Stop" : "Run Scape"}
+                title={isRunning ? "Stop (Refs/Preview will reset)" : "Run"}
               >
                 {isRunning ? (
-                  <Square className="h-4 w-4 fill-current" />
+                  isRunnerBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Square className="h-4 w-4 fill-current" />
+                  )
                 ) : (
                   <Play className="h-4 w-4 fill-current" />
                 )}
@@ -872,6 +886,7 @@ export default function ScapeEditor() {
                         isRunning={isRunning}
                         onOutput={handleOutput}
                         dependencies={scape?.dependencies}
+                        onBusyChange={setIsRunnerBusy}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>
