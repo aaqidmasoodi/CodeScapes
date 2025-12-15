@@ -243,7 +243,7 @@ const WebRunner = memo(
             )}
           </div>
         </div>
-        <div className="flex-1 bg-white">
+        <div className="flex-1 bg-white dark:bg-zinc-950">
           <iframe
             ref={iframeRef}
             title="preview"
