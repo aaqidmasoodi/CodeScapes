@@ -706,7 +706,6 @@ export default function ScapeEditor() {
                         onCollapse={() => setIsPreviewOpen(false)}
                         environment={scape?.environment}
                         isRunning={isRunning}
-                        onRun={() => setIsRunning(true)}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, forwardRef, useImperativeHandle, memo } from "react"
-import { MonitorPlay, PanelRightClose, Terminal, Play } from "lucide-react"
+import { MonitorPlay, PanelRightClose, Terminal } from "lucide-react"
 import html2canvas from "html2canvas"
 
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,6 @@ interface PreviewPaneProps {
   onCollapse?: () => void
   environment?: EnvironmentId
   isRunning?: boolean
-  onRun?: () => void
 }
 
 // --- WEB RUNNER (Original Logic) ---
@@ -288,7 +287,7 @@ PythonRunnerPlaceholder.displayName = "PythonRunnerPlaceholder"
 // --- SWITCHBOARD ---
 export const PreviewPane = memo(
   forwardRef<PreviewPaneHandle, PreviewPaneProps>((props, ref) => {
-    const { environment = "web", isRunning = true, onRun } = props
+    const { environment = "web", isRunning = true } = props
     const runnerRef = useRef<PreviewPaneHandle>(null)
 
     useImperativeHandle(ref, () => ({
@@ -327,13 +326,7 @@ export const PreviewPane = memo(
               <MonitorPlay className="h-8 w-8 opacity-20" />
             </div>
             <h3 className="mb-1 text-lg font-medium text-foreground">Scape Stopped</h3>
-            <p className="mb-6 max-w-xs text-center text-sm">
-              The environment is currently stopped.
-            </p>
-            <Button onClick={onRun} className="gap-2">
-              <Play className="h-4 w-4 fill-current" />
-              Run Scape
-            </Button>
+            <p className="max-w-xs text-center text-sm">The environment is currently stopped.</p>
           </div>
         </div>
       )
