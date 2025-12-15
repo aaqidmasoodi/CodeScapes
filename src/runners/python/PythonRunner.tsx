@@ -25,12 +25,6 @@ export const PythonRunner = memo(
       >(new Map()) // Map package name to resolver
 
       const [restartTrigger, setRestartTrigger] = useState(0)
-      const dependenciesRef = useRef(dependencies)
-
-      // Keep deps ref up to date
-      useEffect(() => {
-        dependenciesRef.current = dependencies
-      }, [dependencies])
 
       // Expose handle (Thumbnail not supported yet for text output)
       useImperativeHandle(ref, () => ({
@@ -108,8 +102,9 @@ export const PythonRunner = memo(
         }
 
         // Initialize Pyodide with dependencies
-        // Use ref to get latest dependencies without triggering re-run on prop change
-        worker.postMessage({ type: "INIT", payload: { dependencies: dependenciesRef.current } })
+        // Use prop directly to ensure latest value is used (ref might be stale during effect execution)
+        console.log("Initializing Python Worker with deps:", dependencies)
+        worker.postMessage({ type: "INIT", payload: { dependencies } })
 
         return () => {
           worker.terminate()
