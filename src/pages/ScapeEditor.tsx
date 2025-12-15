@@ -597,6 +597,7 @@ export default function ScapeEditor() {
             activeTool={activeTool}
             onToolSelect={setActiveTool}
             onSettingsClick={() => setIsSettingsOpen(true)}
+            showPackages={scape && ENVIRONMENTS[scape.environment]?.capabilities.packages}
           />
         }
         headerTitle={
@@ -733,12 +734,15 @@ export default function ScapeEditor() {
                     Search coming soon...
                   </div>
                 )}
-                {activeTool === "packages" && (
-                  <PackagePane
-                    dependencies={scape?.dependencies || []}
-                    onDeletePackage={handleDeletePackage}
-                  />
-                )}
+                {/* Dynamically check capabilities before rendering packages UI in sidebar content */}
+                {activeTool === "packages" &&
+                  scape &&
+                  ENVIRONMENTS[scape.environment]?.capabilities.packages && (
+                    <PackagePane
+                      dependencies={scape?.dependencies || []}
+                      onDeletePackage={handleDeletePackage}
+                    />
+                  )}
               </ResizablePanel>
               <ResizableHandle />
             </>

@@ -2,7 +2,7 @@ import { useRef, useEffect, useImperativeHandle, forwardRef, memo } from "react"
 import { Terminal, PanelRightClose, Image } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
-import type { PreviewPaneHandle } from "@/components/editor/PreviewPane"
+import type { ScapeRunnerHandle } from "@/runners/types"
 import type { LogEntry } from "@/types/log"
 import PythonWorker from "./worker.ts?worker" // Vite Worker Import
 
@@ -16,7 +16,7 @@ interface PythonRunnerProps {
 import { useState } from "react"
 
 export const PythonRunner = memo(
-  forwardRef<PreviewPaneHandle, PythonRunnerProps>(
+  forwardRef<ScapeRunnerHandle, PythonRunnerProps>(
     ({ files, onOutput, onCollapse, dependencies = [] }, ref) => {
       const workerRef = useRef<Worker | null>(null)
       const [images, setImages] = useState<string[]>([])

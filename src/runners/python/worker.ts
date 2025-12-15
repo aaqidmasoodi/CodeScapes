@@ -22,27 +22,17 @@ interface PyodideInterface {
 let pyodide: PyodideInterface | null = null
 let loadPromise: Promise<PyodideInterface> | null = null
 
-const loadPyodide = async () => {
+const loadPyodide = async (): Promise<PyodideInterface> => {
   if (pyodide) return pyodide
   if (loadPromise) return loadPromise
 
   loadPromise = (async () => {
     postMessage({ type: "STATUS", payload: "Loading Pyodide..." })
 
-    // Load from CDN
-    // Using importScripts because this is a classic worker context usually,
-    // but Vite creates Module Workers. We might need a slightly different approach for Vite?
-    // Actually, Vite supports explicit worker imports.
-    // But Pyodide itself is best loaded via CDN to capture the WASM correctly.
-
-    // We'll trust the global `loadPyodide` function becomes available after importing the script.
-    // In a module worker, we might need to import it.
-    // Let's try flexible loading.
-
     try {
       // Dynamic import for module worker support
+      // @ts-expect-error: Importing from CDN is not supported by TS locally
       const { loadPyodide: pyodideLoader } =
-        // @ts-expect-error: Importing from CDN is not supported by TS locally
         await import("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.mjs")
 
       pyodide = await pyodideLoader({
@@ -100,51 +90,77 @@ const loadPyodide = async () => {
   return loadPromise
 }
 
+let readyPromise: Promise<void> = Promise.resolve()
+
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload } = e.data
 
   if (type === "INIT") {
-    const py = await loadPyodide()
-    // Install initial dependencies
-    if (
-      payload.dependencies &&
-      Array.isArray(payload.dependencies) &&
-      payload.dependencies.length > 0
-    ) {
-      postMessage({
-        type: "STATUS",
-        payload: `Installing ${payload.dependencies.length} packages...`,
-      })
-      try {
-        await py.runPythonAsync(`
-          import micropip
-          await micropip.install(${JSON.stringify(payload.dependencies)})
-        `)
-        postMessage({ type: "STATUS", payload: "Packages installed" })
-      } catch (err: any) {
-        postMessage({ type: "ERROR", payload: `Failed to install dependencies: ${err.message}` })
+    // We wrap the installation logic in a promise and assign it to readyPromise.
+    // We do NOT await it immediately at the top level here to allow the function
+    // to return control, but we update the global readyPromise so subsequent
+    // messages (like RUN) will wait for this chain.
+    const runInit = async () => {
+      const py = await loadPyodide()
+      // Install initial dependencies
+      if (
+        payload.dependencies &&
+        Array.isArray(payload.dependencies) &&
+        payload.dependencies.length > 0
+      ) {
+        postMessage({
+          type: "STATUS",
+          payload: `Installing ${payload.dependencies.length} packages...`,
+        })
+        try {
+          await py.runPythonAsync(`
+            import micropip
+            await micropip.install(${JSON.stringify(payload.dependencies)})
+          `)
+          postMessage({ type: "STATUS", payload: "Packages installed" })
+        } catch (err: any) {
+          postMessage({
+            type: "ERROR",
+            payload: `Failed to install dependencies: ${err.message}`,
+          })
+        }
       }
+      postMessage({ type: "DidRun" }) // Signal ready
     }
-    postMessage({ type: "DidRun" }) // Signal ready
+
+    // Chain to ensure order if multiple INITs (unlikely but safe)
+    readyPromise = readyPromise.then(runInit)
+    await readyPromise
   }
 
   if (type === "INSTALL") {
-    const py = await loadPyodide()
-    const packageName = payload
-    try {
-      postMessage({ type: "STATUS", payload: `Installing ${packageName}...` })
-      await py.runPythonAsync(`
-          import micropip
-          await micropip.install("${packageName}")
-        `)
-      postMessage({ type: "INSTALL_SUCCESS", payload: packageName })
-    } catch (err: any) {
-      postMessage({ type: "ERROR", payload: `Failed to install ${packageName}: ${err.message}` })
-      postMessage({ type: "INSTALL_ERROR", payload: { pkg: packageName, error: err.message } }) // Signal failure to UI
+    const runInstall = async () => {
+      const py = await loadPyodide()
+      const packageName = payload
+      try {
+        postMessage({ type: "STATUS", payload: `Installing ${packageName}...` })
+        await py.runPythonAsync(`
+            import micropip
+            await micropip.install("${packageName}")
+            `)
+        postMessage({ type: "INSTALL_SUCCESS", payload: packageName })
+      } catch (err: any) {
+        postMessage({ type: "ERROR", payload: `Failed to install ${packageName}: ${err.message}` })
+        postMessage({
+          type: "INSTALL_ERROR",
+          payload: { pkg: packageName, error: err.message },
+        })
+      }
     }
+    // Block subsequent runs on this install too
+    readyPromise = readyPromise.then(runInstall)
+    await readyPromise
   }
 
   if (type === "RUN") {
+    // Wait for any pending initialization or installation
+    await readyPromise
+
     const { files, entryPoint } = payload
     const py = await loadPyodide()
 
@@ -156,14 +172,9 @@ self.onmessage = async (e: MessageEvent) => {
       // 1. Write files to Virtual FS
       postMessage({ type: "STATUS", payload: "Writing files..." })
 
-      // Reset FS? (Might be complex, for now we overwrite)
-
       for (const file of files) {
-        // Simple directory creation (flat for now, support nested later if needed logic exists)
-        // Check if path has directories
         const parts = file.name.split("/")
         if (parts.length > 1) {
-          // Create directories recursively
           let currentPath = ""
           for (let i = 0; i < parts.length - 1; i++) {
             currentPath += (i === 0 ? "" : "/") + parts[i]
@@ -174,7 +185,6 @@ self.onmessage = async (e: MessageEvent) => {
             }
           }
         }
-
         py.FS.writeFile(file.name, file.content)
       }
 
@@ -214,12 +224,10 @@ except ImportError:
       await py.runPythonAsync(preamble)
 
       // Execute User Code
-      // We use runPythonAsync to allow top-level await
       await py.runPythonAsync(mainFile.content)
 
       postMessage({ type: "DidRun" })
     } catch (error: any) {
-      // Python Error
       postMessage({ type: "ERROR", payload: error.message || String(error) })
     }
   }
