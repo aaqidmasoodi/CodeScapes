@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef, forwardRef, useImperativeHandle, memo } from "react"
-import { MonitorPlay, PanelRightClose, Terminal } from "lucide-react"
+import { MonitorPlay, PanelRightClose, Terminal, Play } from "lucide-react"
 import html2canvas from "html2canvas"
 
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,8 @@ interface PreviewPaneProps {
   files: ScapeFile[]
   onCollapse?: () => void
   environment?: EnvironmentId
+  isRunning?: boolean
+  onRun?: () => void
 }
 
 // --- WEB RUNNER (Original Logic) ---
@@ -286,20 +288,58 @@ PythonRunnerPlaceholder.displayName = "PythonRunnerPlaceholder"
 // --- SWITCHBOARD ---
 export const PreviewPane = memo(
   forwardRef<PreviewPaneHandle, PreviewPaneProps>((props, ref) => {
-    const { environment = "web" } = props
+    const { environment = "web", isRunning = true, onRun } = props
     const runnerRef = useRef<PreviewPaneHandle>(null)
 
     useImperativeHandle(ref, () => ({
       captureThumbnail: async () => {
-        if (runnerRef.current) {
+        if (isRunning && runnerRef.current) {
           return await runnerRef.current.captureThumbnail()
         }
         return null
       },
     }))
 
+    // STOPPED STATE
+    if (!isRunning) {
+      return (
+        <div className="flex h-full flex-col border-l border-border bg-muted/5 dark:border-zinc-800">
+          {/* Header for Stopped State */}
+          <div className="flex h-10 items-center justify-between border-b border-border bg-muted/20 px-2 dark:border-zinc-800">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <MonitorPlay className="h-3.5 w-3.5" />
+              <span>Preview (Stopped)</span>
+            </div>
+            {props.onCollapse && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                onClick={props.onCollapse}
+              >
+                <PanelRightClose className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          {/* Overlay Content */}
+          <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground">
+            <div className="mb-4 rounded-full bg-muted p-4">
+              <MonitorPlay className="h-8 w-8 opacity-20" />
+            </div>
+            <h3 className="mb-1 text-lg font-medium text-foreground">Scape Stopped</h3>
+            <p className="mb-6 max-w-xs text-center text-sm">
+              The environment is currently stopped.
+            </p>
+            <Button onClick={onRun} className="gap-2">
+              <Play className="h-4 w-4 fill-current" />
+              Run Scape
+            </Button>
+          </div>
+        </div>
+      )
+    }
+
     const config = ENVIRONMENTS[environment]
-    // Default to WebRunner if unknown or web
     const RunnerComponent = config?.runner === "python-runner" ? PythonRunnerPlaceholder : WebRunner
 
     return <RunnerComponent {...props} ref={runnerRef} />

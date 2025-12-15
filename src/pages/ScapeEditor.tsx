@@ -17,8 +17,9 @@ import { db } from "@/lib/db"
 import { useFileSystem } from "@/hooks/useFileSystem"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
-import { MonitorPlay, Zap, LogOut, PanelRightOpen, Play } from "lucide-react"
+import { MonitorPlay, Zap, LogOut, PanelRightOpen, Play, Square, RotateCw } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
+import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
 
 import {
@@ -89,11 +90,14 @@ export default function ScapeEditor() {
 
   // Local State
   // Preview Collapsed State (Lifted to top for safety)
-  const [isPreviewOpen, setIsPreviewOpen] = usePersistentState("codescape:ui:isPreviewOpen", true)
+  // Run Lifecycle State
+  const [isRunning, setIsRunning] = useState(true)
+  const [isPreviewOpen, setIsPreviewOpen] = usePersistentState("scape-preview-open", true)
 
   const [debouncedFiles, setDebouncedFiles] = useState<ScapeFile[]>([])
   const [initialPreviewSynced, setInitialPreviewSynced] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // --- PERSISTENT STATE ---
 
@@ -277,7 +281,9 @@ export default function ScapeEditor() {
   }, [debouncedFiles, id, autoRefresh, isPreviewOpen])
 
   const handleManualRefresh = useCallback(() => {
+    setIsRefreshing(true)
     setDebouncedFiles([...files]) // Force new reference to ensure update
+    setTimeout(() => setIsRefreshing(false), 500)
   }, [files])
 
   // --- HANDLERS ---
@@ -468,8 +474,13 @@ export default function ScapeEditor() {
         }
         headerActions={
           <>
-            <div className="mr-2 flex items-center gap-2 border-r border-border/50 pr-4">
-              <div className="flex items-center gap-2">
+            <div className="mr-2 flex items-center gap-1 border-r border-border/50 pr-4">
+              <div
+                className={cn(
+                  "mr-2 flex items-center gap-2",
+                  !isRunning && "pointer-events-none opacity-50"
+                )}
+              >
                 <span className="text-xs font-medium text-muted-foreground">Auto</span>
                 <Switch
                   checked={autoRefresh}
@@ -477,14 +488,39 @@ export default function ScapeEditor() {
                   className="scale-75 data-[state=checked]:bg-green-500"
                 />
               </div>
+
+              {/* Refresh (Only when Running) */}
+              {isRunning && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleManualRefresh}
+                  className="h-8 w-8 px-0 text-muted-foreground hover:text-foreground"
+                  title="Refresh Preview"
+                  disabled={isRefreshing}
+                >
+                  <RotateCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+                </Button>
+              )}
+
+              {/* Stop / Start */}
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleManualRefresh}
-                className="h-8 w-8 px-0 text-muted-foreground hover:text-green-500"
-                title="Run"
+                onClick={() => setIsRunning(!isRunning)}
+                className={cn(
+                  "h-8 w-8 px-0 transition-colors",
+                  isRunning
+                    ? "text-red-500 hover:bg-red-500/10 hover:text-red-600"
+                    : "text-green-500 hover:bg-green-500/10 hover:text-green-600"
+                )}
+                title={isRunning ? "Stop" : "Run Scape"}
               >
-                <Play className="h-4 w-4 fill-current" />
+                {isRunning ? (
+                  <Square className="h-4 w-4 fill-current" />
+                ) : (
+                  <Play className="h-4 w-4 fill-current" />
+                )}
               </Button>
             </div>
             <Button
@@ -669,6 +705,8 @@ export default function ScapeEditor() {
                         files={debouncedFiles}
                         onCollapse={() => setIsPreviewOpen(false)}
                         environment={scape?.environment}
+                        isRunning={isRunning}
+                        onRun={() => setIsRunning(true)}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>
