@@ -220,6 +220,14 @@ try:
     plt.show = show_hook
 except ImportError:
     pass
+
+# Suppress SSL warnings in browser context (false alarms)
+try:
+    import urllib3
+    from urllib3.exceptions import InsecureRequestWarning
+    urllib3.disable_warnings(InsecureRequestWarning)
+except ImportError:
+    pass
 `
       await py.runPythonAsync(preamble)
 
