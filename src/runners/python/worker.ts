@@ -38,8 +38,8 @@ const loadPyodide = async () => {
 
   try {
     // Dynamic import for module worker support
-    // @ts-expect-error: Importing from CDN is not support by TS locally
     const { loadPyodide: pyodideLoader } =
+      // @ts-expect-error: Importing from CDN is not supported by TS locally
       await import("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.mjs")
 
     pyodide = await pyodideLoader({
