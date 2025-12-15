@@ -191,7 +191,7 @@ export default function Dashboard() {
                   <CardContent className="relative flex-1 px-5 pb-4">
                     <div className="mt-2 flex flex-wrap gap-2">
                       <span className="inline-flex items-center rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground ring-1 ring-inset ring-gray-500/10">
-                        {scape.type}
+                        {scape.template}
                       </span>
                       <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
