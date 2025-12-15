@@ -103,7 +103,6 @@ export const PythonRunner = memo(
 
         // Initialize Pyodide with dependencies
         // Use prop directly to ensure latest value is used (ref might be stale during effect execution)
-        console.log("Initializing Python Worker with deps:", dependencies)
         worker.postMessage({ type: "INIT", payload: { dependencies } })
 
         return () => {
@@ -112,6 +111,8 @@ export const PythonRunner = memo(
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [restartTrigger, dependencies.join(",")]) // Run when restart triggered or deps change
+
+      const dependenciesKey = dependencies.join(",")
 
       // Handle File Changes (Run Code)
       useEffect(() => {
@@ -139,7 +140,7 @@ export const PythonRunner = memo(
         } else {
           console.warn("No Python entry point found (main.py)")
         }
-      }, [files])
+      }, [files, dependenciesKey])
 
       return (
         <div className="flex h-full flex-col border-l bg-white dark:border-zinc-800 dark:bg-zinc-950">

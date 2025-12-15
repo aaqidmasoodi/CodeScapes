@@ -871,6 +871,7 @@ export default function ScapeEditor() {
                         environment={scape?.environment}
                         isRunning={isRunning}
                         onOutput={handleOutput}
+                        dependencies={scape?.dependencies}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>
