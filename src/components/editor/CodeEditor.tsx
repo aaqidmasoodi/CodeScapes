@@ -11,6 +11,7 @@ interface CodeEditorProps {
   onChange?: (value: string | undefined) => void
   onValidate?: (problems: Problem[]) => void
   files?: ScapeFile[] // All files for IntelliSense
+  onRun?: () => void
 }
 
 export function CodeEditor({
@@ -20,6 +21,7 @@ export function CodeEditor({
   onChange,
   onValidate,
   files = [],
+  onRun,
 }: CodeEditorProps) {
   const { theme } = useTheme()
   const monaco = useMonaco()
@@ -60,7 +62,7 @@ export function CodeEditor({
     }
   }, [monaco, files, fileName])
 
-  const handleEditorDidMount: OnMount = (editor) => {
+  const handleEditorDidMount: OnMount = (editor, monaco) => {
     // Basic configuration
     editor.updateOptions({
       minimap: { enabled: false },
@@ -68,6 +70,19 @@ export function CodeEditor({
       wordWrap: "on",
       padding: { top: 16 },
       scrollBeyondLastLine: false,
+    })
+
+    // Command Bindings
+    // Run (Cmd+Enter)
+    if (onRun) {
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+        onRun()
+      })
+    }
+
+    // Save (Cmd+S) - Trigger Format
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      editor.getAction("editor.action.formatDocument")?.run()
     })
   }
 

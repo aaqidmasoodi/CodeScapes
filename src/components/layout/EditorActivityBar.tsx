@@ -2,16 +2,22 @@ import { Files, Search, Settings } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
-export type EditorTool = "explorer" | "search" | "settings" | null
+export type EditorTool = "explorer" | "search" | null
 
 interface EditorActivityBarProps {
   activeTool: EditorTool
   onToolSelect: (tool: EditorTool) => void
+  onSettingsClick: () => void
   className?: string
 }
 
-export function EditorActivityBar({ activeTool, onToolSelect, className }: EditorActivityBarProps) {
-  const tools = [
+export function EditorActivityBar({
+  activeTool,
+  onToolSelect,
+  onSettingsClick,
+  className,
+}: EditorActivityBarProps) {
+  const topTools = [
     { id: "explorer", icon: Files, label: "Explorer" },
     { id: "search", icon: Search, label: "Search" },
   ]
@@ -33,7 +39,7 @@ export function EditorActivityBar({ activeTool, onToolSelect, className }: Edito
       )}
     >
       <div className="flex flex-col items-center gap-2">
-        {tools.map((tool) => (
+        {topTools.map((tool) => (
           <Button
             key={tool.id}
             variant={activeTool === tool.id ? "secondary" : "ghost"}
@@ -56,6 +62,7 @@ export function EditorActivityBar({ activeTool, onToolSelect, className }: Edito
           size="icon"
           className="h-10 w-10 text-muted-foreground"
           title="Settings"
+          onClick={onSettingsClick}
         >
           <Settings className="h-5 w-5" />
         </Button>
