@@ -46,6 +46,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { LoadingOverlay } from "@/components/ui/spinner"
 
 // --- Helper for Persistence ---
 function usePersistentState<T>(
@@ -617,11 +618,8 @@ export default function ScapeEditor() {
     )
   if (!scape || !isInitialized)
     return (
-      <div className="flex h-screen items-center justify-center bg-background text-foreground">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-muted-foreground">Loading Scape...</p>
-        </div>
+      <div className="h-screen w-screen">
+        <LoadingOverlay message="Initializing Environment..." />
       </div>
     )
   if (!scape)
@@ -646,7 +644,7 @@ export default function ScapeEditor() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-xl font-bold text-transparent">
-                CodeScape Editor
+                CodeScapes Editor
               </span>
               <span className="border-l pl-2 text-sm font-medium text-muted-foreground">
                 {scape?.name}

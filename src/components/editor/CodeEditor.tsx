@@ -3,6 +3,7 @@ import { useTheme } from "@/components/theme-provider"
 import type { Problem } from "@/types/problem"
 import type { ScapeFile } from "@/types/file"
 import { useEffect, useRef } from "react"
+import { LoadingOverlay } from "@/components/ui/spinner"
 
 interface CodeEditorProps {
   initialValue?: string
@@ -124,6 +125,7 @@ export function CodeEditor({
         defaultLanguage={language}
         defaultValue={initialValue}
         theme={effectiveTheme}
+        loading={<LoadingOverlay message="Initializing Editor..." />}
         onMount={handleEditorDidMount}
         onChange={onChange}
         onValidate={(markers) => {
