@@ -96,9 +96,14 @@ export const PythonRunner = memo(
           sab = new SharedArrayBuffer(1024)
           sharedBufferRef.current = sab
           sharedArrayRef.current = new Int32Array(sab)
-        } catch {
-          console.error("SharedArrayBuffer creation failed. Ensure COOP/COEP headers are set.")
-          log("stderr", "Error: SharedArrayBuffer not supported. Input will fail.")
+        } catch (e) {
+          console.error("SharedArrayBuffer creation failed. Ensure COOP/COEP headers are set.", e)
+          const isIsolated =
+            typeof crossOriginIsolated !== "undefined" ? crossOriginIsolated : false
+          log(
+            "stderr",
+            `Error: SharedArrayBuffer not supported. Input will fail. (Isolated=${isIsolated}, Type=${typeof SharedArrayBuffer})`
+          )
         }
 
         const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
