@@ -202,9 +202,42 @@ self.onmessage = async (e: MessageEvent) => {
         builtins.input = _input
       `)
 
-      // 1. Write files to Virtual FS
+      // 1. Clean up Virtual FS (Remove old user files)
+      // Safer and Easier: Use Python to clean up the current directory
+      // This handles recursion and permissions cleanly and avoids missing definitions in PyodideInterface
+      await py.runPythonAsync(`
+        import os
+        import shutil
+        
+        # Keep internal pyodide stuff if any, generally safe to wipe .
+        for item in os.listdir('.'):
+            if item in ['.', '..']: continue
+            try:
+                if os.path.isfile(item) or os.path.islink(item):
+                    os.unlink(item)
+                elif os.path.isdir(item):
+                    shutil.rmtree(item)
+            except Exception as e:
+                pass
+      `)
+
+      // 2. Write files to Virtual FS
       postMessage({ type: "STATUS", payload: "Writing files..." })
+
+      // Sort files so folders/parents come first if possible, though mkdir -p handles it.
+      // Actually, standard naive approach works if we differentiate folders.
+
       for (const file of files) {
+        if (file.language === "folder") {
+          try {
+            py.FS.mkdir(file.name)
+          } catch {
+            // Ignore if exists
+          }
+          continue
+        }
+
+        // It's a file
         const parts = file.name.split("/")
         if (parts.length > 1) {
           let currentPath = ""
@@ -217,12 +250,22 @@ self.onmessage = async (e: MessageEvent) => {
             }
           }
         }
+
         let contentToWrite = file.content
         if (contentToWrite instanceof ArrayBuffer) {
           contentToWrite = new Uint8Array(contentToWrite)
         }
 
-        py.FS.writeFile(file.name, contentToWrite)
+        // Ensure we don't overwrite a directory with a file of same name (shouldn't happen with valid tree)
+        try {
+          py.FS.writeFile(file.name, contentToWrite)
+        } catch (err: any) {
+          // If 'FS error', it might be because a directory exists at this path?
+          // Or parent missing?
+          // We already tried to create parents.
+          console.warn(`Failed to write ${file.name}: ${err.message}`)
+          // Don't throw, let other files try to write
+        }
       }
 
       // 2. Run Entry Point

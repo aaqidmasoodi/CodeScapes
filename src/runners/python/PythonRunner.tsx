@@ -234,6 +234,7 @@ export const PythonRunner = memo(
             files: currentFiles.map((f) => ({
               name: f.name,
               content: f.content,
+              language: f.language,
             })),
             entryPoint,
           },
