@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Plus, Laptop, Cloud, Lock, Layout, Box, Paintbrush, Code2 } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 
 import {
   Dialog,
@@ -248,8 +249,16 @@ export function CreateScapeDialog() {
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
+
             <Button type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create Scape"}
+              {loading ? (
+                <>
+                  <Spinner size="sm" className="mr-2" />
+                  Creating...
+                </>
+              ) : (
+                "Create Scape"
+              )}
             </Button>
           </DialogFooter>
         </form>
