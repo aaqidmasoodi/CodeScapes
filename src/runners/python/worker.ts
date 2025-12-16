@@ -169,6 +169,16 @@ self.onmessage = async (e: MessageEvent) => {
         throw new Error("No files provided")
       }
 
+      // 0. Reset Environment (Clear previous variables)
+      // We explicitly keep 'micropip' as it is loaded in INIT and essential for package management.
+      // We do NOT need to keep 'sys' or other imports because re-importing them is fast (cached in sys.modules).
+      // We keep dunder methods and __builtins__.
+      await py.runPythonAsync(`
+        for name in list(globals().keys()):
+          if name not in ['__name__', '__doc__', '__package__', '__loader__', '__spec__', '__annotations__', '__builtins__', 'micropip']:
+            del globals()[name]
+      `)
+
       // 1. Write files to Virtual FS
       postMessage({ type: "STATUS", payload: "Writing files..." })
 
