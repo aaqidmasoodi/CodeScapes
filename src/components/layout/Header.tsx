@@ -14,7 +14,7 @@ export function Header({ actions, customTitle, endActions }: HeaderProps) {
           customTitle
         ) : (
           <span className="bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-xl font-bold text-transparent">
-            CodeScape
+            CodeScapes
           </span>
         )}
       </div>
