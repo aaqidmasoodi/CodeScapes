@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks"
 import { db } from "@/lib/db"
 import type { ScapeFile, FileType } from "@/types/file"
 
-export function useFileSystem(scapeId: number) {
+export function useFileSystem(scapeId: string | number) {
   const [files, setFiles] = useState<ScapeFile[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -79,7 +79,8 @@ export function useFileSystem(scapeId: number) {
 
       saveTimeoutRef.current[fileId] = setTimeout(async () => {
         await db.files.update(fileId, { content })
-        await db.scapes.update(scapeId, { updatedAt: new Date() })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await db.scapes.update(scapeId as any, { updatedAt: new Date() }) // Cast scapeId for update
         delete saveTimeoutRef.current[fileId]
       }, 500) // 500ms Debounce for DB writes
     },

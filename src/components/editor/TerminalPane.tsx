@@ -15,6 +15,7 @@ interface TerminalPaneProps {
   onClose?: () => void
   isCollapsed?: boolean
   files?: ScapeFile[]
+  scapeId?: string | number
   scapeName?: string
   onDeleteFile?: (path: string) => void
   outputLogs?: LogEntry[]
@@ -38,6 +39,7 @@ export function TerminalPane({
   isCollapsed = false,
   files = [],
   scapeName = "project",
+  scapeId,
   onDeleteFile,
   outputLogs = [],
   onExecCommand,
@@ -365,7 +367,23 @@ export function TerminalPane({
                   <>
                     <span className="text-green-500">➜</span>
                     <span className="whitespace-nowrap text-blue-500">
-                      ~/{scapeName?.replace(/\s+/g, "-").toLowerCase() || "project"}
+                      {(() => {
+                        const nameSlug = (scapeName || "project")
+                          .trim()
+                          .replace(/\s+/g, "-")
+                          .toLowerCase()
+                        let idSuffix = ""
+                        if (scapeId) {
+                          const idStr = String(scapeId)
+                          // if it looks like a UUID (long string), shorten it
+                          if (idStr.length > 10) {
+                            idSuffix = `-${idStr.slice(0, 8)}`
+                          } else {
+                            idSuffix = `-${idStr}`
+                          }
+                        }
+                        return `~/${nameSlug}${idSuffix}`
+                      })()}
                     </span>
                   </>
                 )}

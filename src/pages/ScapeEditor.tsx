@@ -96,12 +96,21 @@ const getLayout = (key: string, defaults: number[]) => {
 
 export default function ScapeEditor() {
   const { scapeId } = useParams()
-  // Force HMR update
-  const id = parseInt(scapeId || "0")
+  // POLYMORPHIC ID LOGIC:
+  // If the URL ID is numeric (e.g. "123"), treat it as a number (legacy).
+  // If `scapeId` is undefined/UUID, keep as string.
+  const rawId = scapeId || ""
+  const isNumericId = !isNaN(Number(rawId)) && rawId.trim() !== ""
+  const id = isNumericId ? Number(rawId) : rawId
 
   // Load Scape and Files
-  const scape = useLiveQuery(() => db.scapes.get(id), [id])
-  const { files, isInitialized, createFile, updateFile, deleteFile, bulkRename } = useFileSystem(id)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const scape = useLiveQuery(() => db.scapes.get(id as any), [id]) // Cast as any because Dexie get usually expects specific type, but Key is valid
+
+  const { files, isInitialized, createFile, updateFile, deleteFile, bulkRename } = useFileSystem(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    id as any
+  )
 
   // Local State
   // Preview Collapsed State (Lifted to top for safety)
@@ -853,6 +862,7 @@ export default function ScapeEditor() {
                                   isCollapsed={false}
                                   files={files}
                                   scapeName={scape?.name}
+                                  scapeId={id}
                                   onDeleteFile={deleteFileDirectly}
                                   outputLogs={outputLogs}
                                   onExecCommand={handleExecCommand}
@@ -872,6 +882,7 @@ export default function ScapeEditor() {
                               isCollapsed={true}
                               files={files}
                               scapeName={scape?.name}
+                              scapeId={id}
                               onDeleteFile={deleteFileDirectly}
                               outputLogs={outputLogs}
                               onExecCommand={handleExecCommand}

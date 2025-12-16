@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie"
 import type { EnvironmentId } from "@/types/environment"
 
 export interface Scape {
-  id: number
+  id: string | number
   name: string
   environment: EnvironmentId
   template: string // The ID of the template used (e.g. 'blank', 'threejs')
@@ -18,7 +18,7 @@ export interface Scape {
 
 export interface File {
   id: number
-  scapeId: number
+  scapeId: string | number
   name: string
   content: string
   language: string
@@ -94,8 +94,16 @@ db.version(5)
       })
   })
 
+// Version 6: Hybrid UUID Migration
+// We KEEP '++' to avoid "UpgradeError: Not yet support for changing primary key".
+// IndexedDB allows string keys in auto-increment tables if provided manually.
+db.version(6).stores({
+  scapes: "++id, name, environment, source, createdAt, updatedAt, *dependencies",
+  files: "++id, scapeId, name, [scapeId+name]",
+})
+
 // Helper to delete a scape and its files transactionally
-export async function deleteScape(id: number) {
+export async function deleteScape(id: string | number) {
   await db.transaction("rw", db.scapes, db.files, async () => {
     await db.files.where("scapeId").equals(id).delete()
     await db.scapes.delete(id)
