@@ -51,10 +51,19 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
       try {
         await pyodide.loadPackage(["micropip"])
       } catch {
+        // Fallback or retry
         await pyodide.loadPackage(["micropip"])
       }
 
-      // Verify micropip loading
+      // Install and patch pyodide-http to enable 'requests'
+      await pyodide.runPythonAsync(`
+        import micropip
+        await micropip.install('pyodide-http')
+        import pyodide_http
+        pyodide_http.patch_all()
+      `)
+
+      // Verify imports (optional but good for stability)
       await pyodide.runPythonAsync(`
         import sys
         import importlib
