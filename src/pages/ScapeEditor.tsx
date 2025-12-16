@@ -438,7 +438,7 @@ export default function ScapeEditor() {
       }
 
       // run
-      if (checkShortcut(e, "run")) {
+      if (checkShortcut(e, "run") || ((e.metaKey || e.ctrlKey) && e.key === "r")) {
         e.preventDefault()
         handleRun()
         return
