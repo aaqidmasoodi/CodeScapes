@@ -658,8 +658,11 @@ export default function ScapeEditor() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  if (!isRunning) setOutputLogs([]) // Clear output on start
-                  setIsRunning(!isRunning)
+                  if (isRunning) {
+                    setIsRunning(false)
+                  } else {
+                    handleRun()
+                  }
                 }}
                 className={cn(
                   "h-8 w-8 px-0 transition-colors",
