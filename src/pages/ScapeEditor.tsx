@@ -146,20 +146,6 @@ export default function ScapeEditor() {
   const mainLayoutGroupRef = useRef<ResizablePrimitive.ImperativePanelGroupHandle>(null)
   const previewPanelRef = useRef<ResizablePrimitive.ImperativePanelHandle>(null)
 
-  // Force strict layout when Sidebar opens
-  const lastActiveTool = useRef<string | null>(activeTool)
-  useEffect(() => {
-    if (!mainLayoutGroupRef.current) return
-
-    if (activeTool === "explorer") {
-      // Revert to user's preferred explorer width
-      const target = getSafeLayout()
-      mainLayoutGroupRef.current.setLayout(target)
-    }
-
-    lastActiveTool.current = activeTool
-  }, [activeTool])
-
   // Sync Preview Collapse State
   useEffect(() => {
     const checkPanel = () => {
@@ -745,7 +731,7 @@ export default function ScapeEditor() {
           ref={mainLayoutGroupRef}
           direction="horizontal"
           onLayout={(sizes) => {
-            if (sizes.length === 2 && activeTool === "explorer") {
+            if (sizes.length === 2 && activeTool) {
               const sidebarSize = sizes[0]
               if (sidebarSize >= SIDEBAR_MIN - 5 && sidebarSize <= SIDEBAR_MAX + 5) {
                 localStorage.setItem("codescape:layout:main", JSON.stringify(sizes))
