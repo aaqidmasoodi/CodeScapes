@@ -135,13 +135,21 @@ export function TerminalPane({
         setHistory([])
         break
       case "ls": {
-        const fileList = files
-          .map((f) => f.name)
-          .sort()
-          .join("\n")
+        const fileNames = files.map((f) => f.name).sort()
         setHistory((prev) => [
           ...prev,
-          { type: "output", content: <div className="text-blue-400">{fileList || "(empty)"}</div> },
+          {
+            type: "output",
+            content: (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-blue-400">
+                {fileNames.length > 0 ? (
+                  fileNames.map((name) => <span key={name}>{name}</span>)
+                ) : (
+                  <span>(empty)</span>
+                )}
+              </div>
+            ),
+          },
         ])
         break
       }
