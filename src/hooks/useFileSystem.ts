@@ -72,7 +72,7 @@ export function useFileSystem(scapeId: string | number) {
   const saveTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({})
 
   const saveContentToDb = useCallback(
-    (fileId: number, content: string) => {
+    (fileId: number, content: string | Blob | ArrayBuffer | Uint8Array) => {
       if (saveTimeoutRef.current[fileId]) {
         clearTimeout(saveTimeoutRef.current[fileId])
       }
@@ -90,7 +90,11 @@ export function useFileSystem(scapeId: string | number) {
   // --- Actions ---
 
   const createFile = useCallback(
-    async (name: string, language: FileType, content: string = "") => {
+    async (
+      name: string,
+      language: FileType,
+      content: string | Blob | ArrayBuffer | Uint8Array = ""
+    ) => {
       // Optimistic: We can't really do optimistic create easily because we need the ID from DB.
       // So we await DB. The `useEffect` above will handle adding it to state when it detects structure change.
       await db.files.add({
@@ -104,7 +108,7 @@ export function useFileSystem(scapeId: string | number) {
   )
 
   const updateFile = useCallback(
-    (name: string, content: string) => {
+    (name: string, content: string | Blob | ArrayBuffer | Uint8Array) => {
       setFiles((prev) =>
         prev.map((f) => {
           if (f.name === name) {

@@ -97,18 +97,35 @@ export const WebRunner = memo(
 
       files.forEach((file) => {
         let content = file.content
-        let type = "text/javascript"
+        let type = "application/octet-stream" // Default binary
 
-        if (file.name.endsWith(".js")) {
-          // Rewrite relative imports to bare imports
-          content = content.replace(/from\s+['"]\.\/([^'"]+)['"]/g, "from '$1'")
-          content = content.replace(/import\s+['"]\.\/([^'"]+)['"]/g, "import '$1'")
+        if (typeof content === "string") {
+          // Text Files
+          if (file.name.endsWith(".js")) {
+            type = "text/javascript"
+            // Rewrite relative imports to bare imports
+            content = content.replace(/from\s+['"]\.\/([^'"]+)['"]/g, "from '$1'")
+            content = content.replace(/import\s+['"]\.\/([^'"]+)['"]/g, "import '$1'")
+          } else if (file.name.endsWith(".css")) {
+            type = "text/css"
+          } else if (file.name.endsWith(".html")) {
+            type = "text/html"
+          } else if (file.name.endsWith(".json")) {
+            type = "application/json"
+          }
+        } else {
+          // Binary Files - Infer type from extension if possible
+          if (file.name.endsWith(".png")) type = "image/png"
+          else if (file.name.endsWith(".jpg") || file.name.endsWith(".jpeg")) type = "image/jpeg"
+          else if (file.name.endsWith(".svg")) type = "image/svg+xml"
+          else if (file.name.endsWith(".gif")) type = "image/gif"
+          else if (file.name.endsWith(".webp")) type = "image/webp"
+          else if (file.name.endsWith(".wasm")) type = "application/wasm"
         }
 
-        if (file.name.endsWith(".css")) type = "text/css"
-        if (file.name.endsWith(".html")) type = "text/html"
-
-        const blob = new Blob([content], { type })
+        // Uint8Array/ArrayBuffer is valid for Blob but TS definitions can be strict
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const blob = new Blob([content as any], { type })
         newUrls[file.name] = URL.createObjectURL(blob)
       })
 
@@ -131,6 +148,10 @@ export const WebRunner = memo(
         return `<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#666;">File '${activePreviewPath}' not found</div>`
       }
 
+      if (typeof htmlFile.content !== "string") {
+        return `<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#666;">Cannot render binary file '${activePreviewPath}' as HTML</div>`
+      }
+
       // Build Import Map
       const imports: Record<string, string> = {
         three: "https://esm.sh/three@0.160.0",
@@ -146,7 +167,7 @@ export const WebRunner = memo(
 
       const importMap = { imports }
 
-      let processedHtml = htmlFile.content
+      let processedHtml = htmlFile.content as string
 
       // Inject Import Map, WebGL Shim, and Navigation Interceptor
       const importMapScript = `
@@ -199,29 +220,55 @@ export const WebRunner = memo(
         processedHtml = importMapScript + processedHtml
       }
 
-      // Inject CSS Link Replacements
+      // Generic Replacer for src, href, and url()
+      const replaceUrl = (name: string) => {
+        const cleanName = name.replace(/^\.\//, "")
+        if (blobUrls[cleanName]) return blobUrls[cleanName]
+        return name // No match, return original
+      }
+
+      // Inject CSS Link Replacements (href)
       processedHtml = processedHtml.replace(
         /<link[^>]*href=["']([^"']+)["'][^>]*>/gi,
         (match, href) => {
-          const cleanName = href.replace(/^\.\//, "")
-          if (blobUrls[cleanName] && cleanName.endsWith(".css")) {
-            return `<link rel="stylesheet" href="${blobUrls[cleanName]}">`
-          }
-          return match
+          const newUrl = replaceUrl(href)
+          return match.replace(href, newUrl)
         }
       )
 
-      // Inject JS Script Replacements
+      // Inject JS Script Replacements (src)
       processedHtml = processedHtml.replace(
         /<script[^>]*src=["']([^"']+)["'][^>]*><\/script>/gi,
         (match, src) => {
-          const cleanName = src.replace(/^\.\//, "")
-          if (blobUrls[cleanName] && cleanName.endsWith(".js")) {
-            return match.replace(src, blobUrls[cleanName])
-          }
-          return match
+          const newUrl = replaceUrl(src)
+          return match.replace(src, newUrl)
         }
       )
+
+      // Inject Image Replacements (src)
+      processedHtml = processedHtml.replace(
+        /<img[^>]*src=["']([^"']+)["'][^>]*>/gi,
+        (match, src) => {
+          const newUrl = replaceUrl(src)
+          return match.replace(src, newUrl)
+        }
+      )
+
+      // Catch-all for other src elements (audio, video, source, iframe)
+      processedHtml = processedHtml.replace(
+        /<(audio|video|source|iframe|embed|object)[^>]*src=["']([^"']+)["'][^>]*>/gi,
+        (match, _tag, src) => {
+          const newUrl = replaceUrl(src)
+          return match.replace(src, newUrl)
+        }
+      )
+
+      // CSS url() replacements (e.g. background-image) - Simple regex, might need more robustness
+      // Looks for url('...') or url("...") or url(...)
+      processedHtml = processedHtml.replace(/url\(\s*['"]?([^'")]+)['"]?\s*\)/gi, (_match, url) => {
+        const newUrl = replaceUrl(url)
+        return `url('${newUrl}')`
+      })
 
       return processedHtml
     }, [files, blobUrls, activePreviewPath])

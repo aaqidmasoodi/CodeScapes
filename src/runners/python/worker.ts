@@ -217,7 +217,12 @@ self.onmessage = async (e: MessageEvent) => {
             }
           }
         }
-        py.FS.writeFile(file.name, file.content)
+        let contentToWrite = file.content
+        if (contentToWrite instanceof ArrayBuffer) {
+          contentToWrite = new Uint8Array(contentToWrite)
+        }
+
+        py.FS.writeFile(file.name, contentToWrite)
       }
 
       // 2. Run Entry Point

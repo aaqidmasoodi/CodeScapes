@@ -20,7 +20,7 @@ export interface File {
   id: number
   scapeId: string | number
   name: string
-  content: string
+  content: string | Blob | ArrayBuffer | Uint8Array
   language: string
 }
 

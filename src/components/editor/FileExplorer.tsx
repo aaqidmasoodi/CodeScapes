@@ -26,7 +26,11 @@ interface FileExplorerProps {
   activeFileId?: string
   onFileSelect: (file: ScapeFile) => void
   onToggleFolder: (path: string) => void
-  onCreateFile: (name: string) => void
+  onCreateFile: (
+    name: string,
+    type?: string,
+    content?: string | Blob | ArrayBuffer | Uint8Array
+  ) => void
   onCreateFolder: (name: string) => void
   onDelete: (path: string) => void
   onMove: (oldPath: string, newPath: string) => void
@@ -98,12 +102,17 @@ export function FileExplorer({
       return
     }
 
-    // Only allow dropping into folders
+    // If over a folder, target that folder
     if (node.type === "folder") {
       setDragOverNodeId(node.path)
       e.dataTransfer.dropEffect = "move"
     } else {
-      setDragOverNodeId(null)
+      // If over a file, target its parent folder
+      const parentPath = node.path.includes("/")
+        ? node.path.substring(0, node.path.lastIndexOf("/"))
+        : "root"
+      setDragOverNodeId(parentPath)
+      e.dataTransfer.dropEffect = "move"
     }
   }
 
@@ -112,18 +121,75 @@ export function FileExplorer({
     setDragOverNodeId(null)
   }
 
-  const handleDrop = (e: React.DragEvent, targetNode: FileNode | null) => {
+  const handleDrop = async (e: React.DragEvent, targetNode: FileNode | null) => {
     e.preventDefault()
     e.stopPropagation()
     setDragOverNodeId(null)
 
+    // Determine Target Path
+    let targetPath = ""
+    if (targetNode) {
+      if (targetNode.type === "folder") {
+        targetPath = targetNode.path
+      } else {
+        // Dropped on a file -> Goes to same folder
+        targetPath = targetNode.path.includes("/")
+          ? targetNode.path.substring(0, targetNode.path.lastIndexOf("/"))
+          : ""
+      }
+    }
+
+    // Check for Native Files first
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const filesList = Array.from(e.dataTransfer.files)
+
+      for (const file of filesList) {
+        // 1. Size Check (10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`File ${file.name} is too large (Max 10MB).`)
+          continue
+        }
+
+        // 2. Determine Type & Read Strategy
+        const isText =
+          file.type.startsWith("text/") ||
+          file.name.endsWith(".json") ||
+          file.name.endsWith(".js") ||
+          file.name.endsWith(".ts") ||
+          file.name.endsWith(".py") ||
+          file.name.endsWith(".md")
+
+        let content: string | ArrayBuffer
+        let fileType = "binary"
+
+        if (isText) {
+          content = await file.text()
+          // Infer simpler type for code editor support
+          if (file.name.endsWith(".html")) fileType = "html"
+          else if (file.name.endsWith(".css")) fileType = "css"
+          else if (file.name.endsWith(".json")) fileType = "json"
+          else if (file.name.endsWith(".md")) fileType = "markdown"
+          else if (file.name.endsWith(".py")) fileType = "python"
+          else if (file.name.endsWith(".js") || file.name.endsWith(".ts")) fileType = "javascript"
+          else fileType = "binary" // Fallback if unsure, but we read as text
+        } else {
+          // Binary (Images, WASM, etc.)
+          content = await file.arrayBuffer()
+          if (file.type.startsWith("image/")) fileType = "image"
+          else fileType = "binary"
+        }
+
+        // 3. Create File
+        const newPath = targetPath ? `${targetPath}/${file.name}` : file.name
+        onCreateFile(newPath, fileType, content)
+      }
+      return
+    }
+
+    // --- Internal App DnD (Moving Files) ---
     const sourcePath = e.dataTransfer.getData("text/plain")
 
-    // Strict Check: Can only drop into Folders or Root
-    if (targetNode && targetNode.type !== "folder") return
-
-    // Target path is empty string for root, or node.path
-    const targetPath = targetNode ? targetNode.path : ""
+    // Strict Check removed: Can drop on files (to resolve parent)
 
     if (!sourcePath) return
 
