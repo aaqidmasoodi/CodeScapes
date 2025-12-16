@@ -89,55 +89,98 @@ export const WebRunner = memo(
       }
     }, [files, activePreviewPath])
 
-    // 1. Create Blob URLs for all files
-    const [blobUrls, setBlobUrls] = useState<Record<string, string>>({})
+    // 1. Create Data URLs for all files (Support Credentialless Iframe)
+    const [assetUrls, setAssetUrls] = useState<Record<string, string>>({})
 
     useEffect(() => {
-      const newUrls: Record<string, string> = {}
+      let isMounted = true
 
-      files.forEach((file) => {
-        let content = file.content
-        let type = "application/octet-stream" // Default binary
+      const generateUrls = async () => {
+        const rawAssets: Record<string, string> = {}
+        const processedAssets: Record<string, string> = {}
 
-        if (typeof content === "string") {
-          // Text Files
-          if (file.name.endsWith(".js")) {
-            type = "text/javascript"
-            // Rewrite relative imports to bare imports
-            content = content.replace(/from\s+['"]\.\/([^'"]+)['"]/g, "from '$1'")
-            content = content.replace(/import\s+['"]\.\/([^'"]+)['"]/g, "import '$1'")
-          } else if (file.name.endsWith(".css")) {
-            type = "text/css"
-          } else if (file.name.endsWith(".html")) {
-            type = "text/html"
-          } else if (file.name.endsWith(".json")) {
-            type = "application/json"
-          }
-        } else {
-          // Binary Files - Infer type from extension if possible
+        // 1. Process Leaf Assets (Images, Fonts, WASM, JSON, etc.)
+        // These have no dependencies.
+        const leafFiles = files.filter(
+          (f) => !f.name.endsWith(".css") && !f.name.endsWith(".js") && !f.name.endsWith(".html")
+        )
+        const leafPromises = leafFiles.map(async (file) => {
+          let type = "application/octet-stream"
           if (file.name.endsWith(".png")) type = "image/png"
           else if (file.name.endsWith(".jpg") || file.name.endsWith(".jpeg")) type = "image/jpeg"
           else if (file.name.endsWith(".svg")) type = "image/svg+xml"
           else if (file.name.endsWith(".gif")) type = "image/gif"
           else if (file.name.endsWith(".webp")) type = "image/webp"
           else if (file.name.endsWith(".wasm")) type = "application/wasm"
+          else if (file.name.endsWith(".json")) type = "application/json"
+
+          let blob: Blob
+          if (typeof file.content === "string") {
+            blob = new Blob([file.content], { type })
+          } else {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            blob = new Blob([file.content as any], { type })
+          }
+
+          return new Promise<void>((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => {
+              if (reader.result && typeof reader.result === "string") {
+                rawAssets[file.name] = reader.result
+              }
+              resolve()
+            }
+            reader.readAsDataURL(blob)
+          })
+        })
+        await Promise.all(leafPromises)
+
+        // 2. Process CSS (Inject Leaf Assets)
+        const cssFiles = files.filter((f) => f.name.endsWith(".css"))
+        cssFiles.forEach((file) => {
+          let content = file.content as string
+          // Replace url('./asset.png') or url("asset.png") with Data URI
+          content = content.replace(
+            /url\(\s*['"]?(\.\/)?([^'")]+)['"]?\s*\)/gi,
+            (match, _dotSlash, name) => {
+              const cleanName = name // The regex group 2 captures the name
+              if (rawAssets[cleanName]) return `url('${rawAssets[cleanName]}')`
+              return match
+            }
+          )
+          // Convert to Base64
+          const encoded = btoa(unescape(encodeURIComponent(content)))
+          processedAssets[file.name] = `data:text/css;base64,${encoded}`
+        })
+
+        // 3. Process JS (Imports)
+        const jsFiles = files.filter((f) => f.name.endsWith(".js"))
+        jsFiles.forEach((file) => {
+          let content = file.content as string
+          // Try to handle imports?
+          // Ideally we replace imports with Data URIs too, but circular deps are hard.
+          // For now, simpler: just bare imports or blob imports if we had them.
+          // Since we use importmap, we don't need to replace imports in content generally,
+          // EXCEPT relative paths if we want them to work without importmap magic.
+          // But map handles "file.js".
+          // We do need to handle other assets in JS? No, usually handled by runtime fetch, which we can't easily patch inside strict syntax.
+
+          // Just rewrite relative imports for Module system
+          content = content.replace(/from\s+['"]\.\/([^'"]+)['"]/g, "from '$1'")
+          content = content.replace(/import\s+['"]\.\/([^'"]+)['"]/g, "import '$1'")
+
+          const encoded = btoa(unescape(encodeURIComponent(content)))
+          processedAssets[file.name] = `data:text/javascript;base64,${encoded}`
+        })
+
+        if (isMounted) {
+          setAssetUrls({ ...rawAssets, ...processedAssets })
         }
+      }
 
-        // Uint8Array/ArrayBuffer is valid for Blob but TS definitions can be strict
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const blob = new Blob([content as any], { type })
-        newUrls[file.name] = URL.createObjectURL(blob)
-      })
-
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setBlobUrls(newUrls)
-
-      // Cleanup with delay to prevent 404s on rapid reloads
+      generateUrls()
       return () => {
-        const urlsToRevoke = Object.values(newUrls)
-        setTimeout(() => {
-          urlsToRevoke.forEach((url) => URL.revokeObjectURL(url))
-        }, 5000)
+        isMounted = false
       }
     }, [files])
 
@@ -158,8 +201,8 @@ export const WebRunner = memo(
         "three/": "https://esm.sh/three@0.160.0/",
       }
 
-      // Map bare filenames to Blob URLs
-      Object.entries(blobUrls).forEach(([name, url]) => {
+      // Map bare filenames to Data URLs
+      Object.entries(assetUrls).forEach(([name, url]) => {
         if (name.endsWith(".js")) {
           imports[name] = url
         }
@@ -222,8 +265,19 @@ export const WebRunner = memo(
 
       // Generic Replacer for src, href, and url()
       const replaceUrl = (name: string) => {
+        // Strictly ignore external URLs and data URIs
+        if (
+          name.startsWith("http://") ||
+          name.startsWith("https://") ||
+          name.startsWith("//") ||
+          name.startsWith("data:") ||
+          name.startsWith("blob:")
+        ) {
+          return name
+        }
+
         const cleanName = name.replace(/^\.\//, "")
-        if (blobUrls[cleanName]) return blobUrls[cleanName]
+        if (assetUrls[cleanName]) return assetUrls[cleanName]
         return name // No match, return original
       }
 
@@ -249,6 +303,13 @@ export const WebRunner = memo(
       processedHtml = processedHtml.replace(
         /<img[^>]*src=["']([^"']+)["'][^>]*>/gi,
         (match, src) => {
+          // If external, add crossorigin="anonymous"
+          if (src.startsWith("http") || src.startsWith("//")) {
+            if (!match.includes("crossorigin")) {
+              return match.replace("<img", '<img crossorigin="anonymous"')
+            }
+            return match
+          }
           const newUrl = replaceUrl(src)
           return match.replace(src, newUrl)
         }
@@ -263,15 +324,14 @@ export const WebRunner = memo(
         }
       )
 
-      // CSS url() replacements (e.g. background-image) - Simple regex, might need more robustness
-      // Looks for url('...') or url("...") or url(...)
+      // CSS url() replacements in the HTML (style tags) - Simple regex
       processedHtml = processedHtml.replace(/url\(\s*['"]?([^'")]+)['"]?\s*\)/gi, (_match, url) => {
         const newUrl = replaceUrl(url)
         return `url('${newUrl}')`
       })
 
       return processedHtml
-    }, [files, blobUrls, activePreviewPath])
+    }, [files, assetUrls, activePreviewPath])
 
     return (
       <div className="flex h-full flex-col border-l bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -301,7 +361,9 @@ export const WebRunner = memo(
             title="preview"
             srcDoc={srcDoc}
             className="h-full w-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-modals allow-popups"
+            sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+            // @ts-expect-error - credentialless is a new feature for COEP isolation
+            credentialless="true"
           />
         </div>
       </div>
