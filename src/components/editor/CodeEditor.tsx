@@ -2,7 +2,7 @@ import Editor, { type OnMount, type OnValidate, useMonaco } from "@monaco-editor
 import { useTheme } from "@/components/theme-provider"
 import type { Problem } from "@/types/problem"
 import type { ScapeFile } from "@/types/file"
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 
 interface CodeEditorProps {
   initialValue?: string
@@ -25,6 +25,11 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const { theme } = useTheme()
   const monaco = useMonaco()
+  const onRunRef = useRef(onRun)
+
+  useEffect(() => {
+    onRunRef.current = onRun
+  }, [onRun])
 
   // Configure IntelliSense for multi-file support
   useEffect(() => {
@@ -76,7 +81,7 @@ export function CodeEditor({
     // Run (Cmd+Enter)
     if (onRun) {
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-        onRun()
+        onRunRef.current?.()
       })
     }
 

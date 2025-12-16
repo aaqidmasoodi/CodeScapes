@@ -1,10 +1,17 @@
-import { useRef, useEffect, useImperativeHandle, forwardRef, memo } from "react"
+import {
+  useEffect,
+  useRef,
+  useImperativeHandle,
+  forwardRef,
+  memo,
+  useState,
+  useCallback,
+} from "react"
 import { MonitorPlay, Box, PanelRightClose } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"
 import type { LogEntry } from "@/types/log"
-import PythonWorker from "./worker.ts?worker" // Vite Worker Import
 
 interface PythonRunnerProps {
   files: ScapeFile[]
@@ -12,168 +19,314 @@ interface PythonRunnerProps {
   onOutput?: (log: LogEntry) => void
   dependencies?: string[]
   onBusyChange?: (isBusy: boolean) => void
+  onInputRequest?: (prompt: string) => void
 }
-
-import { useState } from "react"
 
 export const PythonRunner = memo(
   forwardRef<ScapeRunnerHandle, PythonRunnerProps>(
-    ({ files, onOutput, onCollapse, dependencies = [], onBusyChange }, ref) => {
+    ({ files, onOutput, onCollapse, dependencies = [], onBusyChange, onInputRequest }, ref) => {
       const workerRef = useRef<Worker | null>(null)
-      // Preview Items: Can be { type: "image", content: string } or { type: "html", content: string }
+      const containerRef = useRef<HTMLDivElement>(null)
+      const isReadyRef = useRef(false)
+      const pendingRunRef = useRef(false)
+      const isBusyRef = useRef(false)
+
+      // Shared Buffer for Output/Input
+      const sharedBufferRef = useRef<SharedArrayBuffer | null>(null)
+      const sharedArrayRef = useRef<Int32Array | null>(null)
+
       const [previewItems, setPreviewItems] = useState<
         { type: "image" | "html"; content: string }[]
       >([])
       const pendingInstalls = useRef<
         Map<string, (result: { success: boolean; error?: string }) => void>
-      >(new Map()) // Map package name to resolver
+      >(new Map())
 
-      const [restartTrigger, setRestartTrigger] = useState(0)
+      // --- Stable Refs for Props ---
+      // We use refs to hold the latest prop values so our callbacks (runPython, initWorker)
+      // don't need to be re-created when props change. This breaks the infinite loop cycles.
+      const propsRef = useRef({
+        onOutput,
+        onBusyChange,
+        onInputRequest,
+        dependencies,
+        files,
+      })
 
-      // Expose handle (Thumbnail not supported yet for text output)
-      useImperativeHandle(ref, () => ({
-        captureThumbnail: async () => null,
-        restart: async () => {
-          onBusyChange?.(true)
-          setRestartTrigger((prev) => prev + 1)
-        },
-        installPackage: async (pkg: string) => {
-          if (!workerRef.current) return { success: false, error: "Worker not ready" }
-
-          // Installing is also a busy state
-          onBusyChange?.(true)
-
-          return new Promise<{ success: boolean; error?: string }>((resolve) => {
-            // Store resolver
-            pendingInstalls.current.set(pkg, (result) => {
-              onBusyChange?.(false)
-              resolve(result)
-            })
-
-            // Send Request
-            workerRef.current?.postMessage({
-              type: "INSTALL",
-              payload: pkg,
-            })
-
-            // Timeout fallback? (30s)
-            setTimeout(() => {
-              if (pendingInstalls.current.has(pkg)) {
-                pendingInstalls.current.get(pkg)?.({ success: false, error: "Timeout" })
-                pendingInstalls.current.delete(pkg)
-                onBusyChange?.(false)
-              }
-            }, 30000)
-          })
-        },
-      }))
-
-      // Initialize Worker
       useEffect(() => {
-        // Initial load is busy
-        onBusyChange?.(true)
+        propsRef.current = {
+          onOutput,
+          onBusyChange,
+          onInputRequest,
+          dependencies,
+          files,
+        }
+      }, [onOutput, onBusyChange, onInputRequest, dependencies, files])
 
-        // Spawn Worker
-        const worker = new PythonWorker()
+      // Forward declaration for initWorker to use
+      const runPythonRef = useRef<() => Promise<void>>(async () => {})
+
+      // --- Stable Helpers ---
+
+      const setBusy = useCallback((busy: boolean) => {
+        isBusyRef.current = busy
+        propsRef.current.onBusyChange?.(busy)
+      }, [])
+
+      const log = useCallback((type: "stdout" | "stderr" | "system", content: string) => {
+        propsRef.current.onOutput?.({
+          id: crypto.randomUUID(),
+          type,
+          content,
+          timestamp: Date.now(),
+        })
+      }, [])
+
+      // --- Stable Worker Init ---
+      // This function now has ZERO dependencies and never changes.
+      // It reads the latest dependencies from propsRef.
+      const initWorker = useCallback(() => {
+        if (workerRef.current) {
+          workerRef.current.terminate()
+        }
+
+        // Create SharedArrayBuffer
+        let sab: SharedArrayBuffer | null = null
+        try {
+          sab = new SharedArrayBuffer(1024)
+          sharedBufferRef.current = sab
+          sharedArrayRef.current = new Int32Array(sab)
+        } catch (e) {
+          console.error("SharedArrayBuffer creation failed. Ensure COOP/COEP headers are set.", e)
+          const isIsolated =
+            typeof crossOriginIsolated !== "undefined" ? crossOriginIsolated : false
+          log(
+            "stderr",
+            `Error: SharedArrayBuffer not supported. Input will fail. (Isolated=${isIsolated}, Type=${typeof SharedArrayBuffer})`
+          )
+        }
+
+        const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
         workerRef.current = worker
+        isReadyRef.current = false
+        setBusy(true)
 
         worker.onmessage = (e) => {
           const { type, payload } = e.data
 
-          if (type === "STATUS") {
-            // Status updates (kept internal for now)
-          } else if (type === "OUTPUT") {
-            onOutput?.({
-              id: crypto.randomUUID(),
-              type: "stdout",
-              content: payload,
-              timestamp: Date.now(),
-            })
-          } else if (type === "ERROR") {
-            // Error means execution stopped
-            onBusyChange?.(false)
-            onOutput?.({
-              id: crypto.randomUUID(),
-              type: "stderr",
-              content: payload,
-              timestamp: Date.now(),
-            })
-          } else if (type === "IMAGE") {
-            setPreviewItems((prev) => [...prev, { type: "image", content: payload }])
-          } else if (type === "PREVIEW_HTML") {
-            setPreviewItems((prev) => [...prev, { type: "html", content: payload }])
-          } else if (type === "DidRun") {
-            // Execution / Init finished
-            onBusyChange?.(false)
-          } else if (type === "INSTALL_SUCCESS") {
-            const pkg = payload
-            if (pendingInstalls.current.has(pkg)) {
-              pendingInstalls.current.get(pkg)?.({ success: true })
-              pendingInstalls.current.delete(pkg)
-            }
-          } else if (type === "INSTALL_ERROR") {
-            // Payload is now { pkg, error }
-            const { pkg, error } = payload
-            if (pendingInstalls.current.has(pkg)) {
-              pendingInstalls.current.get(pkg)?.({ success: false, error })
-              pendingInstalls.current.delete(pkg)
-            }
+          switch (type) {
+            case "STATUS":
+              // System logs suppressed for cleaner output
+              break
+            case "OUTPUT":
+              log("stdout", payload)
+              break
+            case "ERROR":
+              log("stderr", payload)
+              // Don't clear busy on simple stderr, only on finish/error
+              // Actually stderr usually means execution continues or finishes differently.
+              // We'll let DidRun clear the busy state.
+              if (payload.includes("Traceback") || payload.includes("Error")) {
+                // If it looks like a fatal error, maybe we should clear busy?
+                // Python usually sends DidRun after error too.
+              }
+              break
+            case "PREVIEW_HTML":
+              setPreviewItems((prev) => [...prev, { type: "html", content: payload }])
+              break
+            case "IMAGE":
+              setPreviewItems((prev) => [...prev, { type: "image", content: payload }])
+              break
+            case "DidRun":
+              setBusy(false)
+              if (!isReadyRef.current) {
+                isReadyRef.current = true
+                if (pendingRunRef.current) {
+                  pendingRunRef.current = false
+                  runPythonRef.current()
+                }
+              }
+              break
+            case "INSTALL_SUCCESS":
+              log("system", `Package ${payload} ready.`)
+              if (pendingInstalls.current.has(payload)) {
+                pendingInstalls.current.get(payload)?.({ success: true })
+                pendingInstalls.current.delete(payload)
+              }
+              setBusy(false)
+              break
+            case "INSTALL_ERROR":
+              setBusy(false)
+              if (payload && typeof payload === "object") {
+                const { pkg, error } = payload
+                if (pendingInstalls.current.has(pkg)) {
+                  pendingInstalls.current.get(pkg)?.({
+                    success: false,
+                    error,
+                  })
+                  pendingInstalls.current.delete(pkg)
+                }
+              }
+              break
+            case "INPUT_REQUEST":
+              propsRef.current.onInputRequest?.(payload)
+              break
           }
         }
 
-        // Initialize Pyodide with dependencies
-        // Use prop directly to ensure latest value is used (ref might be stale during effect execution)
-        worker.postMessage({ type: "INIT", payload: { dependencies } })
-
-        return () => {
-          worker.terminate()
-          workerRef.current = null
+        worker.onerror = (e) => {
+          log("stderr", `Worker Error: ${e.message}`)
+          setBusy(false)
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [restartTrigger, dependencies.join(",")]) // Run when restart triggered or deps change
 
-      const dependenciesKey = dependencies.join(",")
+        // Initialize with CURRENT dependencies
+        worker.postMessage({
+          type: "INIT",
+          payload: {
+            dependencies: propsRef.current.dependencies,
+            sharedBuffer: sab,
+          },
+        })
+      }, [log, setBusy])
 
-      // Handle File Changes (Run Code)
-      useEffect(() => {
-        if (!workerRef.current || files.length === 0) return
+      // --- Stable Run Logic ---
+      const runPython = useCallback(async () => {
+        const currentFiles = propsRef.current.files
+        if (!currentFiles.length) return
 
-        // NOTE: We do NOT trigger busy state here for auto-refresh
-        // as per user request to keep it subtle.
+        // 1. Check if busy -> Restart if so to clear input blocks
+        if (workerRef.current && isBusyRef.current) {
+          initWorker()
+          pendingRunRef.current = true
+          return
+        }
 
-        // Find entry point? Default main.py
-        // We pass all files and let worker handle FS
-        // We assume main.py is entry. Robustness: Fallback to first .py file?
-        const entryPoint = files.find((f) => f.name === "main.py")
+        // 2. Check if init -> Queue
+        if (!workerRef.current) {
+          initWorker()
+          pendingRunRef.current = true
+          return
+        }
+        if (!isReadyRef.current) {
+          pendingRunRef.current = true
+          return
+        }
+
+        const entryPoint = currentFiles.find((f) => f.name === "main.py")
           ? "main.py"
-          : files.find((f) => f.name.endsWith(".py"))?.name
+          : currentFiles.find((f) => f.name.endsWith(".py"))?.name
 
-        if (entryPoint) {
-          // Clear global logs? This is handled by ScapeEditor on Refresh/Run, but not necessarily on auto-update.
-          // For now we assume consistent flow.
-
-          workerRef.current.postMessage({
-            type: "RUN",
-            payload: {
-              files: files.map((f) => ({ name: f.name, content: f.content })),
-              entryPoint,
-            },
-          })
-          setPreviewItems([]) // Clear old previews
-        } else {
-          console.warn("No Python entry point found (main.py)")
+        if (!entryPoint) {
+          log("stderr", "No Python entry point found (e.g. main.py)")
+          return
         }
-      }, [files, dependenciesKey])
 
-      // Render Logic
+        setPreviewItems([])
+
+        if (sharedArrayRef.current) {
+          Atomics.store(sharedArrayRef.current, 0, 0)
+        }
+
+        setBusy(true)
+        workerRef.current.postMessage({
+          type: "RUN",
+          payload: {
+            files: currentFiles.map((f) => ({
+              name: f.name,
+              content: f.content,
+            })),
+            entryPoint,
+          },
+        })
+      }, [initWorker, log, setBusy])
+
+      // Keep ref updated
+      useEffect(() => {
+        runPythonRef.current = runPython
+      }, [runPython])
+
+      // --- Effects ---
+
+      // 1. Initialize on mount or when dependencies change (deeply)
+      const depsString = JSON.stringify(dependencies)
+      useEffect(() => {
+        initWorker()
+        return () => {
+          workerRef.current?.terminate()
+        }
+      }, [depsString, initWorker])
+
+      // 2. Run whenever files change
+      // depend on 'files' reference (updated by debouncing or manual refresh)
+      useEffect(() => {
+        // ESLint complains about setting state (busy) in effect, but we WANT to trigger a run on file change.
+        // eslint-disable-next-line
+        runPython()
+      }, [files, runPython])
+
+      // --- Handle ---
+      useImperativeHandle(ref, () => ({
+        captureThumbnail: async () => null,
+        restart: async () => {
+          initWorker()
+        },
+        installPackage: async (pkg) => {
+          return new Promise((resolve) => {
+            if (!workerRef.current) {
+              resolve({ success: false, error: "Runtime not ready" })
+              return
+            }
+            setBusy(true)
+            pendingInstalls.current.set(pkg, resolve)
+            workerRef.current.postMessage({
+              type: "INSTALL",
+              payload: pkg,
+            })
+            setTimeout(() => {
+              if (pendingInstalls.current.has(pkg)) {
+                pendingInstalls.current.get(pkg)?.({
+                  success: false,
+                  error: "Timeout",
+                })
+                pendingInstalls.current.delete(pkg)
+                setBusy(false)
+              }
+            }, 30000)
+          })
+        },
+        provideInput: (text: string) => {
+          if (!sharedBufferRef.current || !sharedArrayRef.current) return
+
+          const sab = sharedBufferRef.current
+          const int32 = sharedArrayRef.current
+
+          const encoder = new TextEncoder()
+          const bytes = encoder.encode(text)
+
+          if (bytes.length > 1000) {
+            log("stderr", "Input too long (max ~1000 bytes)")
+            return
+          }
+
+          int32[1] = bytes.length
+          const uint8 = new Uint8Array(sab)
+          uint8.set(bytes, 8)
+
+          Atomics.store(int32, 0, 1)
+          Atomics.notify(int32, 0)
+        },
+      }))
+
       return (
-        <div className="flex h-full flex-col border-l border-border bg-white dark:border-zinc-800 dark:bg-zinc-950">
+        <div
+          ref={containerRef}
+          className="flex h-full flex-col border-l border-border bg-background text-foreground dark:border-zinc-800"
+        >
           <div className="flex h-10 items-center justify-between border-b border-zinc-200 bg-muted/20 px-2 dark:border-zinc-800 dark:bg-zinc-900/50">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <MonitorPlay className="h-3.5 w-3.5" />
               <span className="max-w-[200px] truncate">Preview (Python)</span>
             </div>
-
             <div className="flex items-center gap-3">
               {onCollapse && (
                 <Button
@@ -210,8 +363,9 @@ export const PythonRunner = memo(
                     ) : (
                       <div
                         className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto rounded border border-border bg-card p-4 shadow-sm"
-                        dangerouslySetInnerHTML={{ __html: item.content }}
-                        // Pandas tables need some CSS injection to look good
+                        dangerouslySetInnerHTML={{
+                          __html: item.content,
+                        }}
                         style={{ width: "100%" }}
                       />
                     )}
@@ -220,59 +374,13 @@ export const PythonRunner = memo(
               </div>
             )}
           </div>
-          {/* Add basic styles for Pandas tables if needed via style tag or global CSS */}
+          {/* Styles for Pandas */}
           <style>{`
-            .dataframe {
-              width: 100%;
-              border-collapse: collapse;
-              border-spacing: 0;
-              font-size: 0.875rem; /* text-sm */
-              line-height: 1.25rem;
-            }
-            
-            /* Header Styling */
-            .dataframe thead th {
-              text-align: left;
-              padding: 0.75rem 1rem;
-              font-weight: 600;
-              color: var(--foreground);
-              background-color: var(--muted);
-              border-bottom: 2px solid var(--border);
-              white-space: nowrap;
-            }
-
-            /* Body Styling */
-            .dataframe tbody td {
-              padding: 0.75rem 1rem;
-              text-align: left;
-              border-bottom: 1px solid var(--border);
-              color: var(--foreground);
-              white-space: nowrap;
-              max-width: 300px;
-              overflow: hidden;
-              text-overflow: ellipsis;
-            }
-
-            /* Alternating Rows (Zebra Striping) */
-            .dataframe tbody tr:nth-child(even) {
-              background-color: hsl(var(--muted) / 0.3);
-            }
-
-            /* Hover Effect */
-            .dataframe tbody tr:hover {
-              background-color: hsl(var(--muted) / 0.6);
-            }
-
-            /* Index Column (optional, Pandas usually adds this) */
-            .dataframe tbody th {
-              font-weight: 500;
-              text-align: left;
-              padding: 0.75rem 1rem;
-              border-bottom: 1px solid var(--border);
-              background-color: transparent;
-              color: var(--muted-foreground);
-            }
-          `}</style>
+            .dataframe { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+            .dataframe thead th { text-align: left; padding: 0.5rem; background: var(--muted); border-bottom: 2px solid var(--border); }
+            .dataframe tbody td { padding: 0.5rem; border-bottom: 1px solid var(--border); }
+            .dataframe tbody tr:nth-child(even) { background: hsl(var(--muted)/0.3); }
+           `}</style>
         </div>
       )
     }

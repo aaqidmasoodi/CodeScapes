@@ -22,6 +22,8 @@ interface TerminalPaneProps {
     cmd: string,
     arg: string
   ) => Promise<{ success: boolean; warning?: string; error?: string }>
+  inputPrompt?: string | null
+  onInputSubmit?: (text: string) => void
 }
 
 type HistoryItem =
@@ -39,6 +41,8 @@ export function TerminalPane({
   onDeleteFile,
   outputLogs = [],
   onExecCommand,
+  inputPrompt,
+  onInputSubmit,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -60,6 +64,8 @@ export function TerminalPane({
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const outputBottomRef = useRef<HTMLDivElement>(null)
+  const outputInputRef = useRef<HTMLInputElement>(null)
+  const [programInput, setProgramInput] = useState("")
 
   // Auto-scroll
   useEffect(() => {
@@ -69,7 +75,12 @@ export function TerminalPane({
     if (activeTab === "output" && !isCollapsed) {
       outputBottomRef.current?.scrollIntoView({ behavior: "smooth" })
     }
-  }, [history, activeTab, isCollapsed, outputLogs])
+    // Focus output input if prompt exists
+    if (activeTab === "output" && inputPrompt && !isCollapsed) {
+      // We need a ref for this new input
+      setTimeout(() => outputInputRef.current?.focus(), 50)
+    }
+  }, [history, activeTab, isCollapsed, outputLogs, inputPrompt])
 
   // Focus input on click
   const handleContainerClick = () => {
@@ -395,6 +406,29 @@ export function TerminalPane({
                     {log.content}
                   </div>
                 ))
+              )}
+              {inputPrompt !== undefined && inputPrompt !== null && (
+                <div className="flex items-center">
+                  <span className="whitespace-pre-wrap">{inputPrompt}</span>
+                  <form
+                    className="flex-1"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      onInputSubmit?.(programInput)
+                      setProgramInput("")
+                    }}
+                  >
+                    <input
+                      ref={outputInputRef}
+                      type="text"
+                      value={programInput}
+                      onChange={(e) => setProgramInput(e.target.value)}
+                      className="w-full bg-transparent font-mono text-foreground outline-none"
+                      autoFocus
+                      autoComplete="off"
+                    />
+                  </form>
+                </div>
               )}
               <div ref={outputBottomRef} />
             </div>

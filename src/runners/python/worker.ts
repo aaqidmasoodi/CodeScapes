@@ -1,10 +1,7 @@
 /// <reference lib="webworker" />
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// Pyodide Worker
-// Handles Python execution in a separate thread
 
-// Import scripts is used for loading Pyodide from CDN
-// Types not strictly available in Worker scope without generic lib
+// Pyodide Worker
 
 interface PyodideInterface {
   runPythonAsync: (code: string) => Promise<any>
@@ -30,8 +27,6 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
     postMessage({ type: "STATUS", payload: "Loading Pyodide..." })
 
     try {
-      // Dynamic import for module worker support
-      // Using declaration in vite-env.d.ts to satisfy TS
       const { loadPyodide: pyodideLoader } =
         await import("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.mjs")
 
@@ -41,7 +36,6 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
 
       if (!pyodide) throw new Error("Failed to initialize Pyodide")
 
-      // Setup I/O
       pyodide.setStdout({
         batched: (msg: string) => {
           postMessage({ type: "OUTPUT", payload: msg })
@@ -53,12 +47,10 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
         },
       })
 
-      // Load Micropip
       postMessage({ type: "STATUS", payload: "Loading libraries..." })
       try {
         await pyodide.loadPackage(["micropip"])
       } catch {
-        // Retry?
         await pyodide.loadPackage(["micropip"])
       }
 
@@ -66,8 +58,6 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
       await pyodide.runPythonAsync(`
         import sys
         import importlib
-        
-        # Retry loop for micropip import
         import time
         for i in range(5):
             try:
@@ -91,17 +81,43 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
 }
 
 let readyPromise: Promise<void> = Promise.resolve()
+let sharedBuffer: SharedArrayBuffer | null = null
+let sharedArray: Int32Array | null = null
 
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload } = e.data
 
   if (type === "INIT") {
-    // We wrap the installation logic in a promise and assign it to readyPromise.
-    // We do NOT await it immediately at the top level here to allow the function
-    // to return control, but we update the global readyPromise so subsequent
-    // messages (like RUN) will wait for this chain.
+    if (payload.sharedBuffer) {
+      sharedBuffer = payload.sharedBuffer
+      sharedArray = new Int32Array(payload.sharedBuffer)
+    }
+
     const runInit = async () => {
       const py = await loadPyodide()
+
+      // Define blocking input function in JS
+      // Using self explicitly to attach to global scope for Pyodide access
+      ;(self as any).wait_for_input = () => {
+        if (!sharedArray || !sharedBuffer) return ""
+
+        // 0 = Initial/Waiting, 1 = Ready
+        Atomics.store(sharedArray, 0, 0)
+
+        // Wait until index 0 becomes non-zero (triggered by main thread)
+        Atomics.wait(sharedArray, 0, 0)
+
+        // Read text length from index 1
+        const len = sharedArray[1]
+
+        // Read bytes
+        const bytes = new Uint8Array(sharedBuffer, 8, len)
+        // Create a copy of the slice to avoid SharedArrayBuffer issues with TextDecoder
+        const bytesCopy = new Uint8Array(bytes)
+        const decoder = new TextDecoder()
+        return decoder.decode(bytesCopy)
+      }
+
       // Install initial dependencies
       if (
         payload.dependencies &&
@@ -125,10 +141,9 @@ self.onmessage = async (e: MessageEvent) => {
           })
         }
       }
-      postMessage({ type: "DidRun" }) // Signal ready
+      postMessage({ type: "DidRun" })
     }
 
-    // Chain to ensure order if multiple INITs (unlikely but safe)
     readyPromise = readyPromise.then(runInit)
     await readyPromise
   }
@@ -152,36 +167,43 @@ self.onmessage = async (e: MessageEvent) => {
         })
       }
     }
-    // Block subsequent runs on this install too
     readyPromise = readyPromise.then(runInstall)
     await readyPromise
   }
 
   if (type === "RUN") {
-    // Wait for any pending initialization or installation
-    await readyPromise
-
-    const { files, entryPoint } = payload
-    const py = await loadPyodide()
-
     try {
+      await readyPromise
+      const { files, entryPoint } = payload
+      const py = await loadPyodide()
+
       if (!files || !Array.isArray(files)) {
         throw new Error("No files provided")
       }
 
-      // 0. Reset Environment (Clear previous variables)
-      // We explicitly keep 'micropip' as it is loaded in INIT and essential for package management.
-      // We do NOT need to keep 'sys' or other imports because re-importing them is fast (cached in sys.modules).
-      // We keep dunder methods and __builtins__.
+      // 0. Reset Environment
       await py.runPythonAsync(`
         for name in list(globals().keys()):
           if name not in ['__name__', '__doc__', '__package__', '__loader__', '__spec__', '__annotations__', '__builtins__', 'micropip']:
             del globals()[name]
       `)
 
+      // 0.5 Patch Input
+      await py.runPythonAsync(`
+        import builtins
+        import js
+        
+        def _input(prompt=""):
+            # Do NOT print prompt here to avoid buffering issues.
+            # We send it to JS, which handles display and echoing.
+            js.postMessage(js.Object.fromEntries([["type", "INPUT_REQUEST"], ["payload", prompt]]))
+            return js.wait_for_input()
+            
+        builtins.input = _input
+      `)
+
       // 1. Write files to Virtual FS
       postMessage({ type: "STATUS", payload: "Writing files..." })
-
       for (const file of files) {
         const parts = file.name.split("/")
         if (parts.length > 1) {
@@ -191,7 +213,7 @@ self.onmessage = async (e: MessageEvent) => {
             try {
               py.FS.mkdir(currentPath)
             } catch {
-              // Ignore if exists
+              // Ignore
             }
           }
         }
@@ -200,13 +222,10 @@ self.onmessage = async (e: MessageEvent) => {
 
       // 2. Run Entry Point
       postMessage({ type: "STATUS", payload: `Running ${entryPoint}...` })
-
       const mainFile = files.find((f: any) => f.name === entryPoint)
-      if (!mainFile) {
-        throw new Error(`Entry point ${entryPoint} not found`)
-      }
+      if (!mainFile) throw new Error(`Entry point ${entryPoint} not found`)
 
-      // Preamble: Patch Matplotlib show()
+      // Preamble for Matplotlib
       const preamble = `
 import os
 import base64
@@ -222,7 +241,6 @@ try:
         plt.savefig(buf, format='png')
         buf.seek(0)
         img_str = base64.b64encode(buf.read()).decode('utf-8')
-        # Send image to JS
         import js
         js.postMessage(js.Object.fromEntries([['type', 'IMAGE'], ['payload', img_str]]))
         plt.close()
@@ -231,7 +249,6 @@ try:
 except ImportError:
     pass
 
-# Suppress SSL warnings in browser context (false alarms)
 try:
     import urllib3
     from urllib3.exceptions import InsecureRequestWarning
@@ -242,15 +259,11 @@ except ImportError:
       await py.runPythonAsync(preamble)
 
       // Execute User Code
-      // output handling is done via setStdout/setStderr
-      // runPythonAsync returns the result of the last expression
       const result = await py.runPythonAsync(mainFile.content)
 
-      // CHECK FOR RICH OUTPUT (Implicit Return)
+      // Rich Output Check
       if (result && typeof result === "object") {
         try {
-          // Check for _repr_html_ method (Jupyter standard)
-          // Note: Pyodide proxies have these methods if the python object has them
           if (result._repr_html_) {
             const html = result._repr_html_()
             postMessage({ type: "PREVIEW_HTML", payload: html })
@@ -258,14 +271,13 @@ except ImportError:
         } catch (e) {
           console.warn("Failed to extract rich repr", e)
         } finally {
-          // Important: Destroy the proxy to free memory
           result.destroy?.()
         }
       }
-
-      postMessage({ type: "DidRun" })
     } catch (error: any) {
       postMessage({ type: "ERROR", payload: error.message || String(error) })
+    } finally {
+      postMessage({ type: "DidRun" })
     }
   }
 }

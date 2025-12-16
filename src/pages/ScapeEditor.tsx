@@ -12,10 +12,6 @@ import { PreviewPane, type PreviewPaneHandle } from "@/components/editor/Preview
 import { PackagePane } from "@/components/editor/PackagePane"
 import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane"
 
-// ... (existing imports)
-
-// ... In Render ...
-
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
@@ -118,6 +114,7 @@ export default function ScapeEditor() {
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [outputLogs, setOutputLogs] = useState<LogEntry[]>([])
+  const [inputPrompt, setInputPrompt] = useState<string | null>(null)
 
   // --- PERSISTENT STATE ---
 
@@ -309,6 +306,7 @@ export default function ScapeEditor() {
 
   const handleManualRefresh = useCallback(() => {
     setOutputLogs([]) // Clear output
+    setInputPrompt(null) // Clear any pending input prompt
     setIsRefreshing(true)
     setDebouncedFiles([...files]) // Force new reference to ensure update
     setTimeout(() => setIsRefreshing(false), 500)
@@ -387,6 +385,41 @@ export default function ScapeEditor() {
     [handleExecCommand]
   )
 
+  const handleInputRequest = useCallback(
+    (prompt: string) => {
+      setInputPrompt(prompt)
+      setTerminalTab("output")
+      setIsTerminalOpen(true)
+    },
+    [setTerminalTab, setIsTerminalOpen]
+  )
+
+  const handleInputSubmit = useCallback(
+    async (text: string) => {
+      // 1. Echo to output (Prompt + Input + Newline)
+      setOutputLogs((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          type: "stdout",
+          // Echo the prompt sequence as if it was printed, then the input
+          content: (inputPrompt || "") + text + "\n",
+          timestamp: Date.now(),
+        },
+      ])
+
+      // 2. Clear Prompt
+      setInputPrompt(null)
+
+      // 3. Send to Runner
+      if (previewRef.current && "provideInput" in previewRef.current) {
+        // @ts-expect-error - Custom method on handle
+        await previewRef.current.provideInput(text)
+      }
+    },
+    [inputPrompt, setOutputLogs, setInputPrompt, previewRef]
+  )
+
   // --- GLOBAL SHORTCUTS ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -405,7 +438,7 @@ export default function ScapeEditor() {
       }
 
       // run
-      if (checkShortcut(e, "run")) {
+      if (checkShortcut(e, "run") || ((e.metaKey || e.ctrlKey) && e.key === "r")) {
         e.preventDefault()
         handleRun()
         return
@@ -455,7 +488,6 @@ export default function ScapeEditor() {
   const handleCreateFolder = async (folderName: string) => {
     if (!folderName) return
     if (files.some((f) => f.name === folderName)) return
-
     await createFile(folderName, "folder")
     // Auto-expand
     handleToggleFolder(folderName)
@@ -840,6 +872,8 @@ export default function ScapeEditor() {
                                   onDeleteFile={deleteFileDirectly}
                                   outputLogs={outputLogs}
                                   onExecCommand={handleExecCommand}
+                                  inputPrompt={inputPrompt}
+                                  onInputSubmit={handleInputSubmit}
                                 />
                               </ResizablePanel>
                             )}
@@ -857,6 +891,8 @@ export default function ScapeEditor() {
                               onDeleteFile={deleteFileDirectly}
                               outputLogs={outputLogs}
                               onExecCommand={handleExecCommand}
+                              inputPrompt={inputPrompt}
+                              onInputSubmit={handleInputSubmit}
                             />
                           </div>
                         )}
@@ -890,6 +926,7 @@ export default function ScapeEditor() {
                         onOutput={handleOutput}
                         dependencies={scape?.dependencies}
                         onBusyChange={setIsRunnerBusy}
+                        onInputRequest={handleInputRequest}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>

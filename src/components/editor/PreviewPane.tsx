@@ -21,6 +21,7 @@ interface PreviewPaneProps {
   isRunning: boolean
   dependencies?: string[]
   onBusyChange?: (isBusy: boolean) => void
+  onInputRequest?: (prompt: string) => void
 }
 
 // --- SWITCHBOARD ---
@@ -46,6 +47,12 @@ export const PreviewPane = memo(
       restart: async () => {
         if (isRunning && runnerRef.current?.restart) {
           await runnerRef.current.restart()
+        }
+      },
+      provideInput: async (text: string) => {
+        if (isRunning && runnerRef.current && "provideInput" in runnerRef.current) {
+          // @ts-expect-error - Custom method on extended handle
+          await runnerRef.current.provideInput(text)
         }
       },
     }))
@@ -95,6 +102,7 @@ export const PreviewPane = memo(
         onOutput={props.onOutput}
         dependencies={props.dependencies}
         onBusyChange={onBusyChange}
+        onInputRequest={props.onInputRequest}
         ref={runnerRef}
       />
     )

@@ -81,7 +81,7 @@ export function useFileSystem(scapeId: number) {
         await db.files.update(fileId, { content })
         await db.scapes.update(scapeId, { updatedAt: new Date() })
         delete saveTimeoutRef.current[fileId]
-      }, 2000) // 2s Debounce for DB writes
+      }, 500) // 500ms Debounce for DB writes
     },
     [scapeId]
   )
