@@ -6,7 +6,7 @@ test("Three.js Preview Renders Canvas", async ({ page }) => {
 
   // Create New Scape
   await page.getByRole("button", { name: "New Scape" }).first().click()
-  await page.getByRole("textbox", { name: "Scape Name" }).fill("E2E Test 3D")
+  await page.getByRole("textbox", { name: "Scape Name" }).fill("Test 3D")
   await page.getByText("3D graphics with Three.js").click()
   await page.getByRole("button", { name: "Create Scape" }).click()
 
