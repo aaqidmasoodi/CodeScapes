@@ -36,9 +36,11 @@ export const useAuth = create<AuthState>((set) => ({
 
 // Initialize Listener
 supabase.auth.getSession().then(({ data: { session } }) => {
+  console.log("Auth: Initial Session", session)
   useAuth.getState().setSession(session)
 })
 
-supabase.auth.onAuthStateChange((_event, session) => {
+supabase.auth.onAuthStateChange((event, session) => {
+  console.log("Auth: State Change", event, session)
   useAuth.getState().setSession(session)
 })
