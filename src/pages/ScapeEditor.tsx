@@ -20,6 +20,7 @@ import { useFileSystem } from "@/hooks/useFileSystem"
 import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
+import { getLanguageFromFilename } from "@/lib/language-utils"
 import {
   MonitorPlay,
   Zap,
@@ -493,11 +494,8 @@ export default function ScapeEditor() {
     if (type) {
       language = type as ScapeFile["language"]
     } else {
-      language = fileName.endsWith(".css")
-        ? "css"
-        : fileName.endsWith(".html")
-          ? "html"
-          : "javascript"
+      // Use our new robust utility
+      language = getLanguageFromFilename(fileName) as ScapeFile["language"]
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

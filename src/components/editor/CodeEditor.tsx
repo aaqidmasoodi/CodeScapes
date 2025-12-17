@@ -1,4 +1,5 @@
 import Editor, { type OnMount, type OnValidate, useMonaco } from "@monaco-editor/react"
+import { emmetHTML, emmetCSS } from "emmet-monaco-es"
 import { useTheme } from "@/components/theme-provider"
 import type { Problem } from "@/types/problem"
 import type { ScapeFile } from "@/types/file"
@@ -50,6 +51,10 @@ export function CodeEditor({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tsDefaults = (monaco.languages.typescript as any).javascriptDefaults
 
+    // Only configure TS defaults if we are in a JS/TS environment to avoid overhead
+    // or potential conflicts (though monaco handles this globally).
+    // The main issue was CSVs being treated as JS. Now that we have proper language detection,
+    // this is safer, but let's be explicit.
     tsDefaults.setCompilerOptions({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       target: (monaco.languages.typescript as any).ScriptTarget.ES2020,
@@ -77,6 +82,21 @@ export function CodeEditor({
       padding: { top: 16 },
       scrollBeyondLastLine: false,
     })
+
+    // Dispose any previous emmet instance (if any)
+    // Monaco-emmet-es doesn't have a clean dispose method exposed easily on the global instance
+    // but re-registering usually overwrites.
+    // However, we should be careful.
+    if (language === "html" || language === "php") {
+      emmetHTML(monaco)
+    } else if (language === "css" || language === "scss" || language === "less") {
+      emmetCSS(monaco)
+    } else if (language === "javascript" || language === "typescript") {
+      // JSX / TSX Emmet support
+      if (fileName.endsWith(".jsx") || fileName.endsWith(".tsx")) {
+        emmetHTML(monaco)
+      }
+    }
 
     // Command Bindings
     // Run (Cmd+Enter)
