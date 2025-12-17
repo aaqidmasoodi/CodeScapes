@@ -16,10 +16,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
-import { db } from "@/lib/db"
 import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
 import type { EnvironmentId } from "@/types/environment"
+import { useAuth } from "@/hooks/useAuth"
+import { LocalRepository } from "@/lib/repositories/LocalRepository"
+import { CloudRepository } from "@/lib/repositories/CloudRepository"
 
 export function CreateScapeDialog() {
   const navigate = useNavigate()
@@ -32,8 +34,9 @@ export function CreateScapeDialog() {
   const [source, setSource] = useState<"local" | "cloud">("local")
   const [loading, setLoading] = useState(false)
 
-  // Auth placeholder
-  const isAuthenticated = false
+  // Real Auth
+  const { user } = useAuth()
+  const isAuthenticated = !!user
 
   // Reset template when env changes
   useEffect(() => {
@@ -57,28 +60,31 @@ export function CreateScapeDialog() {
       // Create Scape (Hybrid: New ones use UUIDs)
       const newId = crypto.randomUUID()
 
-      await db.scapes.add({
+      const repo = source === "cloud" ? new CloudRepository() : new LocalRepository()
+
+      await repo.saveScape({
         id: newId,
         name: name.trim(),
         environment: selectedEnv,
         template: templateConfig.id,
         source: source,
-        syncStatus: "offline",
+        authorId: user?.id,
+        syncStatus: source === "cloud" ? "synced" : "offline",
         createdAt: new Date(),
         updatedAt: new Date(),
-        thumbnail: undefined,
-        dependencies: [],
       })
 
       // Add default files from template
       if (templateConfig.files) {
         const filesToAdd = templateConfig.files.map((f) => ({
+          id: crypto.randomUUID(),
           scapeId: newId,
           name: f.name,
           content: f.content,
           language: f.language || "plaintext",
-        }))
-        await db.files.bulkAdd(filesToAdd)
+        })) as (import("@/types/file").ScapeFile & { scapeId: string })[] // Cast to satisfy repo interface
+
+        await repo.bulkCreateFiles(filesToAdd)
       }
 
       setOpen(false)
@@ -224,15 +230,14 @@ export function CreateScapeDialog() {
 
                 <Card
                   className={cn(
-                    "relative cursor-pointer p-3 transition-all",
+                    "relative p-3 transition-all",
                     source === "cloud"
                       ? "border-primary bg-primary/5 ring-1 ring-primary"
                       : "hover:border-primary/50",
-                    !isAuthenticated && "opacity-70"
+                    !isAuthenticated ? "cursor-not-allowed opacity-70" : "cursor-pointer"
                   )}
                   onClick={() => {
                     if (isAuthenticated) setSource("cloud")
-                    else alert("CodeScape Cloud Coming Soon")
                   }}
                 >
                   <div className="flex items-center gap-3">

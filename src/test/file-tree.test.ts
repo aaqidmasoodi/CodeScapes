@@ -10,8 +10,8 @@ describe("buildFileTree", () => {
 
   it("should create a flat list of files", () => {
     const files: ScapeFile[] = [
-      { id: 1, name: "index.html", language: "html", content: "" },
-      { id: 2, name: "style.css", language: "css", content: "" },
+      { id: "1", name: "index.html", language: "html", content: "" },
+      { id: "2", name: "style.css", language: "css", content: "" },
     ]
     const result = buildFileTree(files)
     expect(result).toHaveLength(2)
@@ -21,8 +21,8 @@ describe("buildFileTree", () => {
 
   it("should nest files inside folders", () => {
     const files: ScapeFile[] = [
-      { id: 1, name: "src", language: "folder", content: "" },
-      { id: 2, name: "src/main.ts", language: "javascript", content: "" },
+      { id: "1", name: "src", language: "folder", content: "" },
+      { id: "2", name: "src/main.ts", language: "javascript", content: "" },
     ]
     // Note: The input to buildFileTree currently expects the folder to exist explicitly if we want it to be a folder type node
 
@@ -41,7 +41,7 @@ describe("buildFileTree", () => {
     // Our current implementation might put it at root or create implicit folder.
     // Let's verify current behavior.
     const files: ScapeFile[] = [
-      { id: 1, name: "components/Button.tsx", language: "javascript", content: "" },
+      { id: "1", name: "components/Button.tsx", language: "javascript", content: "" },
     ]
     const result = buildFileTree(files)
 
@@ -57,8 +57,8 @@ describe("buildFileTree", () => {
 
   it("should sort folders before files", () => {
     const files: ScapeFile[] = [
-      { id: 1, name: "utils.js", language: "javascript", content: "" },
-      { id: 2, name: "assets", language: "folder", content: "" },
+      { id: "1", name: "utils.js", language: "javascript", content: "" },
+      { id: "2", name: "assets", language: "folder", content: "" },
     ]
     const result = buildFileTree(files)
 

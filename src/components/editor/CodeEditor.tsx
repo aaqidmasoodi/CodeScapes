@@ -123,7 +123,8 @@ export function CodeEditor({
       <Editor
         height="100%"
         defaultLanguage={language}
-        defaultValue={initialValue}
+        // Controlled value for Real-time Sync
+        value={initialValue}
         theme={effectiveTheme}
         loading={<LoadingOverlay message="Initializing Editor..." />}
         onMount={handleEditorDidMount}
@@ -137,6 +138,7 @@ export function CodeEditor({
         }}
         options={{
           automaticLayout: true,
+          // Prevent cursor jumping if possible (Monaco handles this relatively well)
         }}
       />
     </div>

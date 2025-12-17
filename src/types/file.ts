@@ -10,7 +10,7 @@ export type FileType =
   | "binary"
 
 export interface ScapeFile {
-  id?: number
+  id?: string // Changed from number to string (UUID)
   name: string
   content: string | Blob | ArrayBuffer | Uint8Array
   language: FileType

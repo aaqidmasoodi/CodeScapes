@@ -1,6 +1,5 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useLiveQuery } from "dexie-react-hooks"
 import {
   Search,
   Globe,
@@ -32,23 +31,30 @@ import {
 import { CreateScapeDialog } from "@/components/dashboard/CreateScapeDialog"
 import { Header } from "@/components/layout/Header"
 import { Sidebar } from "@/components/layout/Sidebar"
-import { db, deleteScape, type Scape } from "@/lib/db"
+import { type Scape } from "@/lib/db"
+import { useScapes } from "@/hooks/useScapes"
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState("dashboard")
+  const [activeTab, setActiveTab] = useState("local_scapes")
   const [searchQuery, setSearchQuery] = useState("")
 
   // Delete Modal State
   const [scapeToDelete, setScapeToDelete] = useState<Scape | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
 
-  // Real data from Dexie
-  const myScapes = useLiveQuery(() => db.scapes.orderBy("createdAt").reverse().toArray())
+  // Real data from Hooks
+  const { scapes: myScapes, deleteScape } = useScapes()
 
-  const filteredScapes = myScapes?.filter((scape) =>
-    scape.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredScapes = myScapes?.filter((scape) => {
+    const matchesSearch = scape.name.toLowerCase().includes(searchQuery.toLowerCase())
+    if (!matchesSearch) return false
+
+    // Tab Filtering
+    if (activeTab === "local_scapes") return scape.source === "local"
+    if (activeTab === "cloud_scapes") return scape.source === "cloud"
+    return false
+  })
 
   const handleDeleteClick = (e: React.MouseEvent, scape: Scape) => {
     e.stopPropagation()
@@ -59,7 +65,7 @@ export default function Dashboard() {
   const confirmDelete = async () => {
     if (!scapeToDelete) return
 
-    await deleteScape(scapeToDelete.id!)
+    await deleteScape(scapeToDelete)
     setScapeToDelete(null)
     setDeleteConfirmation("")
   }
@@ -91,14 +97,20 @@ export default function Dashboard() {
       )
     }
 
-    // Default: My Scapes (Dashboard)
+    // Default: My Scapes (Dashboard) - Now Local or Cloud
+    const isCloud = activeTab === "cloud_scapes"
+
     return (
       <div className="flex h-full flex-col bg-background">
         {/* Toolbar */}
         <div className="sticky top-0 z-10 flex flex-col gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">My Scapes</h1>
-            <p className="text-sm text-muted-foreground">Manage your local projects</p>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {isCloud ? "Cloud Scapes" : "Local Scapes"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {isCloud ? "Manage your cloud projects" : "Manage your local projects"}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative w-full md:w-64">
