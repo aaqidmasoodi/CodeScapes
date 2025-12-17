@@ -226,15 +226,14 @@ export function CreateScapeDialog() {
 
                 <Card
                   className={cn(
-                    "relative cursor-pointer p-3 transition-all",
+                    "relative transition-all",
                     source === "cloud"
                       ? "border-primary bg-primary/5 ring-1 ring-primary"
                       : "hover:border-primary/50",
-                    !isAuthenticated && "opacity-70"
+                    !isAuthenticated ? "cursor-not-allowed opacity-60" : "cursor-pointer"
                   )}
                   onClick={() => {
                     if (isAuthenticated) setSource("cloud")
-                    else alert("CodeScape Cloud Coming Soon")
                   }}
                 >
                   <div className="flex items-center gap-3">
@@ -247,8 +246,8 @@ export function CreateScapeDialog() {
                     </div>
                   </div>
                   {!isAuthenticated && (
-                    <div className="absolute right-2 top-2">
-                      <Lock className="h-3 w-3 text-muted-foreground" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-[1px]">
+                      <Lock className="h-4 w-4 text-muted-foreground" />
                     </div>
                   )}
                 </Card>
