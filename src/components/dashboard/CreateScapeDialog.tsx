@@ -226,11 +226,11 @@ export function CreateScapeDialog() {
 
                 <Card
                   className={cn(
-                    "relative transition-all",
+                    "relative p-3 transition-all",
                     source === "cloud"
                       ? "border-primary bg-primary/5 ring-1 ring-primary"
                       : "hover:border-primary/50",
-                    !isAuthenticated ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                    !isAuthenticated ? "cursor-not-allowed opacity-70" : "cursor-pointer"
                   )}
                   onClick={() => {
                     if (isAuthenticated) setSource("cloud")
