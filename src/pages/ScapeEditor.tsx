@@ -21,16 +21,7 @@ import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { getLanguageFromFilename } from "@/lib/language-utils"
-import {
-  MonitorPlay,
-  Zap,
-  LogOut,
-  PanelRightOpen,
-  Play,
-  Square,
-  RotateCw,
-  Loader2,
-} from "lucide-react"
+import { Zap, LogOut, PanelRightOpen, Play, Square, RotateCw, Loader2 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
@@ -738,14 +729,7 @@ export default function ScapeEditor() {
                 )}
               </Button>
             </div>
-            <Button
-              variant={isPreviewOpen ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setIsPreviewOpen(!isPreviewOpen)}
-            >
-              <MonitorPlay className="mr-2 h-4 w-4" />
-              Preview
-            </Button>
+
             <Button size="sm">
               <Zap className="mr-2 h-4 w-4" />
               Deploy
