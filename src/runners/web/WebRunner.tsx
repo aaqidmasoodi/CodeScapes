@@ -80,7 +80,7 @@ export const WebRunner = memo(
         <div className="flex h-10 items-center justify-between border-b border-border bg-muted/20 px-2 dark:border-zinc-800">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <MonitorPlay className="h-3.5 w-3.5" />
-            <span className="max-w-[200px] truncate">Preview (SW Mode)</span>
+            <span className="max-w-[200px] truncate">Preview (Web)</span>
           </div>
 
           <div className="flex items-center gap-3">
