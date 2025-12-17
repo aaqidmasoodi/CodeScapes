@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test"
 
 test("Theme Toggle correctly sets Dark Mode", async ({ page }) => {
   // 1. Your Navigation (Recorded)
-  await page.goto("http://localhost:5173/dashboard")
+  await page.goto("/dashboard")
   await page.getByRole("button", { name: "Toggle theme" }).click()
   await page.getByRole("menuitem", { name: "Dark" }).click()
 

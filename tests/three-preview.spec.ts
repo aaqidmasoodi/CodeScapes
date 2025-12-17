@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test"
 
 test("Three.js Preview Renders Canvas", async ({ page }) => {
   // 1. Navigation & Creation (From your recording)
-  await page.goto("http://localhost:5173/dashboard")
+  await page.goto("/dashboard")
 
   // Create New Scape
   await page.getByRole("button", { name: "New Scape" }).first().click()
