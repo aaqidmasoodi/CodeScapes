@@ -746,10 +746,9 @@ export default function ScapeEditor() {
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    const entry = files.find((f) => f.name === "index.html")
-                      ? "index.html"
-                      : files[0]?.name || "index.html"
-                    window.open(`/preview-v3/${entry}`, "_blank")
+                    // Open the unified runner/player page
+                    // This handles local/cloud fetching and VFS hydration automatically
+                    window.open(`/run/${scape.id}`, "_blank")
                   }}
                 >
                   <MonitorPlay className="mr-2 h-4 w-4" />

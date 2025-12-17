@@ -5,6 +5,8 @@ import ScapeEditor from "@/pages/ScapeEditor"
 
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 
+import ScapeRunnerPage from "@/pages/ScapeRunnerPage" // Lazy load? Standard import for now
+
 function App() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -14,6 +16,7 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/scape/:scapeId" element={<ScapeEditor />} />
+            <Route path="/run/:scapeId" element={<ScapeRunnerPage />} />
           </Routes>
         </BrowserRouter>
       </ErrorBoundary>
