@@ -20,6 +20,7 @@ import { db } from "@/lib/db"
 import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
 import type { EnvironmentId } from "@/types/environment"
+import { useAuth } from "@/hooks/useAuth"
 
 export function CreateScapeDialog() {
   const navigate = useNavigate()
@@ -32,8 +33,9 @@ export function CreateScapeDialog() {
   const [source, setSource] = useState<"local" | "cloud">("local")
   const [loading, setLoading] = useState(false)
 
-  // Auth placeholder
-  const isAuthenticated = false
+  // Real Auth
+  const { user } = useAuth()
+  const isAuthenticated = !!user
 
   // Reset template when env changes
   useEffect(() => {
@@ -63,11 +65,10 @@ export function CreateScapeDialog() {
         environment: selectedEnv,
         template: templateConfig.id,
         source: source,
-        syncStatus: "offline",
+        authorId: user?.id,
+        syncStatus: source === "cloud" ? "dirty" : "offline",
         createdAt: new Date(),
         updatedAt: new Date(),
-        thumbnail: undefined,
-        dependencies: [],
       })
 
       // Add default files from template
