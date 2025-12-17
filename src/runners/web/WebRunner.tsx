@@ -18,48 +18,9 @@ export const WebRunner = memo(
   forwardRef<ScapeRunnerHandle, WebRunnerProps>(({ files, onCollapse }, ref) => {
     const iframeRef = useRef<HTMLIFrameElement>(null)
 
-    useImperativeHandle(ref, () => ({
-      captureThumbnail: async () => {
-        const iframe = iframeRef.current
-        if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) return null
-
-        try {
-          // OPTIMIZATION: If the scape has a <canvas> (WebGL/Three.js/p5.js),
-          // capture it directly! It's faster and avoids CSS parsing issues.
-          const canvasEl = iframe.contentDocument.querySelector("canvas")
-          if (canvasEl) {
-            return canvasEl.toDataURL("image/jpeg", 0.7)
-          }
-
-          // Fallback: Use html2canvas for HTML/CSS scapes
-          const canvas = await html2canvas(iframe.contentDocument.body, {
-            useCORS: true,
-            logging: false,
-            ignoreElements: (element) => element.tagName === "SCRIPT" || element.tagName === "LINK", // Avoid parsing external resources if possible
-          })
-          return canvas.toDataURL("image/jpeg", 0.7)
-        } catch {
-          return null
-        }
-      },
-      restart: async () => {
-        if (iframeRef.current) {
-          // Force reload by resetting srcdoc
-          // (Changing key might be cleaner, but simple re-assignment often works if content changed)
-          // Actually, we rely on the srcDoc dependency array in the hook below.
-          // But if we want to force a "reload" animation or state reset:
-          const currentSrcDoc = iframeRef.current.srcdoc
-          iframeRef.current.srcdoc = ""
-          setTimeout(() => {
-            if (iframeRef.current) iframeRef.current.srcdoc = currentSrcDoc
-          }, 10)
-        }
-      },
-      installPackage: async () => ({ success: false, error: "Not supported in Web environment" }),
-    }))
-
-    // Navigation State
     const [activePreviewPath, setActivePreviewPath] = useState("index.html")
+    const [refreshKey, setRefreshKey] = useState(0)
+    const [assetsReady, setAssetsReady] = useState(false)
 
     // Listen for navigation requests from the iframe
     useEffect(() => {
@@ -94,6 +55,8 @@ export const WebRunner = memo(
 
     useEffect(() => {
       let isMounted = true
+      // eslint-disable-next-line
+      setAssetsReady(false)
 
       const generateUrls = async () => {
         const rawAssets: Record<string, string> = {}
@@ -175,6 +138,7 @@ export const WebRunner = memo(
 
         if (isMounted) {
           setAssetUrls({ ...rawAssets, ...processedAssets })
+          setAssetsReady(true)
         }
       }
 
@@ -186,6 +150,14 @@ export const WebRunner = memo(
 
     // 2. Construct the HTML
     const srcDoc = useMemo(() => {
+      // Don't build srcDoc until assets are ready to avoid 404s/flashes
+      if (
+        !assetsReady &&
+        files.some((f) => f.name.match(/\.(png|jpg|jpeg|gif|wasm|json|css|js)$/))
+      ) {
+        return ""
+      }
+
       const htmlFile = files.find((f) => f.name === activePreviewPath)
       if (!htmlFile) {
         return `<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#666;">File '${activePreviewPath}' not found</div>`
@@ -331,7 +303,38 @@ export const WebRunner = memo(
       })
 
       return processedHtml
-    }, [files, assetUrls, activePreviewPath])
+    }, [files, assetUrls, activePreviewPath, assetsReady])
+
+    useImperativeHandle(ref, () => ({
+      captureThumbnail: async () => {
+        const iframe = iframeRef.current
+        if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) return null
+
+        try {
+          // OPTIMIZATION: If the scape has a <canvas> (WebGL/Three.js/p5.js),
+          // capture it directly! It's faster and avoids CSS parsing issues.
+          const canvasEl = iframe.contentDocument.querySelector("canvas")
+          if (canvasEl) {
+            return canvasEl.toDataURL("image/jpeg", 0.7)
+          }
+
+          // Fallback: Use html2canvas for HTML/CSS scapes
+          const canvas = await html2canvas(iframe.contentDocument.body, {
+            useCORS: true,
+            logging: false,
+            ignoreElements: (element) => element.tagName === "SCRIPT" || element.tagName === "LINK", // Avoid parsing external resources if possible
+          })
+          return canvas.toDataURL("image/jpeg", 0.7)
+        } catch {
+          return null
+        }
+      },
+      restart: async () => {
+        // Force full re-mount of iframe
+        setRefreshKey((prev) => prev + 1)
+      },
+      installPackage: async () => ({ success: false, error: "Not supported in Web environment" }),
+    }))
 
     return (
       <div className="flex h-full flex-col border-l bg-white dark:border-zinc-800 dark:bg-zinc-950">
@@ -355,16 +358,23 @@ export const WebRunner = memo(
             )}
           </div>
         </div>
-        <div className="flex-1 bg-white">
-          <iframe
-            ref={iframeRef}
-            title="preview"
-            srcDoc={srcDoc}
-            className="h-full w-full border-0"
-            sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
-            // @ts-expect-error - credentialless is a new feature for COEP isolation
-            credentialless="true"
-          />
+        <div className="relative flex-1 bg-white">
+          {assetsReady || files.length === 0 ? (
+            <iframe
+              key={refreshKey}
+              ref={iframeRef}
+              title="preview"
+              srcDoc={srcDoc}
+              className="h-full w-full border-0"
+              sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+              // @ts-expect-error - credentialless is a new feature for COEP isolation
+              credentialless="true"
+            />
+          ) : (
+            <div className="flex h-full animate-pulse items-center justify-center text-sm text-zinc-400">
+              Loading assets...
+            </div>
+          )}
         </div>
       </div>
     )
