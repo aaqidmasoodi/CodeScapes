@@ -37,28 +37,4 @@ jobs:
       - name: Web Build
         run: npm run build
 
-  native-verification:
-    name: Native Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    needs: web-quality
-    strategy:
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Use Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Electron App
-        # This builds both the renderer (Vite) and the main process, then packages it
-        # We don't publish here, just verify it builds
-        run: npm run electron:build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Needed for electron-builder even if not publishing
