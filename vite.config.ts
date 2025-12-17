@@ -45,7 +45,7 @@ export default defineConfig(({ mode }) => ({
           stringArrayWrappersChainedCalls: true,
           stringArrayWrappersType: "function",
           stringArrayThreshold: 0.5,
-          transformObjectKeys: true,
+          transformObjectKeys: false, // Disabled to fix IndexedDB persistence
           unicodeEscapeSequence: false,
         },
       }),
