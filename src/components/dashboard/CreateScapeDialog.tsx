@@ -54,29 +54,37 @@ export function CreateScapeDialog() {
 
       if (!templateConfig) throw new Error("Template not found")
 
-      // 1. Create Scape
-      const scapeId = await db.scapes.add({
+      // Create Scape (Hybrid: New ones use UUIDs)
+      const newId = crypto.randomUUID()
+
+      await db.scapes.add({
+        id: newId,
         name: name.trim(),
         environment: selectedEnv,
-        template: selectedTemplate,
+        template: templateConfig.id,
         source: source,
+        syncStatus: "offline",
         createdAt: new Date(),
         updatedAt: new Date(),
+        thumbnail: undefined,
+        dependencies: [],
       })
 
-      // 2. Create Files from Template
-      await db.files.bulkAdd(
-        templateConfig.files.map((file) => ({
-          scapeId: scapeId as number,
-          name: file.name,
-          content: file.content,
-          language: file.language,
+      // Add default files from template
+      if (templateConfig.files) {
+        const filesToAdd = templateConfig.files.map((f) => ({
+          scapeId: newId,
+          name: f.name,
+          content: f.content,
+          language: f.language || "plaintext",
         }))
-      )
+        await db.files.bulkAdd(filesToAdd)
+      }
 
-      // 3. Navigate
       setOpen(false)
-      navigate("/scape/" + scapeId)
+      setName("")
+      // Redirect using the new ID (string)
+      navigate(`/scape/${newId}`)
 
       // Reset form
       setName("")

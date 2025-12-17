@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks"
 import { db } from "@/lib/db"
 import type { ScapeFile, FileType } from "@/types/file"
 
-export function useFileSystem(scapeId: number) {
+export function useFileSystem(scapeId: string | number) {
   const [files, setFiles] = useState<ScapeFile[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -72,14 +72,15 @@ export function useFileSystem(scapeId: number) {
   const saveTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({})
 
   const saveContentToDb = useCallback(
-    (fileId: number, content: string) => {
+    (fileId: number, content: string | Blob | ArrayBuffer | Uint8Array) => {
       if (saveTimeoutRef.current[fileId]) {
         clearTimeout(saveTimeoutRef.current[fileId])
       }
 
       saveTimeoutRef.current[fileId] = setTimeout(async () => {
         await db.files.update(fileId, { content })
-        await db.scapes.update(scapeId, { updatedAt: new Date() })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await db.scapes.update(scapeId as any, { updatedAt: new Date() }) // Cast scapeId for update
         delete saveTimeoutRef.current[fileId]
       }, 500) // 500ms Debounce for DB writes
     },
@@ -89,7 +90,11 @@ export function useFileSystem(scapeId: number) {
   // --- Actions ---
 
   const createFile = useCallback(
-    async (name: string, language: FileType, content: string = "") => {
+    async (
+      name: string,
+      language: FileType,
+      content: string | Blob | ArrayBuffer | Uint8Array = ""
+    ) => {
       // Optimistic: We can't really do optimistic create easily because we need the ID from DB.
       // So we await DB. The `useEffect` above will handle adding it to state when it detects structure change.
       await db.files.add({
@@ -103,7 +108,7 @@ export function useFileSystem(scapeId: number) {
   )
 
   const updateFile = useCallback(
-    (name: string, content: string) => {
+    (name: string, content: string | Blob | ArrayBuffer | Uint8Array) => {
       setFiles((prev) =>
         prev.map((f) => {
           if (f.name === name) {

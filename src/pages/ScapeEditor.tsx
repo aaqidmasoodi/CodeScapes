@@ -96,12 +96,21 @@ const getLayout = (key: string, defaults: number[]) => {
 
 export default function ScapeEditor() {
   const { scapeId } = useParams()
-  // Force HMR update
-  const id = parseInt(scapeId || "0")
+  // POLYMORPHIC ID LOGIC:
+  // If the URL ID is numeric (e.g. "123"), treat it as a number (legacy).
+  // If `scapeId` is undefined/UUID, keep as string.
+  const rawId = scapeId || ""
+  const isNumericId = !isNaN(Number(rawId)) && rawId.trim() !== ""
+  const id = isNumericId ? Number(rawId) : rawId
 
   // Load Scape and Files
-  const scape = useLiveQuery(() => db.scapes.get(id), [id])
-  const { files, isInitialized, createFile, updateFile, deleteFile, bulkRename } = useFileSystem(id)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const scape = useLiveQuery(() => db.scapes.get(id as any), [id]) // Cast as any because Dexie get usually expects specific type, but Key is valid
+
+  const { files, isInitialized, createFile, updateFile, deleteFile, bulkRename } = useFileSystem(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    id as any
+  )
 
   // Local State
   // Preview Collapsed State (Lifted to top for safety)
@@ -455,19 +464,30 @@ export default function ScapeEditor() {
     setRuntimeProblems([])
   }
 
-  const handleCreateFile = async (fileName: string) => {
+  const handleCreateFile = async (
+    fileName: string,
+    type?: string,
+    content?: string | Blob | ArrayBuffer | Uint8Array
+  ) => {
     if (!fileName) return
     if (files.some((f) => f.name === fileName)) {
       alert("File already exists")
       return
     }
-    const language = fileName.endsWith(".css")
-      ? "css"
-      : fileName.endsWith(".html")
-        ? "html"
-        : "javascript"
 
-    await createFile(fileName, language)
+    let language: ScapeFile["language"] = "javascript"
+    if (type) {
+      language = type as ScapeFile["language"]
+    } else {
+      language = fileName.endsWith(".css")
+        ? "css"
+        : fileName.endsWith(".html")
+          ? "html"
+          : "javascript"
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await createFile(fileName, language as any, content as any)
     // Auto-select new file
     setActiveFilePath(fileName)
   }
@@ -501,13 +521,13 @@ export default function ScapeEditor() {
 
     const updates: { id: number; name: string }[] = []
 
-    // Rename folder itself if it exists as a node
-    const folderEntry = files.find((f) => f.name === oldPath && f.language === "folder")
-    if (folderEntry && folderEntry.id) {
-      updates.push({ id: folderEntry.id, name: newPath })
+    // Rename the node itself (file or folder)
+    const exactNode = files.find((f) => f.name === oldPath)
+    if (exactNode && exactNode.id) {
+      updates.push({ id: exactNode.id, name: newPath })
     }
 
-    // Rename children
+    // Rename children (if it was a folder)
     const filesToMove = files.filter((f) => f.name.startsWith(oldPath + "/"))
     filesToMove.forEach((f) => {
       if (f.id) {
@@ -823,16 +843,30 @@ export default function ScapeEditor() {
                               }
                             >
                               {activeFile ? (
-                                <CodeEditor
-                                  key={activeFile.name}
-                                  fileName={activeFile.name}
-                                  initialValue={activeFile.content}
-                                  language={activeFile.language}
-                                  onChange={handleCodeChange}
-                                  onValidate={handleValidate}
-                                  files={files}
-                                  onRun={handleRun}
-                                />
+                                typeof activeFile.content === "string" ? (
+                                  <CodeEditor
+                                    key={activeFile.name}
+                                    fileName={activeFile.name}
+                                    initialValue={activeFile.content as string}
+                                    language={activeFile.language}
+                                    onChange={handleCodeChange}
+                                    onValidate={handleValidate}
+                                    files={files}
+                                    onRun={handleRun}
+                                  />
+                                ) : (
+                                  <div className="flex h-full flex-col items-center justify-center p-4 text-muted-foreground">
+                                    <p className="mb-2 font-medium">Binary File</p>
+                                    <p className="text-sm">
+                                      {activeFile.name} (
+                                      {activeFile.content instanceof Blob
+                                        ? `${activeFile.content.size} bytes`
+                                        : "ArrayBuffer"}
+                                      )
+                                    </p>
+                                    <p className="text-xs opacity-50">Cannot edit binary files.</p>
+                                  </div>
+                                )
                               ) : (
                                 <div className="flex h-full items-center justify-center p-4 text-muted-foreground">
                                   <p className="text-sm">Select a file to start editing</p>
@@ -853,6 +887,7 @@ export default function ScapeEditor() {
                                   isCollapsed={false}
                                   files={files}
                                   scapeName={scape?.name}
+                                  scapeId={id}
                                   onDeleteFile={deleteFileDirectly}
                                   outputLogs={outputLogs}
                                   onExecCommand={handleExecCommand}
@@ -872,6 +907,7 @@ export default function ScapeEditor() {
                               isCollapsed={true}
                               files={files}
                               scapeName={scape?.name}
+                              scapeId={id}
                               onDeleteFile={deleteFileDirectly}
                               outputLogs={outputLogs}
                               onExecCommand={handleExecCommand}
