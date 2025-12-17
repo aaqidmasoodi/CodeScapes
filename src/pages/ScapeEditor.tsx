@@ -13,6 +13,7 @@ import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane
 
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import { SaveStatus } from "@/components/editor/SaveStatus"
+import { ShareDialog } from "@/components/editor/ShareDialog"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
 import type { LogEntry } from "@/types/log"
@@ -755,6 +756,13 @@ export default function ScapeEditor() {
                   Preview
                 </Button>
               </div>
+
+              <ShareDialog
+                scape={scape}
+                onSyncComplete={() => {
+                  /* updated logic handled by hook/subscription */
+                }}
+              />
 
               <Button size="sm">
                 <Zap className="mr-2 h-4 w-4" />

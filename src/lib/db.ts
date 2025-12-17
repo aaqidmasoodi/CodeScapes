@@ -14,6 +14,7 @@ export interface Scape {
   createdAt: Date
   updatedAt: Date
   dependencies?: string[]
+  is_public?: boolean
 }
 
 export interface File {

@@ -25,6 +25,7 @@ export class CloudRepository implements IScapeRepository {
       updatedAt: new Date(data.updated_at),
       thumbnail: data.thumbnail,
       dependencies: data.dependencies || [],
+      is_public: data.is_public || false,
     }
   }
 
@@ -65,6 +66,7 @@ export class CloudRepository implements IScapeRepository {
       updated_at: new Date().toISOString(),
       thumbnail: scape.thumbnail,
       dependencies: scape.dependencies,
+      is_public: scape.is_public,
     })
 
     if (error) throw error
@@ -76,6 +78,7 @@ export class CloudRepository implements IScapeRepository {
     if (updates.name) dbUpdates.name = updates.name
     if (updates.thumbnail) dbUpdates.thumbnail = updates.thumbnail
     if (updates.dependencies) dbUpdates.dependencies = updates.dependencies
+    if (updates.is_public !== undefined) dbUpdates.is_public = updates.is_public
     if (updates.updatedAt) dbUpdates.updated_at = updates.updatedAt.toISOString()
     else dbUpdates.updated_at = new Date().toISOString()
 
