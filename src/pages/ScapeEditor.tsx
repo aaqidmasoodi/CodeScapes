@@ -21,7 +21,16 @@ import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { getLanguageFromFilename } from "@/lib/language-utils"
-import { Zap, LogOut, PanelRightOpen, Play, Square, RotateCw, Loader2 } from "lucide-react"
+import {
+  Zap,
+  LogOut,
+  PanelRightOpen,
+  Play,
+  Square,
+  RotateCw,
+  Loader2,
+  Maximize,
+} from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
@@ -699,41 +708,60 @@ export default function ScapeEditor() {
                 </Button>
               )}
 
-              {/* Stop / Start */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (isRunning) {
-                    setIsRunning(false)
-                  } else {
-                    handleRun()
-                  }
-                }}
-                className={cn(
-                  "h-8 w-8 px-0 transition-colors",
-                  isRunning
-                    ? "text-red-500 hover:bg-red-500/10 hover:text-red-600"
-                    : "text-green-500 hover:bg-green-500/10 hover:text-green-600"
-                )}
-                title={isRunning ? "Stop (Refs/Preview will reset)" : "Run"}
-              >
-                {isRunning ? (
-                  isRunnerBusy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+              <div className="flex items-center gap-2">
+                {/* Stop / Start with Rotate Effect on Run */}
+                <Button
+                  // Logic for Run button:
+                  // Primary/default state is "Run" (Green)
+                  // Active state is "Stop" (Red)
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (isRunning) {
+                      setIsRunning(false)
+                    } else {
+                      handleRun()
+                    }
+                  }}
+                  className={cn(
+                    "h-8 w-8 px-0 transition-colors",
+                    isRunning
+                      ? "text-red-500 hover:bg-red-500/10 hover:text-red-600"
+                      : "text-green-500 hover:bg-green-500/10 hover:text-green-600"
+                  )}
+                  title={isRunning ? "Stop (Refs/Preview will reset)" : "Run"}
+                >
+                  {isRunning ? (
+                    isRunnerBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Square className="h-4 w-4 fill-current" />
+                    )
                   ) : (
-                    <Square className="h-4 w-4 fill-current" />
-                  )
-                ) : (
-                  <Play className="h-4 w-4 fill-current" />
-                )}
+                    <Play className="h-4 w-4 fill-current" />
+                  )}
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const entry = files.find((f) => f.name === "index.html")
+                      ? "index.html"
+                      : files[0]?.name || "index.html"
+                    window.open(`/preview-v3/${entry}`, "_blank")
+                  }}
+                >
+                  <Maximize className="mr-2 h-4 w-4" />
+                  Open FullScreen
+                </Button>
+              </div>
+
+              <Button size="sm">
+                <Zap className="mr-2 h-4 w-4" />
+                Deploy
               </Button>
             </div>
-
-            <Button size="sm">
-              <Zap className="mr-2 h-4 w-4" />
-              Deploy
-            </Button>
           </>
         }
         headerEndActions={
