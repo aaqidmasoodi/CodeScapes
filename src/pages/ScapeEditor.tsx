@@ -29,7 +29,7 @@ import {
   Square,
   RotateCw,
   Loader2,
-  Maximize,
+  MonitorPlay,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
@@ -743,7 +743,7 @@ export default function ScapeEditor() {
                 </Button>
 
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   size="sm"
                   onClick={() => {
                     const entry = files.find((f) => f.name === "index.html")
@@ -752,8 +752,8 @@ export default function ScapeEditor() {
                     window.open(`/preview-v3/${entry}`, "_blank")
                   }}
                 >
-                  <Maximize className="mr-2 h-4 w-4" />
-                  Open FullScreen
+                  <MonitorPlay className="mr-2 h-4 w-4" />
+                  Preview
                 </Button>
               </div>
 
