@@ -3,7 +3,7 @@ import { useLiveQuery } from "dexie-react-hooks"
 import { db } from "@/lib/db"
 import type { ScapeFile, FileType } from "@/types/file"
 
-export function useFileSystem(scapeId: string | number) {
+export function useFileSystem(scapeId: string) {
   const [files, setFiles] = useState<ScapeFile[]>([])
   const [isInitialized, setIsInitialized] = useState(false)
 
@@ -69,10 +69,18 @@ export function useFileSystem(scapeId: string | number) {
   // But purely explicit (in updateFile) floods the DB.
   // Let's implement a ref-based debounce for saving content.
 
-  const saveTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({})
+  // --- Auto-Save Logic ---
+  // We used to do this in the Editor, but now the Hook owns it.
+  // Actually, simpler approach: Trigger save in `updateFile` but debounced?
+  // Or keep a separate effect that watches `files` and saves changed ones?
+  // Given we want "One Way Data Flow", explicit saves are better than watching state.
+  // But purely explicit (in updateFile) floods the DB.
+  // Let's implement a ref-based debounce for saving content.
+
+  const saveTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({})
 
   const saveContentToDb = useCallback(
-    (fileId: number, content: string | Blob | ArrayBuffer | Uint8Array) => {
+    (fileId: string, content: string | Blob | ArrayBuffer | Uint8Array) => {
       if (saveTimeoutRef.current[fileId]) {
         clearTimeout(saveTimeoutRef.current[fileId])
       }
@@ -98,7 +106,8 @@ export function useFileSystem(scapeId: string | number) {
       // Optimistic: We can't really do optimistic create easily because we need the ID from DB.
       // So we await DB. The `useEffect` above will handle adding it to state when it detects structure change.
       await db.files.add({
-        scapeId,
+        id: crypto.randomUUID(), // Generate UUID
+        scapeId: String(scapeId), // Ensure ScapeID is string
         name,
         language,
         content,
@@ -148,7 +157,7 @@ export function useFileSystem(scapeId: string | number) {
     async (path: string) => {
       // Recursive delete
       const toDelete = files.filter((f) => f.name === path || f.name.startsWith(path + "/"))
-      const ids = toDelete.map((f) => f.id).filter((id): id is number => id !== undefined)
+      const ids = toDelete.map((f) => f.id).filter((id): id is string => id !== undefined)
       if (ids.length > 0) {
         await db.files.bulkDelete(ids)
       }
@@ -157,7 +166,7 @@ export function useFileSystem(scapeId: string | number) {
   )
 
   // Custom bulk update (for folders move)
-  const bulkRename = useCallback(async (updates: { id: number; name: string }[]) => {
+  const bulkRename = useCallback(async (updates: { id: string; name: string }[]) => {
     await Promise.all(updates.map((u) => db.files.update(u.id, { name: u.name })))
   }, [])
 

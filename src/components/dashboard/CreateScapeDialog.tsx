@@ -73,6 +73,7 @@ export function CreateScapeDialog() {
       // Add default files from template
       if (templateConfig.files) {
         const filesToAdd = templateConfig.files.map((f) => ({
+          id: crypto.randomUUID(),
           scapeId: newId,
           name: f.name,
           content: f.content,

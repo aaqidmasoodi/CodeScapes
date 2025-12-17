@@ -96,21 +96,13 @@ const getLayout = (key: string, defaults: number[]) => {
 
 export default function ScapeEditor() {
   const { scapeId } = useParams()
-  // POLYMORPHIC ID LOGIC:
-  // If the URL ID is numeric (e.g. "123"), treat it as a number (legacy).
-  // If `scapeId` is undefined/UUID, keep as string.
-  const rawId = scapeId || ""
-  const isNumericId = !isNaN(Number(rawId)) && rawId.trim() !== ""
-  const id = isNumericId ? Number(rawId) : rawId
+  // STRICT UUID LOGIC (Clean Slate)
+  const id = scapeId || ""
 
   // Load Scape and Files
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const scape = useLiveQuery(() => db.scapes.get(id as any), [id]) // Cast as any because Dexie get usually expects specific type, but Key is valid
+  const scape = useLiveQuery(() => db.scapes.get(id), [id])
 
-  const { files, isInitialized, createFile, updateFile, deleteFile, bulkRename } = useFileSystem(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    id as any
-  )
+  const { files, isInitialized, createFile, updateFile, deleteFile, bulkRename } = useFileSystem(id)
 
   // Local State
   // Preview Collapsed State (Lifted to top for safety)
@@ -519,7 +511,7 @@ export default function ScapeEditor() {
   const handleMoveNode = async (oldPath: string, newPath: string) => {
     if (files.some((f) => f.name === newPath)) return
 
-    const updates: { id: number; name: string }[] = []
+    const updates: { id: string; name: string }[] = []
 
     // Rename the node itself (file or folder)
     const exactNode = files.find((f) => f.name === oldPath)

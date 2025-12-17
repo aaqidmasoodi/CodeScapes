@@ -15,7 +15,7 @@ interface TerminalPaneProps {
   onClose?: () => void
   isCollapsed?: boolean
   files?: ScapeFile[]
-  scapeId?: string | number
+  scapeId?: string
   scapeName?: string
   onDeleteFile?: (path: string) => void
   outputLogs?: LogEntry[]
