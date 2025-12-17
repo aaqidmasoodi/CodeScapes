@@ -129,4 +129,9 @@ walkthrough.md
 dist-electron
 release
 
-
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

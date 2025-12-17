@@ -16,6 +16,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
+    "test:e2e": "playwright test",
     "preview": "vite preview",
     "prepare": "husky",
     "electron:build-ts": "tsc -p tsconfig.electron.json",
@@ -82,6 +83,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.57.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
