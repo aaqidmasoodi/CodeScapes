@@ -22,7 +22,10 @@ export const useAuth = create<AuthState>((set) => ({
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "github",
       options: {
-        redirectTo: window.location.origin + "/dashboard",
+        redirectTo:
+          import.meta.env.MODE === "production"
+            ? "https://codescapes.io/dashboard"
+            : window.location.origin + "/dashboard",
       },
     })
     if (error) throw error
