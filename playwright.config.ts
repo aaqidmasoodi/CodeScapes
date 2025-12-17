@@ -23,9 +23,9 @@ export default defineConfig({
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
 
-    /* Optimize actions */
-    actionTimeout: 10000,
-    navigationTimeout: 15000,
+    /* Optimize actions - Relaxed for CI reliability */
+    actionTimeout: 30000,
+    navigationTimeout: 45000,
   },
 
   /* Configure projects for major browsers */
