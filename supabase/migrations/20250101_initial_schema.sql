@@ -79,3 +79,10 @@ create policy "Public Access to Scape Assets" on storage.objects
 
 create policy "Auth Upload to Scape Assets" on storage.objects
   for insert with check ( bucket_id = 'scape-assets' and auth.role() = 'authenticated' );
+
+-- Enable Realtime
+alter publication supabase_realtime add table files;
+alter publication supabase_realtime add table scapes;
+-- Necessary for DELETE events and full UPDATE payloads
+alter table files replica identity full;
+alter table scapes replica identity full;

@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useParams } from "react-router-dom"
-import { useLiveQuery } from "dexie-react-hooks"
 import * as ResizablePrimitive from "react-resizable-panels"
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
@@ -13,11 +12,12 @@ import { PackagePane } from "@/components/editor/PackagePane"
 import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane"
 
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
+import { SaveStatus } from "@/components/editor/SaveStatus"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
 import type { LogEntry } from "@/types/log"
-import { db } from "@/lib/db"
 import { useFileSystem } from "@/hooks/useFileSystem"
+import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import {
@@ -100,9 +100,19 @@ export default function ScapeEditor() {
   const id = scapeId || ""
 
   // Load Scape and Files
-  const scape = useLiveQuery(() => db.scapes.get(id), [id])
+  const { scape, source, emitUpdate } = useScapeLoading(id)
 
-  const { files, isInitialized, createFile, updateFile, deleteFile, bulkRename } = useFileSystem(id)
+  const {
+    files,
+    isInitialized,
+    createFile,
+    updateFile,
+    deleteFile,
+    bulkRename,
+    updateScape,
+    saveState,
+    lastSaved,
+  } = useFileSystem(id, source)
 
   // Local State
   // Preview Collapsed State (Lifted to top for safety)
@@ -110,6 +120,9 @@ export default function ScapeEditor() {
   const [isRunning, setIsRunning] = useState(true)
   const [isRunnerBusy, setIsRunnerBusy] = useState(false)
   const [isPreviewOpen, setIsPreviewOpen] = usePersistentState("scape-preview-open", true)
+
+  // Optimistic UI for Dependencies
+  const [optimisticDependencies, setOptimisticDependencies] = useState<string[] | null>(null)
 
   const [debouncedFiles, setDebouncedFiles] = useState<ScapeFile[]>([])
   const [initialPreviewSynced, setInitialPreviewSynced] = useState(false)
@@ -279,7 +292,7 @@ export default function ScapeEditor() {
           await new Promise((r) => setTimeout(r, 1000))
           const thumb = await previewRef.current.captureThumbnail()
           if (thumb) {
-            await db.scapes.update(id, { thumbnail: thumb })
+            await updateScape({ thumbnail: thumb })
             lastCaptureRef.current = Date.now()
             console.log("Thumbnail Captured")
           }
@@ -290,7 +303,7 @@ export default function ScapeEditor() {
     }
 
     capture()
-  }, [debouncedFiles, id, autoRefresh, isPreviewOpen])
+  }, [debouncedFiles, id, autoRefresh, isPreviewOpen, updateScape])
 
   const handleManualRefresh = useCallback(() => {
     setOutputLogs([]) // Clear output
@@ -330,18 +343,27 @@ export default function ScapeEditor() {
           // 2. Persist to DB
           const currentDeps = scape?.dependencies || []
           if (!currentDeps.includes(arg)) {
-            await db.scapes.update(id, { dependencies: [...currentDeps, arg] })
+            // Optimistic Update
+            setOptimisticDependencies([...(optimisticDependencies || currentDeps), arg])
+            await updateScape({ dependencies: [...currentDeps, arg] })
+            // Broadcast to other clients
+            if (emitUpdate) emitUpdate({ dependencies: [...currentDeps, arg] })
           }
         }
         return result
       }
 
       if (cmd === "pip-uninstall") {
-        // Pyodide doesn't support runtime uninstall easily.
         // We force a restart of the worker to reload with the new dependency list.
         const currentDeps = scape?.dependencies || []
         const newDeps = currentDeps.filter((d) => d !== arg)
-        await db.scapes.update(id, { dependencies: newDeps })
+
+        // Optimistic Update
+        setOptimisticDependencies(newDeps)
+
+        await updateScape({ dependencies: newDeps })
+        // Broadcast to other clients
+        if (emitUpdate) emitUpdate({ dependencies: newDeps })
 
         // Wait a tick for prop propagation (though ref-based restart pulls from parent props on re-render?)
         // Actually, we should trigger restart. The restart logic in PythonRunner uses a ref for dependencies.
@@ -363,7 +385,7 @@ export default function ScapeEditor() {
 
       return { success: false, error: "Unknown command handling" }
     },
-    [id, scape?.dependencies]
+    [scape?.dependencies, emitUpdate, optimisticDependencies, updateScape]
   )
 
   const handleDeletePackage = useCallback(
@@ -647,6 +669,13 @@ export default function ScapeEditor() {
               <span className="border-l pl-2 text-sm font-medium text-muted-foreground">
                 {scape?.name}
               </span>
+              <div className="ml-2 border-l pl-2">
+                <SaveStatus
+                  state={saveState}
+                  lastSaved={lastSaved}
+                  source={source as "local" | "cloud"}
+                />
+              </div>
             </div>
           </div>
         }
@@ -784,7 +813,7 @@ export default function ScapeEditor() {
                   scape &&
                   ENVIRONMENTS[scape.environment]?.capabilities.packages && (
                     <PackagePane
-                      dependencies={scape?.dependencies || []}
+                      dependencies={optimisticDependencies ?? (scape?.dependencies || [])}
                       onDeletePackage={handleDeletePackage}
                     />
                   )}

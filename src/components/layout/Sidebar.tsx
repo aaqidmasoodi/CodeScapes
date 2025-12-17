@@ -1,18 +1,23 @@
 import { useNavigate } from "react-router-dom"
-import { LayoutDashboard, Users, BookOpen, Settings } from "lucide-react"
+import { Users, BookOpen, Settings, Cloud, Laptop2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/hooks/useAuth"
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   activeTab?: string
   onTabChange?: (tab: string) => void
 }
 
-export function Sidebar({ className, activeTab = "scape", onTabChange }: SidebarProps) {
+export function Sidebar({ className, activeTab = "local_scapes", onTabChange }: SidebarProps) {
   const navigate = useNavigate()
+  const { user } = useAuth()
 
   const tabs = [
-    { id: "dashboard", icon: LayoutDashboard, label: "My Scapes", path: "/dashboard" },
+    { id: "local_scapes", icon: Laptop2, label: "Local Scapes", path: "/dashboard" },
+    ...(user
+      ? [{ id: "cloud_scapes", icon: Cloud, label: "Cloud Scapes", path: "/dashboard" }]
+      : []),
     { id: "learn", icon: BookOpen, label: "Learn", path: "/dashboard" },
     { id: "community", icon: Users, label: "Community", path: "/dashboard" },
   ]

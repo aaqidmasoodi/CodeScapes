@@ -16,11 +16,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
-import { db } from "@/lib/db"
 import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
 import type { EnvironmentId } from "@/types/environment"
 import { useAuth } from "@/hooks/useAuth"
+import { LocalRepository } from "@/lib/repositories/LocalRepository"
+import { CloudRepository } from "@/lib/repositories/CloudRepository"
 
 export function CreateScapeDialog() {
   const navigate = useNavigate()
@@ -59,14 +60,16 @@ export function CreateScapeDialog() {
       // Create Scape (Hybrid: New ones use UUIDs)
       const newId = crypto.randomUUID()
 
-      await db.scapes.add({
+      const repo = source === "cloud" ? new CloudRepository() : new LocalRepository()
+
+      await repo.saveScape({
         id: newId,
         name: name.trim(),
         environment: selectedEnv,
         template: templateConfig.id,
         source: source,
         authorId: user?.id,
-        syncStatus: source === "cloud" ? "dirty" : "offline",
+        syncStatus: source === "cloud" ? "synced" : "offline",
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -79,8 +82,9 @@ export function CreateScapeDialog() {
           name: f.name,
           content: f.content,
           language: f.language || "plaintext",
-        }))
-        await db.files.bulkAdd(filesToAdd)
+        })) as (import("@/types/file").ScapeFile & { scapeId: string })[] // Cast to satisfy repo interface
+
+        await repo.bulkCreateFiles(filesToAdd)
       }
 
       setOpen(false)
