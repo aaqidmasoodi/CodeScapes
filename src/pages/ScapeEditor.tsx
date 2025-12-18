@@ -661,7 +661,7 @@ export default function ScapeEditor() {
     // If not logged in, or logged in but not owner
     const isOwner = user && user.id === scape.authorId
     if (!isOwner) {
-      return <Navigate to={`/run/${scape.id}`} replace />
+      return <Navigate to={"/run/" + scape.id} replace />
     }
   }
 
