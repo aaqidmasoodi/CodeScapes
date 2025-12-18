@@ -5,7 +5,8 @@ import ScapeEditor from "@/pages/ScapeEditor"
 
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 
-import ScapeRunnerPage from "@/pages/ScapeRunnerPage" // Lazy load? Standard import for now
+import ScapeRunnerPage from "@/pages/ScapeRunnerPage"
+import AuthCallback from "@/pages/AuthCallback"
 import { Toaster } from "@/components/ui/toaster"
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
             <Route path="/scape/:scapeId" element={<ScapeEditor />} />
             <Route path="/run/:scapeId" element={<ScapeRunnerPage mode="dev" />} />
             <Route path="/live/:scapeId" element={<ScapeRunnerPage mode="live" />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
           </Routes>
         </BrowserRouter>
       </ErrorBoundary>
