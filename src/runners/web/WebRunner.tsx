@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"
 
-import { useServiceWorkerFS } from "@/hooks/useServiceWorkerFS"
+import { usePreviewBridge } from "@/hooks/usePreviewBridge"
 
 interface WebRunnerProps {
   files: ScapeFile[]
@@ -23,8 +23,9 @@ export const WebRunner = memo(
     ({ files, scapeId, onCollapse, isLive = false }, ref) => {
       const iframeRef = useRef<HTMLIFrameElement>(null)
 
-      // Sync files to Service Worker (Namespaced)
-      const isServiceWorkerReady = useServiceWorkerFS(files, scapeId)
+      // Bridge to the Runtime
+      // Phase 4: Activated Cross-Origin Mode (Dedicated)
+      const bridge = usePreviewBridge(files, scapeId, iframeRef)
 
       const [refreshKey, setRefreshKey] = useState(0)
 
@@ -63,9 +64,6 @@ export const WebRunner = memo(
         }),
       }))
 
-      // Determine entry point
-      const entryFile = files.find((f) => f.name === "index.html") ? "index.html" : files[0]?.name
-
       // If no files, empty
       if (!files.length) {
         return (
@@ -75,23 +73,21 @@ export const WebRunner = memo(
         )
       }
 
-      if (!isServiceWorkerReady) {
-        return (
-          <div className="flex h-full items-center justify-center text-sm text-zinc-400">
-            Initializing Environment...
-          </div>
-        )
-      }
-
       // Live Mode: No Chrome
       if (isLive) {
         return (
-          <div className="h-full w-full bg-white">
+          <div className="relative h-full w-full bg-white">
+            {/* Loading Overlay */}
+            {!bridge.ready && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white text-sm text-zinc-400">
+                Initializing Environment...
+              </div>
+            )}
             <iframe
               key={refreshKey}
               ref={iframeRef}
               title="preview-live"
-              src={`/preview-v3/${scapeId}/${entryFile}`}
+              src={bridge.url}
               className="h-full w-full border-0"
               sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
             />
@@ -123,12 +119,19 @@ export const WebRunner = memo(
             </div>
           </div>
           <div className="relative flex-1 bg-white">
+            {/* Loading Overlay */}
+            {!bridge.ready && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white text-sm text-zinc-400">
+                <p>Initializing Environment...</p>
+              </div>
+            )}
+
             <iframe
               key={refreshKey}
               ref={iframeRef}
               title="preview"
               // Point to the virtual NAMESPACED path intercepted by SW
-              src={`/preview-v3/${scapeId}/${entryFile}`}
+              src={bridge.url}
               className="h-full w-full border-0"
               sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
             />

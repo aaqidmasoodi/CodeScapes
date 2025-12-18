@@ -12,6 +12,8 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:sandbox": "node scripts/sandbox-server.js",
+    "dev:all": "concurrently -k \"npm run dev\" \"npm run dev:sandbox\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

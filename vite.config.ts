@@ -10,8 +10,8 @@ export default defineConfig(({ mode }) => ({
       name: "configure-response-headers",
       configureServer: (server) => {
         server.middlewares.use((_req, res, next) => {
-          res.setHeader("Cross-Origin-Embedder-Policy", "require-corp")
-          res.setHeader("Cross-Origin-Opener-Policy", "same-origin")
+          // res.setHeader("Cross-Origin-Embedder-Policy", "require-corp")
+          // res.setHeader("Cross-Origin-Opener-Policy", "same-origin")
           next()
         })
       },
@@ -66,14 +66,14 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     headers: {
-      "Cross-Origin-Embedder-Policy": "require-corp",
-      "Cross-Origin-Opener-Policy": "same-origin",
+      // "Cross-Origin-Embedder-Policy": "require-corp",
+      // "Cross-Origin-Opener-Policy": "same-origin",
     },
   },
   preview: {
     headers: {
-      "Cross-Origin-Embedder-Policy": "require-corp",
-      "Cross-Origin-Opener-Policy": "same-origin",
+      // "Cross-Origin-Embedder-Policy": "require-corp",
+      // "Cross-Origin-Opener-Policy": "same-origin",
     },
   },
 }))
