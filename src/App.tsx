@@ -17,7 +17,8 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/scape/:scapeId" element={<ScapeEditor />} />
-            <Route path="/run/:scapeId" element={<ScapeRunnerPage />} />
+            <Route path="/run/:scapeId" element={<ScapeRunnerPage mode="dev" />} />
+            <Route path="/live/:scapeId" element={<ScapeRunnerPage mode="live" />} />
           </Routes>
         </BrowserRouter>
       </ErrorBoundary>

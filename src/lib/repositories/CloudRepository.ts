@@ -3,6 +3,46 @@ import type { Scape } from "@/lib/db"
 import type { ScapeFile, FileType } from "@/types/file"
 import type { IScapeRepository } from "./types"
 
+// --- Helpers for Binary Support ---
+
+function arrayBufferToBase64(buffer: ArrayBufferLike): string {
+  let binary = ""
+  const bytes = new Uint8Array(buffer)
+  const len = bytes.byteLength
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
+
+function base64ToArrayBuffer(base64: string): Uint8Array {
+  const binary_string = atob(base64)
+  const len = binary_string.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i)
+  }
+  return bytes
+}
+
+async function prepareContentForUpload(
+  content: string | Blob | ArrayBuffer | Uint8Array
+): Promise<string> {
+  if (typeof content === "string") return content
+
+  if (content instanceof Blob) {
+    const buf = await content.arrayBuffer()
+    return "base64:" + arrayBufferToBase64(buf)
+  }
+  if (content instanceof ArrayBuffer) {
+    return "base64:" + arrayBufferToBase64(content)
+  }
+  if (content instanceof Uint8Array) {
+    return "base64:" + arrayBufferToBase64(content.buffer)
+  }
+  return ""
+}
+
 export class CloudRepository implements IScapeRepository {
   async getScape(id: string): Promise<Scape | undefined> {
     const { data, error } = await supabase.from("scapes").select("*").eq("id", id).single()
@@ -90,27 +130,34 @@ export class CloudRepository implements IScapeRepository {
     const { data, error } = await supabase.from("files").select("*").eq("scape_id", scapeId)
     if (error) throw error
 
-    return data.map((f) => ({
-      id: f.id,
-      name: f.name,
-      language: f.language as FileType,
-      content: f.content,
-    }))
+    return data.map((f) => {
+      let content: string | Uint8Array = f.content || ""
+
+      // Check for Base64 prefix
+      if (typeof f.content === "string" && f.content.startsWith("base64:")) {
+        try {
+          content = base64ToArrayBuffer(f.content.slice(7))
+        } catch {
+          console.warn("Failed to decode base64 content for file:", f.name)
+        }
+        content = base64ToArrayBuffer(f.content.slice(7))
+      }
+
+      return {
+        id: f.id,
+        name: f.name,
+        language: f.language as FileType,
+        scapeId: f.scape_id,
+        updatedAt: new Date(f.updated_at),
+        content: content,
+      }
+    })
   }
 
   async createFile(file: ScapeFile & { scapeId: string }): Promise<void> {
     if (!file.id) throw new Error("File ID is required")
 
-    // Ensure content is string
-    let contentStr = ""
-    if (typeof file.content === "string") contentStr = file.content
-    else {
-      // TODO: Handle binary content (upload to storage?)
-      console.warn(
-        "CloudRepository: Binary content not yet fully supported, saving as empty string."
-      )
-      contentStr = ""
-    }
+    const contentStr = await prepareContentForUpload(file.content)
 
     const { error } = await supabase.from("files").insert({
       id: file.id,
@@ -126,13 +173,16 @@ export class CloudRepository implements IScapeRepository {
   async bulkCreateFiles(files: (ScapeFile & { scapeId: string })[]): Promise<void> {
     if (files.length === 0) return
 
-    const rows = files.map((f) => ({
-      id: f.id,
-      scape_id: f.scapeId,
-      name: f.name,
-      language: f.language,
-      content: typeof f.content === "string" ? f.content : "", // TODO binary
-    }))
+    // Must resolve all content preps
+    const rows = await Promise.all(
+      files.map(async (f) => ({
+        id: f.id,
+        scape_id: f.scapeId,
+        name: f.name,
+        language: f.language,
+        content: await prepareContentForUpload(f.content),
+      }))
+    )
 
     const { error } = await supabase.from("files").insert(rows)
     if (error) throw error
@@ -142,13 +192,7 @@ export class CloudRepository implements IScapeRepository {
     id: string,
     content: string | Blob | ArrayBuffer | Uint8Array
   ): Promise<void> {
-    let contentStr = ""
-    if (typeof content === "string") contentStr = content
-    else {
-      // TODO: Binary support
-      console.warn("CloudRepository: Binary content update ignored.")
-      return
-    }
+    const contentStr = await prepareContentForUpload(content)
 
     const { error } = await supabase
       .from("files")
@@ -187,11 +231,12 @@ export class CloudRepository implements IScapeRepository {
     // Supabase doesn't have a single bulk update endpoint for different values per row easily without RCP.
     // Parallel updates for now.
     await Promise.all(
-      updates.map((u) => {
+      updates.map(async (u) => {
         const dbChanges: Record<string, unknown> = {} // Fixed 'any'
         if (u.changes.name) dbChanges.name = u.changes.name
-        if (u.changes.content && typeof u.changes.content === "string")
-          dbChanges.content = u.changes.content
+        if (u.changes.content) {
+          dbChanges.content = await prepareContentForUpload(u.changes.content)
+        }
 
         return supabase.from("files").update(dbChanges).eq("id", u.id)
       })
@@ -215,6 +260,23 @@ export class CloudRepository implements IScapeRepository {
           // RLS ensures we only see our own files anyway.
         },
         (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const newData = payload.new as any
+
+          // Decode content if needed before callback
+          if (
+            (payload.eventType === "INSERT" || payload.eventType === "UPDATE") &&
+            newData &&
+            typeof newData.content === "string" &&
+            newData.content.startsWith("base64:")
+          ) {
+            try {
+              newData.content = base64ToArrayBuffer(newData.content.slice(7))
+            } catch (e) {
+              console.warn("Failed to decode realtime base64", e)
+            }
+          }
+
           // Pass full payload so receiver can check new/old explicitly
           callback(payload.eventType as "INSERT" | "UPDATE" | "DELETE", payload) // Cast eventType
         }

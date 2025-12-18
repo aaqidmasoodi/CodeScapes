@@ -32,7 +32,7 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
   const [copied, setCopied] = useState(false)
 
   // URL is based on the unified runner route
-  const shareUrl = `${window.location.origin}/run/${scape.id}`
+  const shareUrl = `${window.location.origin}/live/${scape.id}`
   const isCloud = scape.source === "cloud"
 
   const handleSync = async () => {
@@ -139,6 +139,7 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
                   defaultValue={shareUrl}
                   readOnly
                   className="h-9 font-mono text-xs"
+                  value={shareUrl}
                 />
               </div>
               <Button type="submit" size="sm" onClick={handleCopy} className="px-3">
@@ -177,8 +178,8 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
               </div>
               <p className="text-xs text-muted-foreground">
                 {scape.is_public
-                  ? "Anyone with the link can view and run this project."
-                  : "Only you can view this project. The link will not work for others."}
+                  ? "Anyone with the link can run this project."
+                  : "Only you can run this project. The link will not work for others."}
               </p>
             </div>
           </div>

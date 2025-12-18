@@ -5,12 +5,16 @@ import { supabase } from "@/lib/supabase"
 
 export type ScapeSource = "local" | "cloud"
 
-export function useScapeLoading(id: string) {
+export function useScapeLoading(id: string, options?: { skipLocal?: boolean }) {
   const [cloudScape, setCloudScape] = useState<Scape | null>(null)
   const [cloudError, setCloudError] = useState<Error | null>(null)
+  const [isCloudLoading, setIsCloudLoading] = useState(true)
 
-  // 1. Try Local First (Live Logic)
-  const localScape = useLiveQuery(() => db.scapes.get(id), [id])
+  // 1. Try Local First (Live Logic) - Only if not skipped
+  const localScape = useLiveQuery(() => {
+    if (options?.skipLocal) return undefined
+    return db.scapes.get(id)
+  }, [id, options?.skipLocal])
 
   // 2. If not found locally, try Cloud
   useEffect(() => {
@@ -27,7 +31,7 @@ export function useScapeLoading(id: string) {
     // Or just run both in parallel?
     // If we have local, use it. If not, wait for cloud.
 
-    if (localScape !== undefined) return // We have a result (either object or null/undefined if finished?)
+    if (!options?.skipLocal && localScape !== undefined) return // We have a local result
     // Actually Dexie hooks return undefined initially then the value. If value is undefined, it means record not found.
 
     // Let's explicitly check:
@@ -48,6 +52,8 @@ export function useScapeLoading(id: string) {
           // 116 is Row not found
           setCloudError(error)
         }
+        // Whether error or 404, we are done checking cloud
+        setIsCloudLoading(false)
         return
       }
 
@@ -65,8 +71,10 @@ export function useScapeLoading(id: string) {
           updatedAt: new Date(data.updated_at),
           thumbnail: data.thumbnail,
           dependencies: data.dependencies || [],
+          is_public: data.is_public || false,
         })
       }
+      setIsCloudLoading(false)
     }
 
     // Only fetch cloud if we have no local scape roughly "settled"
@@ -120,19 +128,17 @@ export function useScapeLoading(id: string) {
                   ? (newData.environment as Scape["environment"])
                   : base.environment,
                 template: newData.template || base.template,
-                authorId: base.authorId, // author_id is not expected to change on update
+                authorId: base.authorId,
                 syncStatus: "synced",
-                createdAt: base.createdAt || new Date(), // createdAt is not expected to change on update
+                createdAt: base.createdAt || new Date(),
+                is_public: newData.is_public !== undefined ? newData.is_public : base.is_public,
               } as Scape
             })
           }
         }
       )
       .on("broadcast", { event: "scape_update" }, (payload) => {
-        const newData = payload.payload // Payload structure: { payload: { ... } } ? Checking docs.
-        // Supabase sends payload as the argument.
-        // But payload includes event, type, payload...
-        // "payload" property contains the data sent.
+        const newData = payload.payload
         const data = newData as Partial<Scape>
 
         if (data) {
@@ -142,9 +148,9 @@ export function useScapeLoading(id: string) {
             return {
               ...base,
               ...data,
-              // Preserve ID and critical fields if not in payload
               id: id,
               source: "cloud",
+              is_public: data.is_public !== undefined ? data.is_public : base.is_public,
             } as Scape
           })
         }
@@ -172,23 +178,13 @@ export function useScapeLoading(id: string) {
   // Prioritize Local, then Cloud
   const scape = localScape ?? cloudScape
 
-  // Loading state is rough here.
-  // If both are null/undefined, we are loading.
-  const isLoading = localScape === undefined && cloudScape === null && !cloudError
-
-  // If localScape is explicitly undefined (entry not found) AND cloudScape is null (not found) AND not loadingCloud
-  // Then strictly 404.
-  // But localScape is undefined when loading AND when not found?
-  // Dexie docs: "The result of the promise returned by querier. If the promise rejects, the error is returned."
-  // "If the function throws, undefined is returned."
-  // Wait, if record doesn't exist, get() returns undefined.
-  // So `localScape` is `undefined` can mean "loading" OR "not found". This is annoying.
-
-  // Ideally we use `db.scapes.get(id).then(...)` in a `useEffect` for precise control if we mix sources.
-  // But `useLiveQuery` is nice for updates.
-
-  // Let's assume if `localScape` is undefined, we *might* be loading or it's missing.
-  // The `cloudScape` will fill in if found.
+  // Loading state logic:
+  // We are loading if:
+  // 1. We don't have a local scape (localScape === undefined)
+  // 2. AND we are still checking the cloud (isCloudLoading === true)
+  //
+  // Even if localScape is missing, if cloud check finished and found nothing, we are done (Not Found).
+  const isLoading = localScape === undefined && isCloudLoading
 
   return {
     scape,
