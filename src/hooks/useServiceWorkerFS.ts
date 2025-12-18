@@ -83,15 +83,34 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
       }
     }
 
+    // Inject Import Map into index.html for dependencies like 'three'
+    const processedFiles = files.map((f) => {
+      if (f.name === "index.html" && typeof f.content === "string") {
+        const importMap = {
+          imports: {
+            three: "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/": "https://unpkg.com/three@0.160.0/",
+          },
+        }
+        const injection = `<script type="importmap">${JSON.stringify(importMap)}</script>`
+        // Inject before </head>, or if missing, before <body>, or just prepend
+        let newContent = f.content
+        if (newContent.includes("</head>")) {
+          newContent = newContent.replace("</head>", `${injection}</head>`)
+        } else {
+          newContent = injection + newContent
+        }
+        return { ...f, content: newContent }
+      }
+      return { name: f.name, content: f.content }
+    })
+
     worker.postMessage(
       {
         type: "FILE_UPDATE",
         payload: {
           clear: true,
-          files: files.map((f) => ({
-            name: f.name,
-            content: f.content,
-          })),
+          files: processedFiles,
         },
       },
       [channel.port2]
