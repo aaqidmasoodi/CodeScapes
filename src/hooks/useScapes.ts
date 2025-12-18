@@ -42,12 +42,16 @@ export function useScapes() {
     }
   }, [user])
 
-  // 3. Merge & Sort
+  // 3. Merge & Sort (Deduplicate)
   const combinedScapes = useMemo(() => {
     const local = localScapes || []
     const cloud = cloudScapes || []
 
-    return [...local, ...cloud].sort(
+    const cloudIds = new Set(cloud.map((s) => s.id))
+    // Only show local scapes that are NOT in the cloud list
+    const uniqueLocal = local.filter((s) => !cloudIds.has(s.id))
+
+    return [...uniqueLocal, ...cloud].sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     )
   }, [localScapes, cloudScapes])

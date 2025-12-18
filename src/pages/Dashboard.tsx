@@ -9,9 +9,11 @@ import {
   MoreVertical,
   Layout,
   AlertTriangle,
+  Menu,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
@@ -34,6 +36,8 @@ import { Sidebar } from "@/components/layout/Sidebar"
 import { type Scape } from "@/lib/db"
 import { useScapes } from "@/hooks/useScapes"
 
+import { Skeleton } from "@/components/ui/skeleton"
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState("local_scapes")
@@ -44,7 +48,7 @@ export default function Dashboard() {
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
 
   // Real data from Hooks
-  const { scapes: myScapes, deleteScape } = useScapes()
+  const { scapes: myScapes, loading, deleteScape } = useScapes()
 
   const filteredScapes = myScapes?.filter((scape) => {
     const matchesSearch = scape.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -127,8 +131,20 @@ export default function Dashboard() {
         </div>
 
         {/* content */}
-        <div className="flex-1 overflow-auto p-6">
-          {!filteredScapes || filteredScapes.length === 0 ? (
+        <div className="flex-1 overflow-auto p-6 [scrollbar-gutter:stable]">
+          {loading ? (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="flex flex-col space-y-3">
+                  <Skeleton className="h-36 w-full rounded-xl" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : !filteredScapes || filteredScapes.length === 0 ? (
             <div className="mx-auto flex h-[60vh] max-w-2xl flex-col items-center justify-center rounded-xl border-2 border-dashed bg-muted/5 text-center">
               <div className="mb-4 rounded-full bg-muted p-4">
                 <Layout className="h-8 w-8 text-muted-foreground" />
@@ -265,8 +281,36 @@ export default function Dashboard() {
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
       <Header />
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-        <main className="h-full flex-1 overflow-hidden">{renderContent()}</main>
+        {/* Desktop Sidebar (Hidden on Mobile) */}
+        {/* Desktop Sidebar (Spacer + Overlay) */}
+        <div className="relative hidden md:block">
+          <div className="h-full w-16" /> {/* Spacer */}
+          <div className="absolute inset-y-0 left-0 z-50">
+            <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+          </div>
+        </div>
+
+        {/* Mobile Sidebar (Sheet) */}
+        <div className="sticky top-0 z-20 flex w-full items-center gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur md:hidden">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="-ml-2">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-64 p-0">
+              <Sidebar
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                isMobile={true}
+                className="w-full border-none bg-transparent"
+              />
+            </SheetContent>
+          </Sheet>
+          <span className="font-semibold">Dashboard</span>
+        </div>
+
+        <main className="relative z-0 h-full flex-1 overflow-hidden">{renderContent()}</main>
       </div>
     </div>
   )
