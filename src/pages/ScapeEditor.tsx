@@ -18,6 +18,7 @@ import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
 import type { LogEntry } from "@/types/log"
 import { useFileSystem } from "@/hooks/useFileSystem"
+import { useAuth } from "@/hooks/useAuth"
 import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
@@ -100,9 +101,10 @@ export default function ScapeEditor() {
   const { scapeId } = useParams()
   // STRICT UUID LOGIC (Clean Slate)
   const id = scapeId || ""
+  const { user } = useAuth()
 
   // Load Scape and Files
-  const { scape, source, emitUpdate } = useScapeLoading(id)
+  const { scape, source, emitUpdate, isLoading } = useScapeLoading(id)
 
   const {
     files,
@@ -635,12 +637,57 @@ export default function ScapeEditor() {
         Invalid API ID
       </div>
     )
-  if (!scape || !isInitialized)
+
+  // 1. Loading Metadata (User info, environment type, etc.)
+  if (isLoading)
+    return (
+      <div className="h-screen w-screen">
+        <LoadingOverlay message="Loading Scape Metadata..." />
+      </div>
+    )
+
+  // 2. Metadata Loaded but not found (or private)
+  if (!scape)
+    return (
+      <div className="flex h-screen items-center justify-center text-muted-foreground">
+        Scape not found or access denied.
+      </div>
+    )
+
+  // 3. ACCESS CONTROL (Strict Redirects)
+  // This must happen BEFORE blocking on file initialization.
+  // If not owner, we redirect immediately and return null (or a loader)
+  if (scape.source === "cloud") {
+    // If not logged in, or logged in but not owner
+    const isOwner = user && user.id === scape.authorId
+    if (!isOwner) {
+      // We can return a "Redirecting..." screen to be polite,
+      // but the key is we do NOT wait for isInitialized.
+      return (
+        <div className="flex h-screen w-screen flex-col items-center justify-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <div className="text-muted-foreground">Redirecting to Player...</div>
+        </div>
+      )
+    }
+  }
+
+  // 4. Filesystem Initialization (Owner Only)
+  if (!isInitialized)
     return (
       <div className="h-screen w-screen">
         <LoadingOverlay message="Initializing Environment..." />
       </div>
     )
+  // --- ACCESS CONTROL ---
+  // If the scape exists (loaded), but the current user is NOT the author,
+  // we redirect them to the "Runner/Player" view.
+  // The Editor is strictly for the owner.
+  // Note: We need to handle the case where user might be null (not logged in).
+  // const { user } = useAuth() // Moved to top
+
+  // Effect removed in favor of render-phase redirection logic above.
+
   if (!scape)
     return (
       <div className="flex h-screen items-center justify-center text-muted-foreground">
@@ -749,7 +796,7 @@ export default function ScapeEditor() {
                   onClick={() => {
                     // Open the unified runner/player page
                     // This handles local/cloud fetching and VFS hydration automatically
-                    window.open(`/run/${scape.id}`, "_blank")
+                    window.open(`/ run / ${scape.id} `, "_blank")
                   }}
                 >
                   <MonitorPlay className="mr-2 h-4 w-4" />
