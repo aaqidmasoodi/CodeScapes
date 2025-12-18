@@ -1024,6 +1024,8 @@ export default function ScapeEditor() {
                       className={!isPreviewOpen ? "min-w-0" : ""}
                     >
                       <PreviewPane
+                        key={id} // Force remount on scape switch
+                        scapeId={id}
                         ref={previewRef}
                         files={debouncedFiles}
                         onCollapse={() => setIsPreviewOpen(false)}

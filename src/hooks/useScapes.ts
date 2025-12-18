@@ -60,6 +60,9 @@ export function useScapes() {
     try {
       if (scape.source === "cloud") {
         await cloudRepo.deleteScape(scape.id)
+        // Also delete from local (offline cache) to prevent ghosts
+        await localRepo.deleteScape(scape.id)
+
         // Optimistic update
         setCloudScapes((prev) => prev.filter((s) => s.id !== scape.id))
       } else {

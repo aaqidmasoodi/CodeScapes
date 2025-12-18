@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import type { ScapeFile } from "@/types/file"
 
-export function useServiceWorkerFS(files: ScapeFile[]) {
+export function useServiceWorkerFS(files: ScapeFile[], scapeId: string) {
   const [isReady, setIsReady] = useState(false)
   const [worker, setWorker] = useState<ServiceWorker | null>(null)
 
@@ -67,11 +67,10 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
 
   // 2. Sync Files & Handshake
   useEffect(() => {
-    if (!worker || files.length === 0) return
+    if (!worker || !scapeId) return
 
-    // Reset ready state when files change to ensure we don't serve stale content
-    // or race with updates.
-    // eslint-disable-next-line
+    // Reset ready state when files/scape changes
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsReady(false)
 
     const channel = new MessageChannel()
@@ -86,6 +85,11 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
     // Inject Import Map into index.html for dependencies like 'three'
     const processedFiles = files.map((f) => {
       if (f.name === "index.html" && typeof f.content === "string") {
+        // Prevent double injection if template already has one
+        if (f.content.includes('<script type="importmap">')) {
+          return { name: f.name, content: f.content }
+        }
+
         const importMap = {
           imports: {
             three: "https://unpkg.com/three@0.160.0/build/three.module.js",
@@ -109,13 +113,20 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
       {
         type: "FILE_UPDATE",
         payload: {
+          scapeId,
           clear: true,
           files: processedFiles,
         },
       },
       [channel.port2]
     )
-  }, [files, worker])
+    console.log(
+      "[useServiceWorkerFS] Sent files:",
+      processedFiles.map((f) => f.name),
+      "to namespace:",
+      scapeId
+    )
+  }, [files, worker, scapeId])
 
   return isReady
 }

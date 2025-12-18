@@ -10,6 +10,7 @@ import { useServiceWorkerFS } from "@/hooks/useServiceWorkerFS"
 
 interface WebRunnerProps {
   files: ScapeFile[]
+  scapeId: string
   onCollapse?: () => void
   onBusyChange?: (isBusy: boolean) => void
 }
@@ -17,11 +18,11 @@ interface WebRunnerProps {
 // WebRunner doesn't need to report busy state currently, but we accept the prop
 // to match the interface.
 export const WebRunner = memo(
-  forwardRef<ScapeRunnerHandle, WebRunnerProps>(({ files, onCollapse }, ref) => {
+  forwardRef<ScapeRunnerHandle, WebRunnerProps>(({ files, scapeId, onCollapse }, ref) => {
     const iframeRef = useRef<HTMLIFrameElement>(null)
 
-    // Sync files to Service Worker
-    const isServiceWorkerReady = useServiceWorkerFS(files)
+    // Sync files to Service Worker (Namespaced)
+    const isServiceWorkerReady = useServiceWorkerFS(files, scapeId)
 
     const [refreshKey, setRefreshKey] = useState(0)
 
@@ -102,8 +103,8 @@ export const WebRunner = memo(
             key={refreshKey}
             ref={iframeRef}
             title="preview"
-            // Point to the virtual path intercepted by SW
-            src={`/preview-v3/${entryFile}`}
+            // Point to the virtual NAMESPACED path intercepted by SW
+            src={`/preview-v3/${scapeId}/${entryFile}`}
             className="h-full w-full border-0"
             sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
           />
