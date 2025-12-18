@@ -31,6 +31,11 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
   const [isSyncing, setIsSyncing] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  // Optimistic UI state
+  const [isPublic, setIsPublic] = useState(scape.is_public)
+
+  // URL is based on the unified runner route
+
   // URL is based on the unified runner route
   const shareUrl = `${window.location.origin}/live/${scape.id}`
   const isCloud = scape.source === "cloud"
@@ -158,26 +163,37 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
                   <span>Public Access</span>
                 </div>
                 <Switch
-                  checked={scape.is_public}
+                  checked={isPublic}
                   onCheckedChange={async (checked) => {
-                    // Toggle public status
+                    // 1. Optimistic Update
+                    setIsPublic(checked)
+
                     try {
+                      // 2. Background API Call
                       const repo = new CloudRepository()
                       await repo.updateScape(scape.id, { is_public: checked })
 
-                      // Optimistic toast
-                      toast({ title: checked ? "Project is now Public" : "Project is now Private" })
+                      toast({
+                        title: checked ? "Project is now Public" : "Project is now Private",
+                      })
 
-                      // Callback to update parent state
+                      // 3. Sync Parent (Success)
                       if (onSyncComplete) onSyncComplete({ ...scape, is_public: checked })
-                    } catch {
-                      toast({ title: "Failed to update visibility", variant: "destructive" })
+                    } catch (err) {
+                      // 4. Revert on Failure
+                      setIsPublic(!checked)
+                      console.error("Visibility toggle failed:", err)
+                      toast({
+                        title: "Failed to update visibility",
+                        description: "Reverting changes due to network error.",
+                        variant: "destructive",
+                      })
                     }
                   }}
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {scape.is_public
+                {isPublic
                   ? "Anyone with the link can run this project."
                   : "Only you can run this project. The link will not work for others."}
               </p>

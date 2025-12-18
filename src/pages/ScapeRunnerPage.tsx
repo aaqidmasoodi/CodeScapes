@@ -99,6 +99,23 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
     })
   }
 
+  // Live Mode: Render only the runner, no chrome
+  if (mode === "live") {
+    return (
+      <div className="relative h-screen w-full overflow-hidden bg-background">
+        {RunnerComponent && (
+          <RunnerComponent
+            files={files}
+            scapeId={scape.id}
+            dependencies={scape.dependencies}
+            onOutput={addLog}
+            isLive={true}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="relative h-screen w-full overflow-hidden bg-background">
       {RunnerComponent && (
@@ -107,6 +124,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
           scapeId={scape.id}
           dependencies={scape.dependencies}
           onOutput={addLog}
+          isLive={false}
         />
       )}
 

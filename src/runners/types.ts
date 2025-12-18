@@ -8,6 +8,7 @@ export interface ScapeRunnerProps {
   onCollapse?: () => void
   onBusyChange?: (isBusy: boolean) => void
   onInputRequest?: (prompt: string) => void
+  isLive?: boolean
 }
 
 export interface ScapeRunnerHandle {
