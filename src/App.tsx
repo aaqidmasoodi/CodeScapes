@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary"
 
 import ScapeRunnerPage from "@/pages/ScapeRunnerPage"
 import AuthCallback from "@/pages/AuthCallback"
+import AuthPage from "@/pages/AuthPage"
 import { Toaster } from "@/components/ui/toaster"
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
       <ErrorBoundary>
         <BrowserRouter>
           <Routes>
+            <Route path="/login" element={<AuthPage />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Navigate to="/dashboard/local" replace />} />
             <Route path="/dashboard/:tab" element={<Dashboard />} />

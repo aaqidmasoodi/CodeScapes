@@ -28,9 +28,19 @@ export const useAuth = create<AuthState>((set) => ({
     if (error) throw error
   },
   signOut: async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
-    set({ session: null, user: null })
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.warn("SignOut API Error (ignoring)", error)
+      }
+    } catch (e) {
+      console.warn("SignOut Warning", e)
+    } finally {
+      // ALWAYS clear local state
+      set({ session: null, user: null })
+      localStorage.clear() // Optional: nuclear option if state persists deeply
+      window.location.reload() // Hard refresh to ensure clean state
+    }
   },
 }))
 
