@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
-import { useParams } from "react-router-dom"
+import { useParams, Navigate } from "react-router-dom"
 import * as ResizablePrimitive from "react-resizable-panels"
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
@@ -661,14 +661,7 @@ export default function ScapeEditor() {
     // If not logged in, or logged in but not owner
     const isOwner = user && user.id === scape.authorId
     if (!isOwner) {
-      // We can return a "Redirecting..." screen to be polite,
-      // but the key is we do NOT wait for isInitialized.
-      return (
-        <div className="flex h-screen w-screen flex-col items-center justify-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <div className="text-muted-foreground">Redirecting to Player...</div>
-        </div>
-      )
+      return <Navigate to={`/run/${scape.id}`} replace />
     }
   }
 
