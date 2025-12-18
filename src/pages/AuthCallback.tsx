@@ -15,8 +15,6 @@ export default function AuthCallback() {
       // Setup a timeout or listener?
       // Actually, useAuth listener runs globally.
       // We just wait for 'user' to become truthy.
-      // But what if auth FAILS?
-      // We should probably have a timeout to redirect to home if nothing happens.
       const timer = setTimeout(() => {
         // Fallback: If no user after 3s, maybe just go dashboard and let it handle "Not Logged In"
         navigate("/dashboard/local", { replace: true })
