@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 import {
   Search,
   Globe,
@@ -40,7 +40,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState("local_scapes")
+  // URL-based State
+  const { tab } = useParams<{ tab: string }>()
+  const activeTab = tab || "local"
+
   const [searchQuery, setSearchQuery] = useState("")
 
   // Delete Modal State
@@ -55,8 +58,8 @@ export default function Dashboard() {
     if (!matchesSearch) return false
 
     // Tab Filtering
-    if (activeTab === "local_scapes") return scape.source === "local"
-    if (activeTab === "cloud_scapes") return scape.source === "cloud"
+    if (activeTab === "local") return scape.source === "local"
+    if (activeTab === "cloud") return scape.source === "cloud"
     return false
   })
 
@@ -102,7 +105,7 @@ export default function Dashboard() {
     }
 
     // Default: My Scapes (Dashboard) - Now Local or Cloud
-    const isCloud = activeTab === "cloud_scapes"
+    const isCloud = activeTab === "cloud"
 
     return (
       <div className="flex h-full flex-col bg-background">
@@ -286,7 +289,8 @@ export default function Dashboard() {
         <div className="relative hidden md:block">
           <div className="h-full w-16" /> {/* Spacer */}
           <div className="absolute inset-y-0 left-0 z-50">
-            <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+            {/* Sidebar Active Tab from URL */}
+            <Sidebar activeTab={activeTab} />
           </div>
         </div>
 
@@ -301,7 +305,6 @@ export default function Dashboard() {
             <SheetContent side="left" className="w-64 p-0">
               <Sidebar
                 activeTab={activeTab}
-                onTabChange={setActiveTab}
                 isMobile={true}
                 className="w-full border-none bg-transparent"
               />

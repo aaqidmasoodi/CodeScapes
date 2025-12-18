@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import type { ScapeFile } from "@/types/file"
 
-export function useServiceWorkerFS(files: ScapeFile[]) {
+export function useServiceWorkerFS(files: ScapeFile[], scapeId: string) {
   const [isReady, setIsReady] = useState(false)
   const [worker, setWorker] = useState<ServiceWorker | null>(null)
 
@@ -67,11 +67,10 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
 
   // 2. Sync Files & Handshake
   useEffect(() => {
-    if (!worker) return
+    if (!worker || !scapeId) return
 
-    // Reset ready state when files change to ensure we don't serve stale content
-    // or race with updates.
-    // eslint-disable-next-line
+    // Reset ready state when files/scape changes
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsReady(false)
 
     const channel = new MessageChannel()
@@ -114,6 +113,7 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
       {
         type: "FILE_UPDATE",
         payload: {
+          scapeId,
           clear: true,
           files: processedFiles,
         },
@@ -122,9 +122,11 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
     )
     console.log(
       "[useServiceWorkerFS] Sent files:",
-      processedFiles.map((f) => f.name)
+      processedFiles.map((f) => f.name),
+      "to namespace:",
+      scapeId
     )
-  }, [files, worker])
+  }, [files, worker, scapeId])
 
   return isReady
 }

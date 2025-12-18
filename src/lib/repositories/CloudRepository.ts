@@ -263,6 +263,40 @@ export class CloudRepository implements IScapeRepository {
   }
 
   async deleteScape(id: string): Promise<void> {
+    // 1. Fetch files to identify assets and enable explicit RLS-compliant deletion
+    const files = await this.getFiles(id)
+
+    // 2. Cleanup Storage Assets (Images/Binaries)
+    const assetPaths: string[] = []
+    files.forEach((f) => {
+      // Check if content is a string URL pointing to our storage
+      // The uploadAsset method uses path `assets/${fileId}`
+      if (typeof f.content === "string" && f.content.includes("/scape-assets/")) {
+        // We can infer the path from logic or construct it knowning the file ID convention
+        // uploadAsset uses: `assets/${file.id}`
+        assetPaths.push(`assets/${f.id}`)
+      }
+    })
+
+    if (assetPaths.length > 0) {
+      const { error: storageError } = await supabase.storage.from("scape-assets").remove(assetPaths)
+
+      if (storageError) {
+        console.warn("Failed to cleanup storage assets:", storageError)
+        // Proceed anyway to ensure DB consistency
+      }
+    }
+
+    // 3. Delete Files explicitly (Fixes RLS Cascade Issue)
+    // RLS policy "Users can delete files..." requires the Scape to exist.
+    // So we must delete files BEFORE deleting the Scape.
+    if (files.length > 0) {
+      const { error: filesError } = await supabase.from("files").delete().eq("scape_id", id)
+
+      if (filesError) throw filesError
+    }
+
+    // 4. Delete Scape
     const { error } = await supabase.from("scapes").delete().eq("id", id)
     if (error) throw error
   }

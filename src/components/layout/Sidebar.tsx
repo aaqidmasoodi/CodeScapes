@@ -14,7 +14,7 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export function Sidebar({
   className,
-  activeTab = "local_scapes",
+  activeTab = "local",
   onTabChange,
   isMobile,
   onMobileLinkClick,
@@ -27,12 +27,12 @@ export function Sidebar({
   const isExpanded = isMobile || isHovered
 
   const tabs = [
-    { id: "local_scapes", icon: Laptop2, label: "Local Scapes", path: "/dashboard" },
+    { id: "local", icon: Laptop2, label: "Local Scapes", path: "/dashboard/local" },
     ...(user
-      ? [{ id: "cloud_scapes", icon: Cloud, label: "Cloud Scapes", path: "/dashboard" }]
+      ? [{ id: "cloud", icon: Cloud, label: "Cloud Scapes", path: "/dashboard/cloud" }]
       : []),
-    { id: "learn", icon: BookOpen, label: "Learn", path: "/dashboard" },
-    { id: "community", icon: Users, label: "Community", path: "/dashboard" },
+    { id: "learn", icon: BookOpen, label: "Learn", path: "/dashboard/learn" },
+    { id: "community", icon: Users, label: "Community", path: "/dashboard/community" },
   ]
 
   const handleTabClick = (tabId: string, path: string | null) => {

@@ -15,6 +15,7 @@ import type { LogEntry } from "@/types/log"
 
 interface PythonRunnerProps {
   files: ScapeFile[]
+  scapeId?: string // Optional for Python runner as it uses client-side isolation mostly
   onCollapse?: () => void
   onOutput?: (log: LogEntry) => void
   dependencies?: string[]

@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 const CACHE_NAME = "codescape-preview-v3"
+// Structure: Map<ScapeId, Map<FileName, Content>>
 const fileSystem = new Map()
 
 self.addEventListener("install", (event) => {
@@ -14,71 +15,105 @@ self.addEventListener("activate", (event) => {
   console.log("[SW] Activated")
 })
 
-self.addEventListener("message", async (event) => {
-  if (!event.data) return
+// --- Message Handling ---
+self.addEventListener("message", (event) => {
+  const { data, ports } = event
+  const port = ports[0]
 
-  const { type, payload } = event.data
+  if (!data || !data.type) return
 
-  if (type === "FILE_UPDATE") {
-    if (payload.clear) {
-      console.log("[SW] Clearing filesystem")
-      fileSystem.clear()
+  if (data.type === "FILE_UPDATE") {
+    const { scapeId, files, clear } = data.payload
+
+    if (!scapeId) {
+      console.error("[SW] Missing scapeId in FILE_UPDATE")
+      return
     }
 
-    if (Array.isArray(payload.files)) {
-      console.log(`[SW] caching ${payload.files.length} files`)
-      payload.files.forEach((file) => {
-        let content = file.content
-        let contentType = "application/octet-stream"
+    console.log(`[SW] Received Update for Scape: ${scapeId} (${files.length} files)`)
 
-        if (file.name.endsWith(".html")) contentType = "text/html"
-        else if (file.name.endsWith(".css")) contentType = "text/css"
-        else if (file.name.endsWith(".js")) contentType = "application/javascript"
-        else if (file.name.endsWith(".json")) contentType = "application/json"
-        else if (file.name.endsWith(".png")) contentType = "image/png"
-        else if (file.name.endsWith(".jpg") || file.name.endsWith(".jpeg"))
-          contentType = "image/jpeg"
-        else if (file.name.endsWith(".svg")) contentType = "image/svg+xml"
-        else if (file.name.endsWith(".wasm")) contentType = "application/wasm"
+    // Get or Create Namespace
+    let scapeFs = fileSystem.get(scapeId)
+    if (!scapeFs || clear) {
+      scapeFs = new Map()
+      fileSystem.set(scapeId, scapeFs)
+    }
 
-        console.log(`[SW] Storing ${file.name} as ${contentType}`)
+    // Populate Files
+    for (const file of files) {
+      let contentType = "text/plain"
+      if (file.name.endsWith(".html")) contentType = "text/html"
+      else if (file.name.endsWith(".js")) contentType = "application/javascript"
+      else if (file.name.endsWith(".css")) contentType = "text/css"
+      else if (file.name.endsWith(".json")) contentType = "application/json"
+      else if (file.name.endsWith(".png")) contentType = "image/png"
+      else if (file.name.endsWith(".jpg") || file.name.endsWith(".jpeg")) contentType = "image/jpeg"
+      else if (file.name.endsWith(".svg")) contentType = "image/svg+xml"
+      else if (file.name.endsWith(".wasm")) contentType = "application/wasm"
 
-        if (typeof content === "string") {
-          // Detect Remote URL (Storage)
-          if (content.startsWith("http://") || content.startsWith("https://")) {
-            fileSystem.set(file.name, content)
-          } else {
-            fileSystem.set(file.name, new Blob([content], { type: contentType }))
-          }
+      const content = file.content
+      console.log(`[SW] Storing ${file.name} in ${scapeId}`)
+
+      if (typeof content === "string") {
+        // Remote URL or Text
+        if (content.startsWith("http://") || content.startsWith("https://")) {
+          scapeFs.set(file.name, content)
         } else {
-          // Binary
-          if (content instanceof Blob) {
-            fileSystem.set(file.name, content)
-          } else {
-            // ArrayBuffer or Uint8Array
-            fileSystem.set(file.name, new Blob([content], { type: contentType }))
-          }
+          scapeFs.set(file.name, new Blob([content], { type: contentType }))
         }
-      })
+      } else {
+        // Binary
+        if (content instanceof Blob) {
+          scapeFs.set(file.name, content)
+        } else {
+          scapeFs.set(file.name, new Blob([content], { type: contentType }))
+        }
+      }
     }
 
-    if (event.ports && event.ports[0]) {
-      event.ports[0].postMessage({ type: "ACK" })
-    }
+    if (port) port.postMessage({ type: "ACK" })
   }
 })
 
+// --- Fetch Interception ---
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url)
 
-  // Use /preview-v3/ as the standard path
+  // Scope: /preview-v3/<scapeId>/<filePath>
   if (url.pathname.startsWith("/preview-v3/")) {
-    let path = url.pathname.replace("/preview-v3/", "")
+    // Extract parts: ["", "preview-v3", "scapeId", "rest..."]
+    const parts = url.pathname.split("/")
+    if (parts.length < 4) {
+      event.respondWith(new Response("Invalid preview URL format", { status: 400 }))
+      return // Invalid path
+    }
+
+    const scapeId = parts[2]
+    let path = parts.slice(3).join("/") // Reconstruct file path
+
+    // Default to index.html if path is empty
     if (path === "" || path === "/") path = "index.html"
 
-    const content = fileSystem.get(path)
+    // Safety check just in case
+    if (!scapeId || !path) {
+      event.respondWith(new Response("Invalid preview URL parameters", { status: 400 }))
+      return
+    }
+
+    console.log(`[SW] Fetch Request: Scape=${scapeId}, Path=${path}`)
+
+    const scapeFs = fileSystem.get(scapeId)
+
+    if (!scapeFs) {
+      console.warn(`[SW] No filesystem found for Scape: ${scapeId}`)
+      event.respondWith(new Response("Scape not initialized", { status: 404 }))
+      return
+    }
+
+    const content = scapeFs.get(path)
 
     if (content) {
+      // Handle Remote URL (Proxy)
       if (
         typeof content === "string" &&
         (content.startsWith("http://") || content.startsWith("https://"))
@@ -87,10 +122,11 @@ self.addEventListener("fetch", (event) => {
         event.respondWith(
           fetch(content)
             .then((response) => {
-              // Recreate response with enforced CORP headers
+              // Recreate response with enforced CORP headers and No-Cache
               const newHeaders = new Headers(response.headers)
               newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin")
               newHeaders.set("Access-Control-Allow-Origin", "*")
+              newHeaders.set("Cache-Control", "no-store, no-cache") // Force no-cache on proxy too
 
               return new Response(response.body, {
                 status: response.status,
@@ -106,34 +142,26 @@ self.addEventListener("fetch", (event) => {
         return
       }
 
-      event.respondWith(
-        new Response(content, {
-          status: 200,
-          headers: {
-            "Content-Type": content.type,
-            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-            Pragma: "no-cache",
-            Expires: "0",
-            "Cross-Origin-Embedder-Policy": "require-corp",
-            "Cross-Origin-Opener-Policy": "same-origin",
-            "Cross-Origin-Resource-Policy": "cross-origin",
-          },
-        })
-      )
-      return
-    } else {
-      console.error(`[SW] File not found in memory: ${path}`)
-      event.respondWith(
-        new Response(`File not found: ${path}`, {
-          status: 404,
-          headers: {
-            "Cross-Origin-Embedder-Policy": "require-corp",
-            "Cross-Origin-Opener-Policy": "same-origin",
-            "Cross-Origin-Resource-Policy": "cross-origin",
-          },
-        })
-      )
+      console.log(`[SW] Serving ${path} from memory (Namespace: ${scapeId})`)
+      // Blob response
+      const response = new Response(content, {
+        status: 200,
+        headers: {
+          "Content-Type": content.type,
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+          "Cross-Origin-Embedder-Policy": "require-corp",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "cross-origin",
+          "Access-Control-Allow-Origin": "*",
+        },
+      })
+      event.respondWith(response)
       return
     }
+
+    console.warn(`[SW] File not found in ${scapeId}: ${path}`)
+    event.respondWith(new Response("File not found", { status: 404 }))
   }
 })

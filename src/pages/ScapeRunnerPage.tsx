@@ -102,7 +102,12 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
   return (
     <div className="relative h-screen w-full overflow-hidden bg-background">
       {RunnerComponent && (
-        <RunnerComponent files={files} dependencies={scape.dependencies} onOutput={addLog} />
+        <RunnerComponent
+          files={files}
+          scapeId={scape.id}
+          dependencies={scape.dependencies}
+          onOutput={addLog}
+        />
       )}
 
       {/* Console Drawer (Overlay) */}

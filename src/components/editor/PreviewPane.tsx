@@ -15,6 +15,7 @@ export type { ScapeRunnerHandle as PreviewPaneHandle }
 
 interface PreviewPaneProps {
   files: ScapeFile[]
+  scapeId: string
   onCollapse: () => void
   onOutput?: (log: LogEntry) => void
   environment: EnvironmentId
@@ -27,7 +28,7 @@ interface PreviewPaneProps {
 // --- SWITCHBOARD ---
 export const PreviewPane = memo(
   forwardRef<ScapeRunnerHandle, PreviewPaneProps>((props, ref) => {
-    const { environment = "web", isRunning = true, onBusyChange } = props
+    const { environment = "web", isRunning = true, onBusyChange, scapeId } = props
 
     const runnerRef = useRef<ScapeRunnerHandle>(null)
 
@@ -98,6 +99,7 @@ export const PreviewPane = memo(
     return (
       <RunnerComponent
         files={props.files}
+        scapeId={scapeId}
         onCollapse={props.onCollapse}
         onOutput={props.onOutput}
         dependencies={props.dependencies}
