@@ -6,9 +6,6 @@ export interface EnvironmentCapabilities {
   terminal?: boolean
 }
 
-// Update EnvironmentConfig interface implied here (referencing types/environment later)
-// For now, extending the object literal structure.
-
 export const ENVIRONMENTS: Record<
   string,
   EnvironmentConfig & { capabilities: EnvironmentCapabilities }
@@ -137,6 +134,60 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });`,
+          },
+        ],
+      },
+      {
+        id: "p5",
+        name: "p5.js Sketch",
+        description: "Creative coding with p5.js",
+        files: [
+          {
+            name: "index.html",
+            language: "html",
+            content: `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/p5.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/addons/p5.sound.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <main>
+    </main>
+    <script src="sketch.js"></script>
+  </body>
+</html>`,
+          },
+          {
+            name: "style.css",
+            language: "css",
+            content: `html, body {
+  margin: 0;
+  padding: 0;
+}
+canvas {
+  display: block;
+}`,
+          },
+          {
+            name: "sketch.js",
+            language: "javascript",
+            content: `function setup() {
+  createCanvas(windowWidth, windowHeight);
+}
+
+function draw() {
+  background(20);
+  fill(255, 0, 100);
+  noStroke();
+  circle(mouseX, mouseY, 50);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}`,
           },
         ],
       },
