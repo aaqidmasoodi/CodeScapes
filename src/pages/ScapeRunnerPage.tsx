@@ -14,7 +14,11 @@ import type { LogEntry } from "@/types/log"
 const localRepo = new LocalRepository()
 const cloudRepo = new CloudRepository()
 
-export default function ScapeRunnerPage() {
+interface ScapeRunnerProps {
+  mode?: "dev" | "live"
+}
+
+export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
   const { scapeId } = useParams()
   const [scape, setScape] = useState<Scape | null>(null)
   const [files, setFiles] = useState<ScapeFile[]>([])
@@ -33,19 +37,23 @@ export default function ScapeRunnerPage() {
       setError(null)
       try {
         console.log(`[Runner] Booting Scape: ${scapeId}`)
-        // 1. Try Local
-        const localScape = await localRepo.getScape(scapeId)
-        if (localScape) {
-          setScape(localScape)
-          setFiles(await localRepo.getFiles(scapeId))
-          setLoading(false)
-          return
+        // 1. Try Local (Skip if Live Mode)
+        if (mode !== "live") {
+          const localScape = await localRepo.getScape(scapeId)
+          if (localScape) {
+            setScape(localScape)
+            setFiles(await localRepo.getFiles(scapeId))
+            setLoading(false)
+            return
+          }
         }
         // 2. Try Cloud
         const cloudScape = await cloudRepo.getScape(scapeId)
+
         if (cloudScape) {
           setScape(cloudScape)
-          setFiles(await cloudRepo.getFiles(scapeId))
+          const cloudFiles = await cloudRepo.getFiles(scapeId)
+          setFiles(cloudFiles)
           setLoading(false)
           return
         }
@@ -58,7 +66,7 @@ export default function ScapeRunnerPage() {
       }
     }
     fetchScape()
-  }, [scapeId])
+  }, [scapeId, mode])
 
   // Determine Runner
   const RunnerComponent = scape ? getRunner(scape.environment) : null

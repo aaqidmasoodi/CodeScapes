@@ -5,13 +5,16 @@ import { supabase } from "@/lib/supabase"
 
 export type ScapeSource = "local" | "cloud"
 
-export function useScapeLoading(id: string) {
+export function useScapeLoading(id: string, options?: { skipLocal?: boolean }) {
   const [cloudScape, setCloudScape] = useState<Scape | null>(null)
   const [cloudError, setCloudError] = useState<Error | null>(null)
   const [isCloudLoading, setIsCloudLoading] = useState(true)
 
-  // 1. Try Local First (Live Logic)
-  const localScape = useLiveQuery(() => db.scapes.get(id), [id])
+  // 1. Try Local First (Live Logic) - Only if not skipped
+  const localScape = useLiveQuery(() => {
+    if (options?.skipLocal) return undefined
+    return db.scapes.get(id)
+  }, [id, options?.skipLocal])
 
   // 2. If not found locally, try Cloud
   useEffect(() => {
@@ -28,7 +31,7 @@ export function useScapeLoading(id: string) {
     // Or just run both in parallel?
     // If we have local, use it. If not, wait for cloud.
 
-    if (localScape !== undefined) return // We have a result (either object or null/undefined if finished?)
+    if (!options?.skipLocal && localScape !== undefined) return // We have a local result
     // Actually Dexie hooks return undefined initially then the value. If value is undefined, it means record not found.
 
     // Let's explicitly check:

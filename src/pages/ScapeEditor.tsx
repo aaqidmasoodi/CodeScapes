@@ -661,7 +661,9 @@ export default function ScapeEditor() {
     // If not logged in, or logged in but not owner
     const isOwner = user && user.id === scape.authorId
     if (!isOwner) {
-      return <Navigate to={"/run/" + scape.id} replace />
+      const targetUrl = "/live/" + scape.id.trim()
+      console.log("Redirecting non-owner to Live View:", targetUrl)
+      return <Navigate to={targetUrl} replace />
     }
   }
 
@@ -789,7 +791,7 @@ export default function ScapeEditor() {
                   onClick={() => {
                     // Open the unified runner/player page
                     // This handles local/cloud fetching and VFS hydration automatically
-                    window.open(`/ run / ${scape.id} `, "_blank")
+                    window.open("/run/" + scape.id.trim(), "_blank")
                   }}
                 >
                   <MonitorPlay className="mr-2 h-4 w-4" />
