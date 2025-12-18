@@ -5,16 +5,6 @@ import type { IScapeRepository } from "./types"
 
 // --- Helpers for Binary Support ---
 
-function arrayBufferToBase64(buffer: ArrayBufferLike): string {
-  let binary = ""
-  const bytes = new Uint8Array(buffer)
-  const len = bytes.byteLength
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
-}
-
 function base64ToArrayBuffer(base64: string): Uint8Array {
   const binary_string = atob(base64)
   const len = binary_string.length
@@ -25,32 +15,88 @@ function base64ToArrayBuffer(base64: string): Uint8Array {
   return bytes
 }
 
-async function prepareContentForUpload(
-  content: string | Blob | ArrayBuffer | Uint8Array
-): Promise<string> {
-  if (typeof content === "string") return content
-
-  if (content instanceof Blob) {
-    const buf = await content.arrayBuffer()
-    return "base64:" + arrayBufferToBase64(buf)
-  }
-  if (content instanceof ArrayBuffer) {
-    return "base64:" + arrayBufferToBase64(content)
-  }
-  if (content instanceof Uint8Array) {
-    return "base64:" + arrayBufferToBase64(content.buffer)
-  }
-  return ""
-}
-
 export class CloudRepository implements IScapeRepository {
-  async getScape(id: string): Promise<Scape | undefined> {
-    const { data, error } = await supabase.from("scapes").select("*").eq("id", id).single()
+  /**
+   * Uploads a binary asset to Supabase Storage and returns the Public URL.
+   */
+  private async uploadAsset(id: string, content: Blob | ArrayBuffer | Uint8Array): Promise<string> {
+    const path = `assets/${id}` // Flat structure usage file ID
+    let body: BodyInit
+
+    if (content instanceof Uint8Array) {
+      body = content.buffer as ArrayBuffer // Force cast to standard ArrayBuffer
+    } else {
+      body = content as Blob | ArrayBuffer
+    }
+
+    const { error } = await supabase.storage.from("scape-assets").upload(path, body, {
+      upsert: true,
+      contentType: content instanceof Blob ? content.type : undefined,
+    })
 
     if (error) {
-      if (error.code === "PGRST116") return undefined // Not found
+      console.error("Storage Upload Failed:", error)
       throw error
     }
+
+    const { data } = supabase.storage.from("scape-assets").getPublicUrl(path)
+    return data.publicUrl
+  }
+
+  private isBinary(content: string | Blob | ArrayBuffer | Uint8Array, language?: string): boolean {
+    if (content instanceof Blob || content instanceof ArrayBuffer || content instanceof Uint8Array)
+      return true
+    if (language === "image" || language === "binary") return true
+    return false
+  }
+
+  private async processContentForStorage(
+    id: string,
+    content: string | Blob | ArrayBuffer | Uint8Array,
+    language?: string
+  ): Promise<string> {
+    // 1. If it's already a URL (previous upload), return strict
+    if (typeof content === "string" && content.startsWith("http")) return content
+
+    // 2. If Binary, Upload to Storage
+    if (this.isBinary(content, language)) {
+      // Convert string to Blob if needed? No, string binary is rare unless base64.
+      // If string and Language=Binary, it might be base64.
+      if (typeof content === "string") {
+        // Assume it is NOT binary if it is a simple string, unless base64 prefixed
+        if (content.startsWith("base64:")) {
+          const buf = base64ToArrayBuffer(content.slice(7))
+          return this.uploadAsset(id, buf)
+        }
+        // Otherwise treat as text
+        return content
+      }
+      return this.uploadAsset(id, content)
+    }
+
+    // 3. Fallback for text strings (standard code)
+    if (typeof content === "string") return content
+
+    // 4. Edge case: Small binary? Use base64? No, user wants storage.
+    // If somehow fell through (e.g. unknown type), default to base64 legacy
+    // reuse legacy logic inline if needed, but uploadAsset covers Blob/Buffer.
+    return this.uploadAsset(id, content as Blob)
+  }
+
+  /**
+   * Downloads an asset from a URL (used for hydrating local DB from Cloud).
+   */
+  async downloadAsset(url: string): Promise<Blob> {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`Failed to download asset: ${response.statusText}`)
+    return response.blob()
+  }
+
+  async getScape(id: string): Promise<Scape | undefined> {
+    const { data, error } = await supabase.from("scapes").select("*").eq("id", id).maybeSingle()
+
+    if (error) throw error
+    if (!data) return undefined
 
     // Map snake_case DB to camelCase Application
     return {
@@ -157,7 +203,7 @@ export class CloudRepository implements IScapeRepository {
   async createFile(file: ScapeFile & { scapeId: string }): Promise<void> {
     if (!file.id) throw new Error("File ID is required")
 
-    const contentStr = await prepareContentForUpload(file.content)
+    const contentStr = await this.processContentForStorage(file.id, file.content, file.language)
 
     const { error } = await supabase.from("files").insert({
       id: file.id,
@@ -180,7 +226,7 @@ export class CloudRepository implements IScapeRepository {
         scape_id: f.scapeId,
         name: f.name,
         language: f.language,
-        content: await prepareContentForUpload(f.content),
+        content: await this.processContentForStorage(f.id!, f.content, f.language),
       }))
     )
 
@@ -192,7 +238,7 @@ export class CloudRepository implements IScapeRepository {
     id: string,
     content: string | Blob | ArrayBuffer | Uint8Array
   ): Promise<void> {
-    const contentStr = await prepareContentForUpload(content)
+    const contentStr = await this.processContentForStorage(id, content)
 
     const { error } = await supabase
       .from("files")
@@ -235,7 +281,11 @@ export class CloudRepository implements IScapeRepository {
         const dbChanges: Record<string, unknown> = {} // Fixed 'any'
         if (u.changes.name) dbChanges.name = u.changes.name
         if (u.changes.content) {
-          dbChanges.content = await prepareContentForUpload(u.changes.content)
+          dbChanges.content = await this.processContentForStorage(
+            u.id,
+            u.changes.content,
+            u.changes.language
+          )
         }
 
         return supabase.from("files").update(dbChanges).eq("id", u.id)

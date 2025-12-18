@@ -67,7 +67,7 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
 
   // 2. Sync Files & Handshake
   useEffect(() => {
-    if (!worker || files.length === 0) return
+    if (!worker) return
 
     // Reset ready state when files change to ensure we don't serve stale content
     // or race with updates.
@@ -86,6 +86,11 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
     // Inject Import Map into index.html for dependencies like 'three'
     const processedFiles = files.map((f) => {
       if (f.name === "index.html" && typeof f.content === "string") {
+        // Prevent double injection if template already has one
+        if (f.content.includes('<script type="importmap">')) {
+          return { name: f.name, content: f.content }
+        }
+
         const importMap = {
           imports: {
             three: "https://unpkg.com/three@0.160.0/build/three.module.js",
@@ -114,6 +119,10 @@ export function useServiceWorkerFS(files: ScapeFile[]) {
         },
       },
       [channel.port2]
+    )
+    console.log(
+      "[useServiceWorkerFS] Sent files:",
+      processedFiles.map((f) => f.name)
     )
   }, [files, worker])
 
