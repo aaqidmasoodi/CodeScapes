@@ -13,6 +13,7 @@ import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane
 
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import { SaveStatus } from "@/components/editor/SaveStatus"
+import { ShareDialog } from "@/components/editor/ShareDialog"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
 import type { LogEntry } from "@/types/log"
@@ -22,7 +23,6 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { getLanguageFromFilename } from "@/lib/language-utils"
 import {
-  MonitorPlay,
   Zap,
   LogOut,
   PanelRightOpen,
@@ -30,6 +30,7 @@ import {
   Square,
   RotateCw,
   Loader2,
+  MonitorPlay,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
@@ -708,48 +709,66 @@ export default function ScapeEditor() {
                 </Button>
               )}
 
-              {/* Stop / Start */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (isRunning) {
-                    setIsRunning(false)
-                  } else {
-                    handleRun()
-                  }
-                }}
-                className={cn(
-                  "h-8 w-8 px-0 transition-colors",
-                  isRunning
-                    ? "text-red-500 hover:bg-red-500/10 hover:text-red-600"
-                    : "text-green-500 hover:bg-green-500/10 hover:text-green-600"
-                )}
-                title={isRunning ? "Stop (Refs/Preview will reset)" : "Run"}
-              >
-                {isRunning ? (
-                  isRunnerBusy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+              <div className="flex items-center gap-2">
+                {/* Stop / Start with Rotate Effect on Run */}
+                <Button
+                  // Logic for Run button:
+                  // Primary/default state is "Run" (Green)
+                  // Active state is "Stop" (Red)
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (isRunning) {
+                      setIsRunning(false)
+                    } else {
+                      handleRun()
+                    }
+                  }}
+                  className={cn(
+                    "h-8 w-8 px-0 transition-colors",
+                    isRunning
+                      ? "text-red-500 hover:bg-red-500/10 hover:text-red-600"
+                      : "text-green-500 hover:bg-green-500/10 hover:text-green-600"
+                  )}
+                  title={isRunning ? "Stop (Refs/Preview will reset)" : "Run"}
+                >
+                  {isRunning ? (
+                    isRunnerBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Square className="h-4 w-4 fill-current" />
+                    )
                   ) : (
-                    <Square className="h-4 w-4 fill-current" />
-                  )
-                ) : (
-                  <Play className="h-4 w-4 fill-current" />
-                )}
+                    <Play className="h-4 w-4 fill-current" />
+                  )}
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    // Open the unified runner/player page
+                    // This handles local/cloud fetching and VFS hydration automatically
+                    window.open(`/run/${scape.id}`, "_blank")
+                  }}
+                >
+                  <MonitorPlay className="mr-2 h-4 w-4" />
+                  Preview
+                </Button>
+              </div>
+
+              <ShareDialog
+                scape={scape}
+                onSyncComplete={() => {
+                  /* updated logic handled by hook/subscription */
+                }}
+              />
+
+              <Button size="sm">
+                <Zap className="mr-2 h-4 w-4" />
+                Deploy
               </Button>
             </div>
-            <Button
-              variant={isPreviewOpen ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setIsPreviewOpen(!isPreviewOpen)}
-            >
-              <MonitorPlay className="mr-2 h-4 w-4" />
-              Preview
-            </Button>
-            <Button size="sm">
-              <Zap className="mr-2 h-4 w-4" />
-              Deploy
-            </Button>
           </>
         }
         headerEndActions={

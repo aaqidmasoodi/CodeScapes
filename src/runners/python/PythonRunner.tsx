@@ -7,7 +7,7 @@ import {
   useState,
   useCallback,
 } from "react"
-import { MonitorPlay, Box, PanelRightClose } from "lucide-react"
+import { MonitorPlay, Box, PanelRightClose, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"
@@ -30,6 +30,8 @@ export const PythonRunner = memo(
       const isReadyRef = useRef(false)
       const pendingRunRef = useRef(false)
       const isBusyRef = useRef(false)
+      // New: Local state for UI rendering
+      const [isBusy, setIsBusyState] = useState(false)
 
       // Shared Buffer for Output/Input
       const sharedBufferRef = useRef<SharedArrayBuffer | null>(null)
@@ -70,6 +72,7 @@ export const PythonRunner = memo(
 
       const setBusy = useCallback((busy: boolean) => {
         isBusyRef.current = busy
+        setIsBusyState(busy)
         propsRef.current.onBusyChange?.(busy)
       }, [])
 
@@ -251,8 +254,12 @@ export const PythonRunner = memo(
       // 1. Initialize on mount or when dependencies change (deeply)
       const depsString = JSON.stringify(dependencies)
       useEffect(() => {
-        initWorker()
+        // Defer init to avoid synchronous state update warning during render
+        const timer = setTimeout(() => {
+          initWorker()
+        }, 0)
         return () => {
+          clearTimeout(timer)
           workerRef.current?.terminate()
         }
       }, [depsString, initWorker])
@@ -345,11 +352,20 @@ export const PythonRunner = memo(
           <div className="flex flex-1 flex-col overflow-auto p-4">
             {previewItems.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
-                <Box className="h-8 w-8 opacity-20" />
-                <p className="mt-2 text-xs">No graphical output generated.</p>
-                <p className="mt-1 text-[10px] opacity-75">
-                  Plots (matplotlib) and DataFrames (pandas) will appear here.
-                </p>
+                {isBusy ? (
+                  <>
+                    <Loader2 className="h-8 w-8 animate-spin text-primary opacity-50" />
+                    <p className="mt-2 text-xs">Running code...</p>
+                  </>
+                ) : (
+                  <>
+                    <Box className="h-8 w-8 opacity-20" />
+                    <p className="mt-2 text-xs">No graphical output generated.</p>
+                    <p className="mt-1 text-[10px] opacity-75">
+                      Plots (matplotlib) and DataFrames (pandas) will appear here.
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="flex flex-col gap-6">
