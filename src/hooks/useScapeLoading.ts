@@ -65,6 +65,7 @@ export function useScapeLoading(id: string) {
           updatedAt: new Date(data.updated_at),
           thumbnail: data.thumbnail,
           dependencies: data.dependencies || [],
+          is_public: data.is_public || false,
         })
       }
     }
@@ -120,19 +121,17 @@ export function useScapeLoading(id: string) {
                   ? (newData.environment as Scape["environment"])
                   : base.environment,
                 template: newData.template || base.template,
-                authorId: base.authorId, // author_id is not expected to change on update
+                authorId: base.authorId,
                 syncStatus: "synced",
-                createdAt: base.createdAt || new Date(), // createdAt is not expected to change on update
+                createdAt: base.createdAt || new Date(),
+                is_public: newData.is_public !== undefined ? newData.is_public : base.is_public,
               } as Scape
             })
           }
         }
       )
       .on("broadcast", { event: "scape_update" }, (payload) => {
-        const newData = payload.payload // Payload structure: { payload: { ... } } ? Checking docs.
-        // Supabase sends payload as the argument.
-        // But payload includes event, type, payload...
-        // "payload" property contains the data sent.
+        const newData = payload.payload
         const data = newData as Partial<Scape>
 
         if (data) {
@@ -142,9 +141,9 @@ export function useScapeLoading(id: string) {
             return {
               ...base,
               ...data,
-              // Preserve ID and critical fields if not in payload
               id: id,
               source: "cloud",
+              is_public: data.is_public !== undefined ? data.is_public : base.is_public,
             } as Scape
           })
         }

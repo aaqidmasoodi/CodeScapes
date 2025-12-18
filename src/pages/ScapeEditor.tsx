@@ -759,8 +759,14 @@ export default function ScapeEditor() {
 
               <ShareDialog
                 scape={scape}
-                onSyncComplete={() => {
-                  /* updated logic handled by hook/subscription */
+                onSyncComplete={(updated) => {
+                  // Propagate updates (like is_public or dependencies) to the local store/UI
+                  // This ensures the Editor (which relies on local state) sees the changes immediately.
+                  updateScape({
+                    is_public: updated.is_public,
+                    dependencies: updated.dependencies,
+                    thumbnail: updated.thumbnail,
+                  })
                 }}
               />
 
