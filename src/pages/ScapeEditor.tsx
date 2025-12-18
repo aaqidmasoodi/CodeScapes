@@ -929,30 +929,81 @@ export default function ScapeEditor() {
                               }
                             >
                               {activeFile ? (
-                                typeof activeFile.content === "string" ? (
-                                  <CodeEditor
-                                    key={activeFile.name}
-                                    fileName={activeFile.name}
-                                    initialValue={activeFile.content as string}
-                                    language={activeFile.language}
-                                    onChange={handleCodeChange}
-                                    onValidate={handleValidate}
-                                    files={files}
-                                    onRun={handleRun}
-                                  />
-                                ) : (
-                                  <div className="flex h-full flex-col items-center justify-center p-4 text-muted-foreground">
-                                    <p className="mb-2 font-medium">Binary File</p>
-                                    <p className="text-sm">
-                                      {activeFile.name} (
-                                      {activeFile.content instanceof Blob
-                                        ? `${activeFile.content.size} bytes`
-                                        : "ArrayBuffer"}
+                                (() => {
+                                  const isImage = /\.(png|jpg|jpeg|gif|svg|webp|ico)$/i.test(
+                                    activeFile.name
+                                  )
+
+                                  // 1. Handle Images (URL or Blob)
+                                  if (isImage) {
+                                    let src = ""
+                                    if (typeof activeFile.content === "string") {
+                                      src = activeFile.content
+                                    } else if (activeFile.content instanceof Blob) {
+                                      src = URL.createObjectURL(activeFile.content)
+                                    } else if (activeFile.content instanceof Uint8Array) {
+                                      src = URL.createObjectURL(
+                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                        new Blob([activeFile.content as any])
                                       )
-                                    </p>
-                                    <p className="text-xs opacity-50">Cannot edit binary files.</p>
-                                  </div>
-                                )
+                                    }
+
+                                    if (src) {
+                                      return (
+                                        <div className="flex h-full flex-col items-center justify-center overflow-hidden bg-muted/5 p-4">
+                                          <div className="relative flex max-h-full max-w-full items-center justify-center rounded-lg border bg-[url('/grid.svg')] bg-center p-4 shadow-sm dark:bg-zinc-950">
+                                            <img
+                                              src={src}
+                                              alt={activeFile.name}
+                                              className="max-h-[80vh] max-w-full object-contain"
+                                            />
+                                          </div>
+                                          <p className="mt-4 text-sm text-muted-foreground">
+                                            {activeFile.name}
+                                          </p>
+                                        </div>
+                                      )
+                                    }
+                                  }
+
+                                  // 2. Handle Text Code
+                                  if (typeof activeFile.content === "string") {
+                                    return (
+                                      <CodeEditor
+                                        key={activeFile.name}
+                                        fileName={activeFile.name}
+                                        initialValue={activeFile.content as string}
+                                        language={activeFile.language}
+                                        onChange={handleCodeChange}
+                                        onValidate={handleValidate}
+                                        files={files}
+                                        onRun={handleRun}
+                                      />
+                                    )
+                                  }
+
+                                  // 3. Fallback for other Binaries
+                                  return (
+                                    <div className="flex h-full flex-col items-center justify-center p-4 text-muted-foreground">
+                                      <div className="mb-4 rounded-full bg-muted p-4">
+                                        <div className="i-lucide-file-binary h-8 w-8 text-foreground/50" />
+                                      </div>
+                                      <p className="mb-2 font-medium">Binary File</p>
+                                      <p className="text-sm">
+                                        {activeFile.name} (
+                                        {activeFile.content instanceof Blob
+                                          ? `${(activeFile.content.size / 1024).toFixed(1)} KB`
+                                          : activeFile.content instanceof Uint8Array
+                                            ? `${(activeFile.content.byteLength / 1024).toFixed(1)} KB`
+                                            : "Unknown size"}
+                                        )
+                                      </p>
+                                      <p className="text-xs opacity-50">
+                                        Cannot edit binary files directly.
+                                      </p>
+                                    </div>
+                                  )
+                                })()
                               ) : (
                                 <div className="flex h-full items-center justify-center p-4 text-muted-foreground">
                                   <p className="text-sm">Select a file to start editing</p>

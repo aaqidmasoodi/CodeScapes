@@ -16,6 +16,12 @@ interface CodeEditorProps {
   onRun?: () => void
 }
 
+// Track global registration of Emmet to prevent duplicates on file switch
+const emmetRegistered = {
+  html: false,
+  css: false,
+}
+
 export function CodeEditor({
   initialValue = "// Start coding here...",
   language = "javascript",
@@ -83,20 +89,17 @@ export function CodeEditor({
       scrollBeyondLastLine: false,
     })
 
-    // Dispose any previous emmet instance (if any)
-    // Monaco-emmet-es doesn't have a clean dispose method exposed easily on the global instance
-    // but re-registering usually overwrites.
-    // However, we should be careful.
-    if (language === "html" || language === "php") {
+    // Register Emmet only once per session
+    if (!emmetRegistered.html) {
       emmetHTML(monaco)
-    } else if (language === "css" || language === "scss" || language === "less") {
-      emmetCSS(monaco)
-    } else if (language === "javascript" || language === "typescript") {
-      // JSX / TSX Emmet support
-      if (fileName.endsWith(".jsx") || fileName.endsWith(".tsx")) {
-        emmetHTML(monaco)
-      }
+      emmetRegistered.html = true
     }
+    if (!emmetRegistered.css) {
+      emmetCSS(monaco)
+      emmetRegistered.css = true
+    }
+
+    // JSON Schema config could go here if needed
 
     // Command Bindings
     // Run (Cmd+Enter)
@@ -142,7 +145,8 @@ export function CodeEditor({
     <div className="h-full w-full overflow-hidden">
       <Editor
         height="100%"
-        defaultLanguage={language}
+        path={fileName} // Explicit path to ensure correct model association
+        language={language} // Explicit language prop
         // Controlled value for Real-time Sync
         value={initialValue}
         theme={effectiveTheme}
