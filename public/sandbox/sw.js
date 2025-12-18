@@ -5,83 +5,143 @@ const CACHE_NAME = "codescape-sandbox-v1"
 const fileSystem = new Map()
 
 self.addEventListener("install", (event) => {
-    self.skipWaiting()
+  self.skipWaiting()
 })
 
 self.addEventListener("activate", (event) => {
-    event.waitUntil(self.clients.claim())
-    console.log("[Sandbox SW] Activated")
+  event.waitUntil(self.clients.claim())
+  console.log("[Sandbox SW] Activated")
 })
 
-self.addEventListener("message", (event) => {
-    if (!event.data || !event.data.type) return
+const MIME_TYPES = {
+  ".html": "text/html",
+  ".js": "application/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".txt": "text/plain",
+}
 
-    switch (event.data.type) {
-        case "HYDRATE": {
-            // Load files into memory
-            const { scapeId, files } = event.data.payload
-            console.log(`[Sandbox SW] Hydrating ${scapeId} (${files.length} files)`)
+self.addEventListener("message", async (event) => {
+  if (!event.data || !event.data.type) return
 
-            const scapeFs = new Map()
-            for (const file of files) {
-                // Assume content is already prepared (or handle conversion if string)
-                let blob = file.content
-                if (typeof blob === "string") {
-                    // Basic mime type guessing
-                    let type = "text/plain"
-                    if (file.name.endsWith(".html")) type = "text/html"
-                    else if (file.name.endsWith(".js")) type = "application/javascript"
-                    else if (file.name.endsWith(".css")) type = "text/css"
+  switch (event.data.type) {
+    case "HYDRATE": {
+      // Load files into memory
+      const { scapeId, files } = event.data.payload
+      console.log(`[Sandbox SW] Hydrating ${scapeId} (${files.length} files)`)
 
-                    blob = new Blob([file.content], { type })
-                }
-                scapeFs.set(file.name, blob)
+      const scapeFs = new Map()
+      for (const file of files) {
+        let blob = file.content
+        const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
+        let type = MIME_TYPES[ext] || "text/plain"
+
+        if (typeof blob === "string") {
+          // Check if it's a Base64 Data URI
+          if (blob.startsWith("data:")) {
+            try {
+              const res = await fetch(blob)
+              blob = await res.blob()
+              // Update type from blob if available, or keep inferred
+              type = blob.type || type
+            } catch (e) {
+              console.error(`[Sandbox SW] Failed to decode data URI for ${file.name}`, e)
             }
-
-            fileSystem.set(scapeId, scapeFs)
-
-            // Acknowledge
-            if (event.ports[0]) event.ports[0].postMessage({ type: "ACK" })
-            break
+          } else if (blob.startsWith("http") || blob.startsWith("/")) {
+            // Check if it's a Remote URL (Supabase Storage)
+            try {
+              console.log(`[Sandbox SW] Fetching remote asset for ${file.name}: ${blob}`)
+              const res = await fetch(blob, { mode: "cors" })
+              if (!res.ok) throw new Error(`HTTP ${res.status}`)
+              blob = await res.blob()
+              // Use the actual type from the remote file
+              type = blob.type || type
+            } catch (e) {
+              console.error(`[Sandbox SW] Failed to fetch remote asset ${file.name}`, e)
+              // Fallback? convert text to blob so it doesn't crash, but it will be broken image
+              blob = new Blob([blob], { type })
+            }
+          } else {
+            // Regular text content
+            blob = new Blob([file.content], { type })
+          }
         }
+
+        // Ensure proper type on final blob
+        if (blob instanceof Blob && blob.type !== type) {
+          blob = new Blob([blob], { type })
+        }
+
+        console.log(`[Sandbox SW] Stored: ${file.name} (${type}, ${blob.size} bytes)`)
+        scapeFs.set(file.name, blob)
+      }
+
+      fileSystem.set(scapeId, scapeFs)
+
+      // Acknowledge
+      if (event.ports[0]) event.ports[0].postMessage({ type: "ACK" })
+      break
     }
+  }
 })
 
 self.addEventListener("fetch", (event) => {
-    const url = new URL(event.request.url)
+  const url = new URL(event.request.url)
 
-    // Intercept requests to /sandbox/run/<scapeId>/<path>
-    // This matches the relative path structure from bootloader.html
-    const PATH_PREFIX = "/sandbox/run/"
+  // Debug: Log all fetch events in scope
+  if (url.pathname.includes("/sandbox/")) {
+    console.log(`[Sandbox SW] Fetch: ${url.pathname}`)
+  }
 
-    if (url.pathname.includes("/run/")) {
-        // Robust splitting: find /run/ and take everything after
-        const parts = url.pathname.split("/run/")[1].split("/")
-        const scapeId = parts[0]
-        const filePath = parts.slice(1).join("/") || "index.html"
+  // Intercept requests to /sandbox/run/<scapeId>/<path>
+  // This matches the relative path structure from bootloader.html
+  const PATH_PREFIX = "/sandbox/run/"
 
-        const scapeFs = fileSystem.get(scapeId)
+  if (url.pathname.includes("/run/")) {
+    // Robust splitting: find /run/ and take everything after
+    const parts = url.pathname.split("/run/")[1].split("/")
+    const scapeId = parts[0]
+    const filePath = parts.slice(1).join("/") || "index.html"
 
-        if (!scapeFs) {
-            // If not found, perhaps we are just booting up or lost context.
-            // Return 404 or a "Loading" page
-            return event.respondWith(new Response("Sandbox not hydrated", { status: 404 }))
-        }
+    const scapeFs = fileSystem.get(scapeId)
 
-        const file = scapeFs.get(filePath)
-        if (file) {
-            const resp = new Response(file, {
-                status: 200,
-                headers: {
-                    "Content-Type": file.type,
-                    "Cache-Control": "no-store",
-                    "Cross-Origin-Resource-Policy": "cross-origin",
-                    "Access-Control-Allow-Origin": "*"
-                }
-            })
-            return event.respondWith(resp)
-        }
-
-        return event.respondWith(new Response("File not found", { status: 404 }))
+    if (!scapeFs) {
+      console.warn(`[Sandbox SW] Scape FS not found for: ${scapeId}`)
+      // If not found, perhaps we are just booting up or lost context.
+      // Return 404 or a "Loading" page
+      return event.respondWith(new Response("Sandbox not hydrated", { status: 404 }))
     }
+
+    // Normalize: remove leading / or ./
+    const normalizedPath = filePath.replace(/^(\.?\/)/, "")
+
+    let file = scapeFs.get(normalizedPath)
+
+    // Try exact match if normalization failed?
+    if (!file) file = scapeFs.get(filePath)
+
+    if (file) {
+      const resp = new Response(file, {
+        status: 200,
+        headers: {
+          "Content-Type": file.type,
+          "Cache-Control": "no-store",
+          "Cross-Origin-Resource-Policy": "cross-origin",
+          "Access-Control-Allow-Origin": "*",
+        },
+      })
+      return event.respondWith(resp)
+    }
+
+    console.warn(`[Sandbox SW] 404 Not Found: ${filePath} (Normalized: ${normalizedPath})`)
+    console.warn(`[Sandbox SW] Available files:`, Array.from(scapeFs.keys()))
+
+    return event.respondWith(new Response("File not found", { status: 404 }))
+  }
 })

@@ -47,6 +47,7 @@ export function usePreviewBridge(
     const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}`
 
     // Initial State: Point to Bootloader, but NOT ready (waiting for handshake)
+    // eslint-disable-next-line
     setBridgeState({ ready: false, url: bootloaderUrl })
 
     // 2. Setup Handshake Listener

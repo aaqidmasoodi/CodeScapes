@@ -94,6 +94,7 @@
           if (event.data.type === "COMPILE_FILES") {
             const { scapeId, files } = event.data.payload;
             console.log(`[Bootloader ${ID}] Compiling ${scapeId}...`);
+            console.log(`[Bootloader ${ID}] Files received:`, files.map(f => f.name));
 
             const sw = navigator.serviceWorker.controller;
             if (!sw) {
