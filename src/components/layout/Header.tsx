@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { AuthDialog } from "@/components/auth/AuthDialog"
 
 interface HeaderProps {
   actions?: React.ReactNode
@@ -41,14 +42,16 @@ export function Header({ actions, customTitle, endActions }: HeaderProps) {
 }
 
 function AuthButtons() {
-  const { user, signIn, signOut, loading } = useAuth()
+  const { user, signOut, loading } = useAuth()
   if (loading) return null
 
   if (!user) {
     return (
-      <Button variant="outline" size="sm" onClick={signIn}>
-        Sign In
-      </Button>
+      <AuthDialog>
+        <Button variant="outline" size="sm">
+          Sign In
+        </Button>
+      </AuthDialog>
     )
   }
 

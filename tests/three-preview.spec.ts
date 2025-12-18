@@ -11,6 +11,10 @@ test("Three.js Preview Renders Canvas", async ({ page }) => {
   await page.getByRole("button", { name: "Create Scape" }).click()
 
   // 2. The Verification (The "Magic Line")
+  // Wait for the iframe to point to the new namespaced URL (Critical for Service Worker handshake)
+  const iframeLocator = page.locator('iframe[title="preview"]')
+  await expect(iframeLocator).toHaveAttribute("src", /\/preview-v3\//, { timeout: 10000 })
+
   // We use .frameLocator() to go INSIDE the iframe
   const previewIframe = page.frameLocator('iframe[title="preview"]')
 
@@ -18,8 +22,8 @@ test("Three.js Preview Renders Canvas", async ({ page }) => {
   const threeCanvas = previewIframe.locator("canvas")
 
   // Assert 1: It exists and is visible
-  // We give it a slightly longer timeout (10s) because assets need to load
-  await expect(threeCanvas).toBeVisible({ timeout: 15000 })
+  // We give it a slightly longer timeout (20s) because assets need to load and SW needs to activate
+  await expect(threeCanvas).toBeVisible({ timeout: 20000 })
 
   // Assert 2: It has dimensions (proves it's not a 0x0 hidden element)
   const box = await threeCanvas.boundingBox()
