@@ -4,6 +4,7 @@ import * as ResizablePrimitive from "react-resizable-panels"
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { ScapeLayout } from "@/layouts/ScapeLayout"
 import { CodeEditor } from "@/components/editor/CodeEditor"
 import { FileExplorer } from "@/components/editor/FileExplorer"
@@ -705,8 +706,14 @@ export default function ScapeEditor() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-xl font-bold text-transparent">
-                CodeScapes Editor
+                CodeScapes
               </span>
+              <Badge
+                variant="secondary"
+                className="h-5 px-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+              >
+                Editor
+              </Badge>
               <span className="border-l pl-2 text-sm font-medium text-muted-foreground">
                 {scape?.name}
               </span>
