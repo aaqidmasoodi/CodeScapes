@@ -1031,6 +1031,32 @@ export default function ScapeEditor() {
                                     }
                                   }
 
+                                  // 1.5 Handle PDFs
+                                  if (activeFile.name.toLowerCase().endsWith(".pdf")) {
+                                    let src = ""
+                                    if (activeFile.content instanceof Blob) {
+                                      src = URL.createObjectURL(activeFile.content)
+                                    } else if (activeFile.content instanceof Uint8Array) {
+                                      src = URL.createObjectURL(
+                                        new Blob([activeFile.content as unknown as BlobPart], {
+                                          type: "application/pdf",
+                                        })
+                                      )
+                                    }
+
+                                    if (src) {
+                                      return (
+                                        <div className="flex h-full flex-col bg-muted/5">
+                                          <iframe
+                                            src={src}
+                                            className="h-full w-full border-none"
+                                            title={activeFile.name}
+                                          />
+                                        </div>
+                                      )
+                                    }
+                                  }
+
                                   // 2. Handle Text Code
                                   if (typeof activeFile.content === "string") {
                                     return (
