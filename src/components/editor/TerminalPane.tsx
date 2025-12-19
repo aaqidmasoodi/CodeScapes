@@ -68,6 +68,7 @@ export function TerminalPane({
   const outputBottomRef = useRef<HTMLDivElement>(null)
   const outputInputRef = useRef<HTMLInputElement>(null)
   const [programInput, setProgramInput] = useState("")
+  const [isProcessing, setIsProcessing] = useState(false)
 
   // Auto-scroll
   useEffect(() => {
@@ -104,55 +105,78 @@ export function TerminalPane({
       if (onDeleteFile) await onDeleteFile(name)
     },
     onExecCommand,
+    onLog: (output) => {
+      // Stream output to history
+      setHistory((prev) => [
+        ...prev,
+        {
+          type: "output",
+          content: output.content,
+        },
+      ])
+    },
   })
 
   const handleCommand = async (cmdStr: string) => {
     const trimmed = cmdStr.trim()
     if (!trimmed) return
 
-    // Detect Legacy Commands (pip)
-    const [cmd] = trimmed.split(/\s+/)
-    if (cmd === "help" || cmd === "clear") {
-      // Keep legacy handling for now for specific commands not yet in shell
-      // Actually 'help' and 'clear' are UI specific
+    setIsProcessing(true)
 
-      if (cmd === "clear") {
-        setHistory([])
-        return
+    try {
+      // Detect Legacy Commands (pip)
+      const [cmd] = trimmed.split(/\s+/)
+      if (cmd === "help" || cmd === "clear") {
+        // ... (existing legacy checks)
+        // Note: For 'clear' and 'help' which are sync, we still wrap them but they are fast.
+
+        if (cmd === "clear") {
+          setHistory([])
+          setIsProcessing(false)
+          return
+        }
+
+        if (cmd === "help") {
+          setHistory((prev) => [
+            ...prev,
+            {
+              type: "output",
+              content: (
+                <div className="text-muted-foreground">
+                  Available commands:
+                  <br />
+                  &nbsp;&nbsp;ls, cat, touch, rm, mkdir, pwd
+                  <br />
+                  &nbsp;&nbsp;pip install &lt;pkg&gt;
+                  <br />
+                  &nbsp;&nbsp;echo "text" &gt; file.txt
+                </div>
+              ),
+            },
+          ])
+          setIsProcessing(false)
+          return
+        }
       }
 
-      if (cmd === "help") {
-        setHistory((prev) => [
-          ...prev,
-          {
-            type: "output",
-            content: (
-              <div className="text-muted-foreground">
-                Available commands:
-                <br />
-                &nbsp;&nbsp;ls, cat, touch, rm, mkdir, pwd
-                <br />
-                &nbsp;&nbsp;pip install &lt;pkg&gt;
-                <br />
-                &nbsp;&nbsp;echo "text" &gt; file.txt
-              </div>
-            ),
-          },
-        ])
-        return
+      // Execute via Shell
+      const result = await shell.execute(trimmed)
+
+      // Render Output
+      if (result.type === "success") {
+        // no op
+      } else if (result.type === "error") {
+        setHistory((prev) => [...prev, { type: "output", content: `Error: ${result.content}` }])
+      } else {
+        setHistory((prev) => [...prev, { type: "output", content: result.content }])
       }
-    }
-
-    // Execute via Shell
-    const result = await shell.execute(trimmed)
-
-    // Render Output
-    if (result.type === "success") {
-      // no op
-    } else if (result.type === "error") {
-      setHistory((prev) => [...prev, { type: "output", content: `Error: ${result.content}` }])
-    } else {
-      setHistory((prev) => [...prev, { type: "output", content: result.content }])
+    } catch (e) {
+      setHistory((prev) => [...prev, { type: "output", content: `Error: ${e}` }])
+    } finally {
+      setIsProcessing(false)
+      // Re-focus input after processing (if it became visible again)
+      // setTimeout to allow React to render the input
+      setTimeout(() => inputRef.current?.focus(), 10)
     }
   }
 
@@ -281,23 +305,26 @@ export function TerminalPane({
                 </div>
               ))}
 
-              <div className="flex items-center gap-2">
-                <span className="text-green-500">➜</span>
-                <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
-                <form onSubmit={handleSubmit} className="min-w-0 flex-1">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
-                    autoFocus
-                    autoComplete="off"
-                    spellCheck="false"
-                  />
-                </form>
-              </div>
               <div ref={bottomRef} />
+
+              {!isProcessing && (
+                <div className="flex items-center gap-2">
+                  <span className="text-green-500">➜</span>
+                  <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
+                  <form onSubmit={handleSubmit} className="min-w-0 flex-1">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
+                      autoFocus
+                      autoComplete="off"
+                      spellCheck="false"
+                    />
+                  </form>
+                </div>
+              )}
             </>
           )}
 

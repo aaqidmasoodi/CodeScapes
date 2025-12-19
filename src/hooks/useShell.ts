@@ -14,6 +14,7 @@ interface FileSystemHooks {
     cmd: string,
     arg: string
   ) => Promise<{ success: boolean; warning?: string; error?: string }>
+  onLog?: (output: ShellOutput) => void
 }
 
 // --- COMMAND REGISTRY ---
@@ -111,9 +112,8 @@ const commands: Record<string, CommandHandler> = {
     if (subCmd === "install") {
       if (!pkg) return { type: "error", content: "usage: pip install <package>" }
 
-      // We return an empty success first to signal "running" if we wanted streaming,
-      // but standard shell expects a return value.
-      // Since execCommand is async, we await it.
+      // Standard PIP output: "Collecting <pkg>..."
+      ctx.log({ type: "stdout", content: `Collecting ${pkg}...` })
 
       try {
         const result = await ctx.execCommand("pip-install", pkg)
@@ -129,6 +129,9 @@ const commands: Record<string, CommandHandler> = {
 
     if (subCmd === "uninstall") {
       if (!pkg) return { type: "error", content: "usage: pip uninstall <package>" }
+
+      ctx.log({ type: "stdout", content: `Found existing installation: ${pkg}` })
+      ctx.log({ type: "stdout", content: `Uninstalling ${pkg}...` })
 
       try {
         const result = await ctx.execCommand("pip-uninstall", pkg)
@@ -168,7 +171,7 @@ export function useShell(fs: FileSystemHooks) {
         updateFile: fs.updateFile,
         deleteFile: fs.deleteFile,
         execCommand: fs.onExecCommand, // Pass the bridge
-        log: () => {},
+        log: fs.onLog || (() => {}),
       }
 
       try {
