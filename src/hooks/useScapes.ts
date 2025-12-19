@@ -13,12 +13,15 @@ export function useScapes() {
   const [cloudScapes, setCloudScapes] = useState<Scape[]>([])
   const [loadingCloud, setLoadingCloud] = useState(false)
 
+  // Derived ID for stable dependency (prevent refetch on object reference change)
+  const userId = user?.id
+
   // 1. Local Scapes (Live)
   const localScapes = useLiveQuery(() => localRepo.listScapes(), [])
 
   // 2. Cloud Scapes (Effect)
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setCloudScapes([])
       return
     }
@@ -27,7 +30,7 @@ export function useScapes() {
     const fetchCloud = async () => {
       setLoadingCloud(true)
       try {
-        const scapes = await cloudRepo.listScapes(user.id)
+        const scapes = await cloudRepo.listScapes(userId)
         if (isMounted) setCloudScapes(scapes)
       } catch (e) {
         console.error("Failed to fetch cloud scapes", e)
@@ -40,7 +43,7 @@ export function useScapes() {
     return () => {
       isMounted = false
     }
-  }, [user])
+  }, [userId])
 
   // 3. Merge & Sort (Deduplicate)
   const combinedScapes = useMemo(() => {

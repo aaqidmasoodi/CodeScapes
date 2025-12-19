@@ -29,7 +29,9 @@ test("Three.js Preview Renders Canvas", async ({ page }) => {
   // 3. Handshake happens.
   // 4. Redirect happens.
   // 5. Three.js loads and initializes.
-  await expect(threeCanvas).toBeVisible({ timeout: 30000 })
+  // 5. Three.js loads and initializes.
+  // Firefox can be slower with Service Worker activation in headless mode.
+  await expect(threeCanvas).toBeVisible({ timeout: 60000 })
 
   // Assert 2: It has dimensions (proves it's not a 0x0 hidden element)
   const box = await threeCanvas.boundingBox()
