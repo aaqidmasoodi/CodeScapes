@@ -207,10 +207,11 @@ self.onmessage = async (e: MessageEvent) => {
   }
 
   if (type === "RUN") {
+    let py: PyodideInterface | null = null
     try {
       await readyPromise
       const { files, entryPoint } = payload
-      const py = await loadPyodide()
+      py = await loadPyodide()
 
       if (!files || !Array.isArray(files)) {
         throw new Error("No files provided")
@@ -359,6 +360,76 @@ except ImportError:
     } catch (error: any) {
       postMessage({ type: "ERROR", payload: error.message || String(error) })
     } finally {
+      // 3. Sync Filesystem Back to Main Thread
+      if (py) {
+        try {
+          // Recursive scan of the virtual filesystem
+          const filesProxy = await py.runPythonAsync(`
+            import os
+            import base64
+            import js
+
+            def _serialize_fs(path='.'):
+                files = []
+                # Skip system and hidden directories
+                SKIP_DIRS = {'.', '..', 'lib', 'tmp', 'home', 'dev', 'proc', 'sys'}
+                
+                try:
+                    for item in os.listdir(path):
+                        if item in SKIP_DIRS and path == '.': continue
+                        if item.startswith('.'): continue # Skip hidden files
+
+                        full_path = os.path.join(path, item)
+                        
+                        if os.path.isdir(full_path):
+                            # Recurse
+                            files.extend(_serialize_fs(full_path))
+                        else:
+                            # Read File
+                            try:
+                                with open(full_path, 'rb') as f:
+                                    content = f.read()
+                                    # Detect binary? For now treat mostly as text or base64?
+                                    # Passing binary to JS via Pyodide is cleaner if we use specific API
+                                    # But simplistic approach: Text if valid utf-8, else Base64?
+                                    
+                                    try:
+                                        text_content = content.decode('utf-8')
+                                        files.append({
+                                            'name': full_path.replace('./', ''),
+                                            'content': text_content,
+                                            'is_binary': False
+                                        })
+                                    except UnicodeDecodeError:
+                                        # Binary fallback (e.g. images not captured by matplotlib hook)
+                                        # Skip for now to save bandwidth, or implement later.
+                                        pass
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+                return files
+
+            _files = _serialize_fs()
+            _files
+          `)
+          // Convert Python Proxy to JS Object
+          // We use the `toJs` method which comes with Pyodide proxies.
+          // Map/Dict will be converted to Map by default, we want Object.
+          // List will be converted to Array.
+          const localFiles = filesProxy.toJs({
+            dict_converter: Object.fromEntries,
+          })
+
+          // Cleanup proxy
+          filesProxy.destroy()
+
+          postMessage({ type: "FS_UPDATE", payload: localFiles })
+        } catch (e) {
+          console.warn("[Worker] FS Sync failed", e)
+        }
+      }
+
       postMessage({ type: "DidRun" })
     }
   }

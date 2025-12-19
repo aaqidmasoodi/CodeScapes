@@ -435,6 +435,37 @@ export default function ScapeEditor() {
     [inputPrompt, setOutputLogs, setInputPrompt, previewRef]
   )
 
+  // 4. FileSystem Sync (from Runner)
+  const handleFileSystemUpdate = useCallback(
+    async (updatedFiles: ScapeFile[]) => {
+      // Sync logic: Worker -> Editor
+      for (const newFile of updatedFiles) {
+        const existing = files.find((f) => f.name === newFile.name)
+
+        if (!existing) {
+          // New File Created by Script
+          // Identify type (folder handled by worker sending explicit folder entries?)
+          // Our worker logic currently sends all as files or recurses.
+          // If we want folders, we need to handle them.
+          // But 'createFile' handles parent dirs automatically?
+          // Let's assume files for now.
+          const lang = getLanguageFromFilename(newFile.name)
+          await createFile(newFile.name, lang as ScapeFile["language"], newFile.content)
+          // Optional: Notify user?
+          // console.log("Synced new file:", newFile.name)
+        } else {
+          // Existing File - Check for changes?
+          // To avoid infinite loops or unnecessary writes, check content equality.
+          // NOTE: newFile.content from worker is string. existing.content might be string/buffer.
+          if (existing.content !== newFile.content) {
+            updateFile(newFile.name, newFile.content)
+          }
+        }
+      }
+    },
+    [files, createFile, updateFile]
+  )
+
   // --- GLOBAL SHORTCUTS ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1093,6 +1124,7 @@ export default function ScapeEditor() {
                         dependencies={scape?.dependencies}
                         onBusyChange={setIsRunnerBusy}
                         onInputRequest={handleInputRequest}
+                        onFileSystemUpdate={handleFileSystemUpdate}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>

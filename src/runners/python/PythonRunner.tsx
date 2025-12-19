@@ -21,11 +21,23 @@ interface PythonRunnerProps {
   dependencies?: string[]
   onBusyChange?: (isBusy: boolean) => void
   onInputRequest?: (prompt: string) => void
+  onFileSystemUpdate?: (files: ScapeFile[]) => void
 }
 
 export const PythonRunner = memo(
   forwardRef<ScapeRunnerHandle, PythonRunnerProps>(
-    ({ files, onOutput, onCollapse, dependencies = [], onBusyChange, onInputRequest }, ref) => {
+    (
+      {
+        files,
+        onOutput,
+        onCollapse,
+        dependencies = [],
+        onBusyChange,
+        onInputRequest,
+        onFileSystemUpdate,
+      },
+      ref
+    ) => {
       const workerRef = useRef<Worker | null>(null)
       const containerRef = useRef<HTMLDivElement>(null)
       const isReadyRef = useRef(false)
@@ -52,6 +64,7 @@ export const PythonRunner = memo(
         onOutput,
         onBusyChange,
         onInputRequest,
+        onFileSystemUpdate,
         dependencies,
         files,
       })
@@ -61,10 +74,11 @@ export const PythonRunner = memo(
           onOutput,
           onBusyChange,
           onInputRequest,
+          onFileSystemUpdate,
           dependencies,
           files,
         }
-      }, [onOutput, onBusyChange, onInputRequest, dependencies, files])
+      }, [onOutput, onBusyChange, onInputRequest, onFileSystemUpdate, dependencies, files])
 
       // Forward declaration for initWorker to use
       const runPythonRef = useRef<() => Promise<void>>(async () => {})
@@ -175,6 +189,9 @@ export const PythonRunner = memo(
               propsRef.current.onInputRequest?.(prompt)
               break
             }
+            case "FS_UPDATE":
+              propsRef.current.onFileSystemUpdate?.(payload)
+              break
           }
         }
 
