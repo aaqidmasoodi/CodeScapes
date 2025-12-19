@@ -90,6 +90,7 @@ export const WebRunner = memo(
               src={bridge.url}
               className="h-full w-full border-0"
               sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
+              allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
             />
           </div>
         )
@@ -134,6 +135,7 @@ export const WebRunner = memo(
               src={bridge.url}
               className="h-full w-full border-0"
               sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
+              allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
             />
           </div>
         </div>
