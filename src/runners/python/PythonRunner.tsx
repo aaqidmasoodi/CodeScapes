@@ -309,7 +309,13 @@ export const PythonRunner = memo(
             }
             setBusy(true)
             pendingInstalls.current.set(pkg, resolve)
-            // Timeout fallback?
+
+            workerRef.current.postMessage({
+              type: "INSTALL",
+              payload: pkg,
+            })
+
+            // Timeout fallback
             setTimeout(() => {
               if (pendingInstalls.current.has(pkg)) {
                 pendingInstalls.current.get(pkg)?.({
@@ -319,7 +325,7 @@ export const PythonRunner = memo(
                 pendingInstalls.current.delete(pkg)
                 setBusy(false)
               }
-            }, 30000)
+            }, 120000)
           })
         },
 
