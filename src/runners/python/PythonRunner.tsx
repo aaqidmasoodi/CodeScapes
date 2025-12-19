@@ -100,14 +100,10 @@ export const PythonRunner = memo(
           sab = new SharedArrayBuffer(1024)
           sharedBufferRef.current = sab
           sharedArrayRef.current = new Int32Array(sab)
-        } catch (e) {
-          console.error("SharedArrayBuffer creation failed. Ensure COOP/COEP headers are set.", e)
-          const isIsolated =
-            typeof crossOriginIsolated !== "undefined" ? crossOriginIsolated : false
-          log(
-            "stderr",
-            `Error: SharedArrayBuffer not supported. Input will fail. (Isolated=${isIsolated}, Type=${typeof SharedArrayBuffer})`
-          )
+        } catch {
+          // Valid fallback exists (Service Worker), so this is not fatal.
+          console.warn("SharedArrayBuffer not available. using Service Worker fallback for input.")
+          // Don't show error to user
         }
 
         const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
@@ -172,9 +168,13 @@ export const PythonRunner = memo(
                 }
               }
               break
-            case "INPUT_REQUEST":
-              propsRef.current.onInputRequest?.(payload)
+            case "INPUT_REQUEST": {
+              // Store ID for submission
+              const { prompt, id } = payload
+              pendingInputIdRef.current = id
+              propsRef.current.onInputRequest?.(prompt)
               break
+            }
           }
         }
 
@@ -187,8 +187,9 @@ export const PythonRunner = memo(
         worker.postMessage({
           type: "INIT",
           payload: {
+            // dependencies: propsRef.current.dependencies, // Removed check for now, can add back
             dependencies: propsRef.current.dependencies,
-            sharedBuffer: sab,
+            // sharedBuffer: sab, // No longer vital, but can keep if needed for other things? No.
           },
         })
       }, [log, setBusy])
@@ -227,6 +228,7 @@ export const PythonRunner = memo(
 
         setPreviewItems([])
 
+        // Clear shared buffer if still used for other things, but not vital for input anymore
         if (sharedArrayRef.current) {
           Atomics.store(sharedArrayRef.current, 0, 0)
         }
@@ -252,6 +254,24 @@ export const PythonRunner = memo(
 
       // --- Effects ---
 
+      // 0. Service Worker Watchdog
+      useEffect(() => {
+        if (!navigator.serviceWorker.controller) {
+          console.warn("[Runner] No Service Worker controlling this page! Input may fail.")
+          // Attempt to claim if possible? (SW does this on activate)
+          // We can't force it from here easily, but we can detect it.
+        } else {
+          console.log("[Runner] Service Worker active and controlling.")
+        }
+
+        const onControllerChange = () => {
+          console.log("[Runner] Service Worker controller changed (Code updated?)")
+        }
+        navigator.serviceWorker.addEventListener("controllerchange", onControllerChange)
+        return () =>
+          navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange)
+      }, [])
+
       // 1. Initialize on mount or when dependencies change (deeply)
       const depsString = JSON.stringify(dependencies)
       useEffect(() => {
@@ -266,12 +286,13 @@ export const PythonRunner = memo(
       }, [depsString, initWorker])
 
       // 2. Run whenever files change
-      // depend on 'files' reference (updated by debouncing or manual refresh)
       useEffect(() => {
-        // ESLint complains about setting state (busy) in effect, but we WANT to trigger a run on file change.
         // eslint-disable-next-line
         runPython()
       }, [files, runPython])
+
+      // Add ref for input
+      const pendingInputIdRef = useRef<string | null>(null)
 
       // --- Handle ---
       useImperativeHandle(ref, () => ({
@@ -280,6 +301,7 @@ export const PythonRunner = memo(
           initWorker()
         },
         installPackage: async (pkg) => {
+          // ... (keep existing)
           return new Promise((resolve) => {
             if (!workerRef.current) {
               resolve({ success: false, error: "Runtime not ready" })
@@ -287,10 +309,13 @@ export const PythonRunner = memo(
             }
             setBusy(true)
             pendingInstalls.current.set(pkg, resolve)
+
             workerRef.current.postMessage({
               type: "INSTALL",
               payload: pkg,
             })
+
+            // Timeout fallback
             setTimeout(() => {
               if (pendingInstalls.current.has(pkg)) {
                 pendingInstalls.current.get(pkg)?.({
@@ -300,29 +325,46 @@ export const PythonRunner = memo(
                 pendingInstalls.current.delete(pkg)
                 setBusy(false)
               }
-            }, 30000)
+            }, 120000)
           })
         },
-        provideInput: (text: string) => {
-          if (!sharedBufferRef.current || !sharedArrayRef.current) return
 
-          const sab = sharedBufferRef.current
-          const int32 = sharedArrayRef.current
-
-          const encoder = new TextEncoder()
-          const bytes = encoder.encode(text)
-
-          if (bytes.length > 1000) {
-            log("stderr", "Input too long (max ~1000 bytes)")
+        provideInput: async (text: string) => {
+          const id = pendingInputIdRef.current
+          if (!id) {
+            console.warn("Provide Input called without pending ID")
             return
           }
+          try {
+            console.log(`[Runner] Submitting input for ID: ${id}, Value: "${text}"`)
+            const res = await fetch("/_submit_input", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ id, value: text }),
+            })
+            if (!res.ok) {
+              const text = await res.text()
+              console.error(
+                `[Runner] Input submission failed: ${res.status} ${res.statusText} - Body: ${text}`
+              )
 
-          int32[1] = bytes.length
-          const uint8 = new Uint8Array(sab)
-          uint8.set(bytes, 8)
-
-          Atomics.store(int32, 0, 1)
-          Atomics.notify(int32, 0)
+              // Debug: Check what inputs are pending
+              try {
+                const debugRes = await fetch("/_debug_inputs")
+                const debugKeys = await debugRes.json()
+                console.log("[Runner] Debug: Pending Inputs in SW:", debugKeys)
+              } catch (d) {
+                console.warn("[Runner] Failed to fetch debug inputs (Is SW active?)", d)
+              }
+            } else {
+              console.log("[Runner] Input submitted successfully")
+            }
+            pendingInputIdRef.current = null
+          } catch (e) {
+            console.error("[Runner] Input submission error:", e)
+          }
         },
       }))
 
