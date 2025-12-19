@@ -75,11 +75,70 @@ self.addEventListener("message", (event) => {
   }
 })
 
+// --- Input Blocking Map ---
+const pendingInputs = new Map()
+
 // --- Fetch Interception ---
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url)
 
-  // Scope: /preview-v3/<scapeId>/<filePath>
+  // 1. Python Input Blocking Strategy
+  if (url.pathname === "/_wait_input") {
+    const id = url.searchParams.get("id")
+    if (!id) return event.respondWith(new Response("Missing ID", { status: 400 }))
+
+    console.log(`[SW] Holding connection for Input ID: ${id}`)
+    console.log(`[SW] Current Params:`, [...pendingInputs.keys()])
+
+    event.respondWith(
+      new Promise((resolve) => {
+        // Store the resolve function to be called later
+        pendingInputs.set(id, resolve)
+      })
+    )
+    return
+  }
+
+  if (url.pathname === "/_debug_inputs") {
+    const keys = [...pendingInputs.keys()]
+    event.respondWith(
+      new Response(JSON.stringify(keys), { headers: { "Content-Type": "application/json" } })
+    )
+    return
+  }
+
+  if (url.pathname === "/_submit_input") {
+    event.respondWith(
+      (async () => {
+        try {
+          const data = await event.request.json()
+          const { id, value } = data
+
+          console.log(`[SW] Attempting to release ID: ${id}. Available:`, [...pendingInputs.keys()])
+
+          if (pendingInputs.has(id)) {
+            console.log(`[SW] Releasing Input ID: ${id} with value: "${value}"`)
+            const resolve = pendingInputs.get(id)
+            resolve(
+              new Response(value, {
+                status: 200,
+                headers: { "X-SW-Intercept": "true" },
+              })
+            )
+            pendingInputs.delete(id)
+            return new Response("OK", { status: 200 })
+          }
+          return new Response("Input ID not found in Service Worker Map", { status: 404 })
+        } catch (e) {
+          console.error(e)
+          return new Response("Error processing input", { status: 500 })
+        }
+      })()
+    )
+    return
+  }
+
+  // Scope: /preview-v3/<scapeId/<filePath>
   if (url.pathname.startsWith("/preview-v3/")) {
     // Extract parts: ["", "preview-v3", "scapeId", "rest..."]
     const parts = url.pathname.split("/")

@@ -90,16 +90,13 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
 }
 
 let readyPromise: Promise<void> = Promise.resolve()
-let sharedBuffer: SharedArrayBuffer | null = null
-let sharedArray: Int32Array | null = null
 
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload } = e.data
 
   if (type === "INIT") {
     if (payload.sharedBuffer) {
-      sharedBuffer = payload.sharedBuffer
-      sharedArray = new Int32Array(payload.sharedBuffer)
+      // Legacy SAB support (ignored for now)
     }
 
     const runInit = async () => {
@@ -107,24 +104,53 @@ self.onmessage = async (e: MessageEvent) => {
 
       // Define blocking input function in JS
       // Using self explicitly to attach to global scope for Pyodide access
-      ;(self as any).wait_for_input = () => {
-        if (!sharedArray || !sharedBuffer) return ""
+      ;(self as any).wait_for_input = (prompt: string) => {
+        const id = Math.random().toString(36).substring(7)
 
-        // 0 = Initial/Waiting, 1 = Ready
-        Atomics.store(sharedArray, 0, 0)
+        // Notify Main Thread (React) to show input UI
+        postMessage({
+          type: "INPUT_REQUEST",
+          payload: { prompt, id },
+        })
 
-        // Wait until index 0 becomes non-zero (triggered by main thread)
-        Atomics.wait(sharedArray, 0, 0)
+        while (true) {
+          // Check for timeout (e.g. 1 hour? Input might take long)
+          // But if we are continually hitting the server (Bypass loop), we should throttle.
 
-        // Read text length from index 1
-        const len = sharedArray[1]
+          const xhr = new XMLHttpRequest()
+          xhr.open("GET", `/_wait_input?id=${id}`, false) // false = synchronous
+          try {
+            xhr.send(null)
 
-        // Read bytes
-        const bytes = new Uint8Array(sharedBuffer, 8, len)
-        // Create a copy of the slice to avoid SharedArrayBuffer issues with TextDecoder
-        const bytesCopy = new Uint8Array(bytes)
-        const decoder = new TextDecoder()
-        return decoder.decode(bytesCopy)
+            if (xhr.status === 200) {
+              const text = xhr.responseText
+
+              // 1. Sanity Check for Safari/Server Fallback
+              // If we get the index.html content, it's a bypass. Retry.
+              const isHtml =
+                text.trim().toLowerCase().startsWith("<!doctype html") ||
+                text.trim().toLowerCase().startsWith("<html")
+
+              if (!isHtml) {
+                return text
+              }
+
+              // BYPASS DETECTED
+              console.warn("[Worker] Input XHR hit server fallback (HTML detected). Retrying...")
+            } else {
+              console.warn(`[Worker] Input XHR failed with status ${xhr.status}. Retrying...`)
+            }
+
+            // Busy-Wait Sleep (Small delay to allow SW to potentially claim or server to breathe)
+            const sleepStart = Date.now()
+            while (Date.now() - sleepStart < 100) {
+              // spin
+            }
+          } catch (e) {
+            console.error("[Worker] XHR Error", e)
+            return ""
+          }
+        }
       }
 
       // Install initial dependencies
@@ -204,9 +230,8 @@ self.onmessage = async (e: MessageEvent) => {
         
         def _input(prompt=""):
             # Do NOT print prompt here to avoid buffering issues.
-            # We send it to JS, which handles display and echoing.
-            js.postMessage(js.Object.fromEntries([["type", "INPUT_REQUEST"], ["payload", prompt]]))
-            return js.wait_for_input()
+            # We send it to JS (which includes the ID generation)
+            return js.wait_for_input(prompt)
             
         builtins.input = _input
       `)
