@@ -135,6 +135,8 @@ export default function ScapeEditor() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [outputLogs, setOutputLogs] = useState<LogEntry[]>([])
   const [inputPrompt, setInputPrompt] = useState<string | null>(null)
+  const [syntaxProblems, setSyntaxProblems] = useState<Problem[]>([])
+  const [runtimeProblems, setRuntimeProblems] = useState<Problem[]>([])
 
   // --- PERSISTENT STATE ---
 
@@ -535,11 +537,15 @@ export default function ScapeEditor() {
     setActiveFilePath(file.name)
   }
 
-  const handleCodeChange = (newContent: string | undefined) => {
-    if (!activeFile || newContent === undefined) return
-    updateFile(activeFile.name, newContent)
-    setRuntimeProblems([])
-  }
+  const handleCodeChange = useCallback(
+    (newContent: string | undefined) => {
+      // Use activeFilePath directly to avoid dependency on the changing activeFile object
+      if (!activeFilePath || newContent === undefined) return
+      updateFile(activeFilePath, newContent)
+      setRuntimeProblems([])
+    },
+    [activeFilePath, updateFile]
+  )
 
   const handleCreateFile = async (
     fileName: string,
@@ -640,8 +646,6 @@ export default function ScapeEditor() {
   }, [])
 
   // --- PROBLEMS & VALIDATION ---
-  const [syntaxProblems, setSyntaxProblems] = useState<Problem[]>([])
-  const [runtimeProblems, setRuntimeProblems] = useState<Problem[]>([])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -1067,7 +1071,7 @@ export default function ScapeEditor() {
                                         language={activeFile.language}
                                         onChange={handleCodeChange}
                                         onValidate={handleValidate}
-                                        files={files}
+                                        files={deferredFiles}
                                         onRun={handleRun}
                                       />
                                     )

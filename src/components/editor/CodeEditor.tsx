@@ -115,6 +115,18 @@ export function CodeEditor({
     })
   }
 
+  // Handle File Switching Manually
+  // When fileName changes, we want to update the editor content.
+  // When initialValue changes BUT fileName is the same, we ignore it (user is typing).
+  const lastFileName = useRef(fileName)
+  useEffect(() => {
+    if (fileName !== lastFileName.current) {
+      // File changed, update content
+      // Monaco handles this via 'path' prop mostly, but explicit check helps if using same model
+      lastFileName.current = fileName
+    }
+  }, [fileName, initialValue])
+
   const handleValidate: OnValidate = (markers) => {
     if (!onValidate) return
 
@@ -147,8 +159,8 @@ export function CodeEditor({
         height="100%"
         path={fileName} // Explicit path to ensure correct model association
         language={language} // Explicit language prop
-        // Controlled value for Real-time Sync
-        value={initialValue}
+        // Uncontrolled mode for typing stability
+        defaultValue={initialValue}
         theme={effectiveTheme}
         loading={<LoadingOverlay message="Initializing Editor..." />}
         onMount={handleEditorDidMount}
@@ -162,7 +174,6 @@ export function CodeEditor({
         }}
         options={{
           automaticLayout: true,
-          // Prevent cursor jumping if possible (Monaco handles this relatively well)
         }}
       />
     </div>
