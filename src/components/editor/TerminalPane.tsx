@@ -103,6 +103,7 @@ export function TerminalPane({
     deleteFile: async (name: string) => {
       if (onDeleteFile) await onDeleteFile(name)
     },
+    onExecCommand,
   })
 
   const handleCommand = async (cmdStr: string) => {
@@ -110,10 +111,10 @@ export function TerminalPane({
     if (!trimmed) return
 
     // Detect Legacy Commands (pip)
-    const [cmd, ...args] = trimmed.split(/\s+/)
-    if (cmd === "pip" || cmd === "python" || cmd === "help" || cmd === "clear") {
+    const [cmd] = trimmed.split(/\s+/)
+    if (cmd === "help" || cmd === "clear") {
       // Keep legacy handling for now for specific commands not yet in shell
-      // Actually 'help' and 'clear' are UI specific, 'pip' is external runner specific.
+      // Actually 'help' and 'clear' are UI specific
 
       if (cmd === "clear") {
         setHistory([])
@@ -138,44 +139,6 @@ export function TerminalPane({
             ),
           },
         ])
-        return
-      }
-
-      if (cmd === "pip") {
-        // Legacy Pip Logic
-        const subCmd = args[0]
-        const pkg = args[1]
-        if (subCmd === "install" && pkg) {
-          setHistory((prev) => [...prev, { type: "output", content: `Collecting ${pkg}...` }])
-          if (onExecCommand) {
-            onExecCommand("pip-install", pkg).then((result) => {
-              const { success, error } = result
-              setHistory((prev) => [
-                ...prev,
-                {
-                  type: "output",
-                  content: success ? `Successfully installed ${pkg}` : `Failed: ${error}`,
-                },
-              ])
-            })
-          }
-        } else if (subCmd === "uninstall" && pkg) {
-          setHistory((prev) => [...prev, { type: "output", content: `Uninstalling ${pkg}...` }])
-          if (onExecCommand) {
-            onExecCommand("pip-uninstall", pkg).then((result) => {
-              const { success, error } = result
-              setHistory((prev) => [
-                ...prev,
-                {
-                  type: "output",
-                  content: success ? `Successfully uninstalled ${pkg}` : `Failed: ${error}`,
-                },
-              ])
-            })
-          }
-        } else {
-          setHistory((prev) => [...prev, { type: "output", content: "Usage: pip install <pkg>" }])
-        }
         return
       }
     }
