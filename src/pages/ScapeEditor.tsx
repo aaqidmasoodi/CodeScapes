@@ -1064,6 +1064,8 @@ export default function ScapeEditor() {
                                   scapeName={scape?.name}
                                   scapeId={id}
                                   onDeleteFile={deleteFileDirectly}
+                                  onCreateFile={handleCreateFile}
+                                  onUpdateFile={async (name, content) => updateFile(name, content)}
                                   outputLogs={outputLogs}
                                   onExecCommand={handleExecCommand}
                                   inputPrompt={inputPrompt}
