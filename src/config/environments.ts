@@ -78,23 +78,26 @@ h1 {
             language: "html",
             content: `<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Three.js Scape</title>
-    <style>body { margin: 0; overflow: hidden; }</style>
-  </head>
-  <body>
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Three.js Mustard Cube</title>
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Import Map: Tells the browser where 'three' lives -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
       }
-    </script>
-    <script type="module" src="script.js"></script>
-  </body>
+    }
+  </script>
+</head>
+<body>
+  <!-- Our Module Script -->
+  <script type="module" src="script.js"></script>
+</body>
 </html>`,
           },
           {
@@ -103,37 +106,89 @@ h1 {
             content: `import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-const renderer = new THREE.WebGLRenderer();
+let scene, camera, renderer, cube, controls;
 
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+init();
+animate();
 
-const geometry = new THREE.BoxGeometry(1, 1, 1);
-const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
-const cube = new THREE.Mesh(geometry, material);
-scene.add(cube);
+function init() {
+  // 1. Scene with Mustard Background
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color('#FFC857'); // Nice warm mustard
 
-camera.position.z = 5;
+  // 2. Camera
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(2, 2, 5); // Offset slightly so we see 3D immediately
 
-const controls = new OrbitControls(camera, renderer.domElement);
+  // 3. Renderer
+  renderer = new THREE.WebGLRenderer({ antialias: true }); // Smooth edges
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true; // Enable shadows for extra pop
+  document.body.appendChild(renderer.domElement);
+
+  // 4. Object: Cube with Material that reacts to light
+  const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+  const material = new THREE.MeshStandardMaterial({ 
+    color: '#2E4057', // Deep Indigo contrasting color
+    roughness: 0.3,   // Slightly shiny
+    metalness: 0.1
+  });
+  cube = new THREE.Mesh(geometry, material);
+  scene.add(cube);
+
+  // 5. Lighting (Essential for uniform colors)
+  // Ambient light (soft fill)
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambientLight);
+
+  // Directional light (sun-like)
+  const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+  dirLight.position.set(5, 10, 7.5);
+  scene.add(dirLight);
+
+  // 6. Controls
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; // Smooth feel
+  controls.dampingFactor = 0.05;
+
+  // Handle Resize
+  window.addEventListener('resize', onWindowResize);
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
 
 function animate() {
   requestAnimationFrame(animate);
-  cube.rotation.x += 0.01;
-  cube.rotation.y += 0.01;
+
+  // 7. Slow Auto-Rotation
+  if (cube) {
+    cube.rotation.x += 0.005;
+    cube.rotation.y += 0.005;
+  }
+
+  // Required for Damping
   controls.update();
+  
   renderer.render(scene, camera);
 }
+`,
+          },
+          {
+            name: "style.css",
+            language: "css",
+            content: `body {
+  margin: 0;
+  overflow: hidden;
+  font-family: sans-serif;
+}
 
-animate();
-
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});`,
+canvas {
+  display: block;
+}`,
           },
         ],
       },
