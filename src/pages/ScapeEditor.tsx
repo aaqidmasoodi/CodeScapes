@@ -442,23 +442,50 @@ export default function ScapeEditor() {
       for (const newFile of updatedFiles) {
         const existing = files.find((f) => f.name === newFile.name)
 
+        // Check for Base64 encoding
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let content: string | Uint8Array = newFile.content as any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((newFile as any).encoding === "base64") {
+          // Decode Base64 to Uint8Array
+          const binaryString = atob(newFile.content as string)
+          const len = binaryString.length
+          const bytes = new Uint8Array(len)
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+          content = bytes
+        }
+
         if (!existing) {
           // New File Created by Script
-          // Identify type (folder handled by worker sending explicit folder entries?)
-          // Our worker logic currently sends all as files or recurses.
-          // If we want folders, we need to handle them.
-          // But 'createFile' handles parent dirs automatically?
-          // Let's assume files for now.
           const lang = getLanguageFromFilename(newFile.name)
-          await createFile(newFile.name, lang as ScapeFile["language"], newFile.content)
-          // Optional: Notify user?
-          // console.log("Synced new file:", newFile.name)
+          await createFile(newFile.name, lang as ScapeFile["language"], content)
         } else {
-          // Existing File - Check for changes?
-          // To avoid infinite loops or unnecessary writes, check content equality.
-          // NOTE: newFile.content from worker is string. existing.content might be string/buffer.
-          if (existing.content !== newFile.content) {
-            updateFile(newFile.name, newFile.content)
+          // Existing File
+          // Compare content? Difficult with Uint8Array vs String vs DB types.
+          // For now, assume update if it came from worker.
+          // We can do a quick length check or just overwrite.
+          // Overwriting is safer for correctness.
+
+          if (typeof existing.content !== typeof content || existing.content !== content) {
+            // Deep equality for Uint8Array?
+            if (content instanceof Uint8Array && existing.content instanceof Uint8Array) {
+              // Compare bytes
+              let changed = false
+              if (content.length !== existing.content.length) changed = true
+              else {
+                for (let i = 0; i < content.length; i++) {
+                  if (content[i] !== existing.content[i]) {
+                    changed = true
+                    break
+                  }
+                }
+              }
+              if (changed) updateFile(newFile.name, content)
+            } else {
+              updateFile(newFile.name, content)
+            }
           }
         }
       }
