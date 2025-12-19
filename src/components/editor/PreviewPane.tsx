@@ -23,6 +23,7 @@ interface PreviewPaneProps {
   dependencies?: string[]
   onBusyChange?: (isBusy: boolean) => void
   onInputRequest?: (prompt: string) => void
+  onFileSystemUpdate?: (files: ScapeFile[]) => void
 }
 
 // --- SWITCHBOARD ---
@@ -105,6 +106,7 @@ export const PreviewPane = memo(
         dependencies={props.dependencies}
         onBusyChange={onBusyChange}
         onInputRequest={props.onInputRequest}
+        onFileSystemUpdate={props.onFileSystemUpdate}
         ref={runnerRef}
       />
     )
