@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent } from "react"
 import { Terminal as TerminalIcon, X, AlertCircle, ChevronUp } from "lucide-react"
+import { useShell } from "@/hooks/useShell"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Problem } from "@/types/problem"
@@ -17,7 +18,9 @@ interface TerminalPaneProps {
   files?: ScapeFile[]
   scapeId?: string
   scapeName?: string
-  onDeleteFile?: (path: string) => void
+  onDeleteFile?: (path: string) => Promise<void>
+  onCreateFile?: (name: string, type: ScapeFile["language"], content?: string) => Promise<void>
+  onUpdateFile?: (name: string, content: string) => Promise<void>
   outputLogs?: LogEntry[]
   onExecCommand?: (
     cmd: string,
@@ -41,6 +44,8 @@ export function TerminalPane({
   scapeName = "project",
   scapeId,
   onDeleteFile,
+  onCreateFile,
+  onUpdateFile,
   outputLogs = [],
   onExecCommand,
   inputPrompt,
@@ -58,11 +63,6 @@ export function TerminalPane({
     },
   ])
   const [input, setInput] = useState("")
-  const [pendingConfirmation, setPendingConfirmation] = useState<{
-    command: "rm"
-    file: string
-  } | null>(null)
-
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const outputBottomRef = useRef<HTMLDivElement>(null)
@@ -91,39 +91,36 @@ export function TerminalPane({
     }
   }
 
-  const handleCommand = (cmdStr: string) => {
+  // --- SHELL INTEGRATION ---
+  const shell = useShell({
+    files,
+    createFile: async (name: string, type: ScapeFile["language"], content?: string) => {
+      if (onCreateFile) await onCreateFile(name, type, content)
+    },
+    updateFile: async (name: string, content: string) => {
+      if (onUpdateFile) await onUpdateFile(name, content)
+    },
+    deleteFile: async (name: string) => {
+      if (onDeleteFile) await onDeleteFile(name)
+    },
+  })
+
+  const handleCommand = async (cmdStr: string) => {
     const trimmed = cmdStr.trim()
     if (!trimmed) return
 
+    // Detect Legacy Commands (pip)
     const [cmd, ...args] = trimmed.split(/\s+/)
+    if (cmd === "pip" || cmd === "python" || cmd === "help" || cmd === "clear") {
+      // Keep legacy handling for now for specific commands not yet in shell
+      // Actually 'help' and 'clear' are UI specific, 'pip' is external runner specific.
 
-    // Check if waiting for confirmation
-    if (pendingConfirmation) {
-      if (pendingConfirmation.command === "rm") {
-        if (cmd.toLowerCase() === "y" || cmd.toLowerCase() === "yes") {
-          if (onDeleteFile) {
-            onDeleteFile(pendingConfirmation.file)
-            setHistory((prev) => [
-              ...prev,
-              { type: "output", content: `Deleted '${pendingConfirmation.file}'` },
-            ])
-          } else {
-            setHistory((prev) => [
-              ...prev,
-              { type: "output", content: `Error: Delete handler not connected.` },
-            ])
-          }
-        } else {
-          setHistory((prev) => [...prev, { type: "output", content: "Aborted." }])
-        }
+      if (cmd === "clear") {
+        setHistory([])
+        return
       }
-      setPendingConfirmation(null)
-      return
-    }
 
-    // Normal Commands
-    switch (cmd) {
-      case "help":
+      if (cmd === "help") {
         setHistory((prev) => [
           ...prev,
           {
@@ -132,44 +129,22 @@ export function TerminalPane({
               <div className="text-muted-foreground">
                 Available commands:
                 <br />
-                &nbsp;&nbsp;help&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Show this help message
+                &nbsp;&nbsp;ls, cat, touch, rm, mkdir, pwd
                 <br />
-                &nbsp;&nbsp;ls&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;List files
+                &nbsp;&nbsp;pip install &lt;pkg&gt;
                 <br />
-                &nbsp;&nbsp;rm &lt;file&gt;&nbsp;Delete a file
-                <br />
-                &nbsp;&nbsp;clear&nbsp;&nbsp;&nbsp;&nbsp;Clear terminal
+                &nbsp;&nbsp;echo "text" &gt; file.txt
               </div>
             ),
           },
         ])
-        break
-      case "clear":
-        setHistory([])
-        break
-      case "ls": {
-        const fileNames = files.map((f) => f.name).sort()
-        setHistory((prev) => [
-          ...prev,
-          {
-            type: "output",
-            content: (
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-blue-400">
-                {fileNames.length > 0 ? (
-                  fileNames.map((name) => <span key={name}>{name}</span>)
-                ) : (
-                  <span>(empty)</span>
-                )}
-              </div>
-            ),
-          },
-        ])
-        break
+        return
       }
-      case "pip": {
+
+      if (cmd === "pip") {
+        // Legacy Pip Logic
         const subCmd = args[0]
         const pkg = args[1]
-
         if (subCmd === "install" && pkg) {
           setHistory((prev) => [...prev, { type: "output", content: `Collecting ${pkg}...` }])
           if (onExecCommand) {
@@ -179,17 +154,10 @@ export function TerminalPane({
                 ...prev,
                 {
                   type: "output",
-                  content: success
-                    ? `Successfully installed ${pkg}`
-                    : `Failed to install ${pkg}${error ? `: ${error}` : ""}`,
+                  content: success ? `Successfully installed ${pkg}` : `Failed: ${error}`,
                 },
               ])
             })
-          } else {
-            setHistory((prev) => [
-              ...prev,
-              { type: "output", content: "Error: Package manager not connected." },
-            ])
           }
         } else if (subCmd === "uninstall" && pkg) {
           setHistory((prev) => [...prev, { type: "output", content: `Uninstalling ${pkg}...` }])
@@ -200,56 +168,46 @@ export function TerminalPane({
                 ...prev,
                 {
                   type: "output",
-                  content: success
-                    ? `Successfully uninstalled ${pkg}`
-                    : `Failed to uninstall ${pkg}${error ? `: ${error}` : ""}`,
+                  content: success ? `Successfully uninstalled ${pkg}` : `Failed: ${error}`,
                 },
               ])
             })
-          } else {
-            setHistory((prev) => [
-              ...prev,
-              { type: "output", content: "Error: Package manager not connected." },
-            ])
           }
         } else {
-          setHistory((prev) => [
-            ...prev,
-            { type: "output", content: "Usage: pip install <package> | pip uninstall <package>" },
-          ])
+          setHistory((prev) => [...prev, { type: "output", content: "Usage: pip install <pkg>" }])
         }
-        break
+        return
       }
-      case "rm":
-        if (!args[0]) {
-          setHistory((prev) => [...prev, { type: "output", content: "Usage: rm <filename>" }])
-        } else {
-          const target = args[0]
-          const exists = files.some((f) => f.name === target)
-          if (!exists) {
-            setHistory((prev) => [
-              ...prev,
-              {
-                type: "output",
-                content: `rm: cannot remove '${target}': No such file or directory`,
-              },
-            ])
-          } else {
-            setHistory((prev) => [
-              ...prev,
-              { type: "output", content: `remove '${target}'? [y/N]` },
-            ])
-            setPendingConfirmation({ command: "rm", file: target })
-          }
-        }
-        break
-      default:
-        setHistory((prev) => [
-          ...prev,
-          { type: "output", content: `zsh: command not found: ${cmd}` },
-        ])
+    }
+
+    // Execute via Shell
+    const result = await shell.execute(trimmed)
+
+    // Render Output
+    if (result.type === "success") {
+      // no op
+    } else if (result.type === "error") {
+      setHistory((prev) => [...prev, { type: "output", content: `Error: ${result.content}` }])
+    } else {
+      setHistory((prev) => [...prev, { type: "output", content: result.content }])
     }
   }
+
+  // --- PROMPT LOGIC ---
+  const promptCwd = (() => {
+    const nameSlug = (scapeName || "project").trim().replace(/\s+/g, "-").toLowerCase()
+    let idSuffix = ""
+    if (scapeId) {
+      const idStr = String(scapeId)
+      // if it looks like a UUID (long string), shorten it
+      if (idStr.length > 10) {
+        idSuffix = `-${idStr.slice(0, 8)}`
+      } else {
+        idSuffix = `-${idStr}`
+      }
+    }
+    return `~/${nameSlug}${idSuffix}`
+  })()
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -261,7 +219,7 @@ export function TerminalPane({
       {
         type: "input",
         content: currentInput,
-        cwd: `~/${scapeName.replace(/\s+/g, "-").toLowerCase()}`,
+        cwd: promptCwd,
       },
     ])
 
@@ -361,32 +319,8 @@ export function TerminalPane({
               ))}
 
               <div className="flex items-center gap-2">
-                {pendingConfirmation ? (
-                  <span className="font-bold text-yellow-500">?</span>
-                ) : (
-                  <>
-                    <span className="text-green-500">➜</span>
-                    <span className="whitespace-nowrap text-blue-500">
-                      {(() => {
-                        const nameSlug = (scapeName || "project")
-                          .trim()
-                          .replace(/\s+/g, "-")
-                          .toLowerCase()
-                        let idSuffix = ""
-                        if (scapeId) {
-                          const idStr = String(scapeId)
-                          // if it looks like a UUID (long string), shorten it
-                          if (idStr.length > 10) {
-                            idSuffix = `-${idStr.slice(0, 8)}`
-                          } else {
-                            idSuffix = `-${idStr}`
-                          }
-                        }
-                        return `~/${nameSlug}${idSuffix}`
-                      })()}
-                    </span>
-                  </>
-                )}
+                <span className="text-green-500">➜</span>
+                <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
                 <form onSubmit={handleSubmit} className="min-w-0 flex-1">
                   <input
                     ref={inputRef}

@@ -401,9 +401,13 @@ except ImportError:
                                             'is_binary': False
                                         })
                                     except UnicodeDecodeError:
-                                        # Binary fallback (e.g. images not captured by matplotlib hook)
-                                        # Skip for now to save bandwidth, or implement later.
-                                        pass
+                                        # Binary fallback (encode as Base64)
+                                        b64_content = base64.b64encode(content).decode('ascii')
+                                        files.append({
+                                            'name': full_path.replace('./', ''),
+                                            'content': b64_content,
+                                            'encoding': 'base64'
+                                        })
                             except Exception:
                                 pass
                 except Exception:

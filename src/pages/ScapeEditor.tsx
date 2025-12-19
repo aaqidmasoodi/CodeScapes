@@ -135,6 +135,8 @@ export default function ScapeEditor() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [outputLogs, setOutputLogs] = useState<LogEntry[]>([])
   const [inputPrompt, setInputPrompt] = useState<string | null>(null)
+  const [syntaxProblems, setSyntaxProblems] = useState<Problem[]>([])
+  const [runtimeProblems, setRuntimeProblems] = useState<Problem[]>([])
 
   // --- PERSISTENT STATE ---
 
@@ -442,23 +444,50 @@ export default function ScapeEditor() {
       for (const newFile of updatedFiles) {
         const existing = files.find((f) => f.name === newFile.name)
 
+        // Check for Base64 encoding
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let content: string | Uint8Array = newFile.content as any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((newFile as any).encoding === "base64") {
+          // Decode Base64 to Uint8Array
+          const binaryString = atob(newFile.content as string)
+          const len = binaryString.length
+          const bytes = new Uint8Array(len)
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+          content = bytes
+        }
+
         if (!existing) {
           // New File Created by Script
-          // Identify type (folder handled by worker sending explicit folder entries?)
-          // Our worker logic currently sends all as files or recurses.
-          // If we want folders, we need to handle them.
-          // But 'createFile' handles parent dirs automatically?
-          // Let's assume files for now.
           const lang = getLanguageFromFilename(newFile.name)
-          await createFile(newFile.name, lang as ScapeFile["language"], newFile.content)
-          // Optional: Notify user?
-          // console.log("Synced new file:", newFile.name)
+          await createFile(newFile.name, lang as ScapeFile["language"], content)
         } else {
-          // Existing File - Check for changes?
-          // To avoid infinite loops or unnecessary writes, check content equality.
-          // NOTE: newFile.content from worker is string. existing.content might be string/buffer.
-          if (existing.content !== newFile.content) {
-            updateFile(newFile.name, newFile.content)
+          // Existing File
+          // Compare content? Difficult with Uint8Array vs String vs DB types.
+          // For now, assume update if it came from worker.
+          // We can do a quick length check or just overwrite.
+          // Overwriting is safer for correctness.
+
+          if (typeof existing.content !== typeof content || existing.content !== content) {
+            // Deep equality for Uint8Array?
+            if (content instanceof Uint8Array && existing.content instanceof Uint8Array) {
+              // Compare bytes
+              let changed = false
+              if (content.length !== existing.content.length) changed = true
+              else {
+                for (let i = 0; i < content.length; i++) {
+                  if (content[i] !== existing.content[i]) {
+                    changed = true
+                    break
+                  }
+                }
+              }
+              if (changed) updateFile(newFile.name, content)
+            } else {
+              updateFile(newFile.name, content)
+            }
           }
         }
       }
@@ -508,11 +537,15 @@ export default function ScapeEditor() {
     setActiveFilePath(file.name)
   }
 
-  const handleCodeChange = (newContent: string | undefined) => {
-    if (!activeFile || newContent === undefined) return
-    updateFile(activeFile.name, newContent)
-    setRuntimeProblems([])
-  }
+  const handleCodeChange = useCallback(
+    (newContent: string | undefined) => {
+      // Use activeFilePath directly to avoid dependency on the changing activeFile object
+      if (!activeFilePath || newContent === undefined) return
+      updateFile(activeFilePath, newContent)
+      setRuntimeProblems([])
+    },
+    [activeFilePath, updateFile]
+  )
 
   const handleCreateFile = async (
     fileName: string,
@@ -613,8 +646,6 @@ export default function ScapeEditor() {
   }, [])
 
   // --- PROBLEMS & VALIDATION ---
-  const [syntaxProblems, setSyntaxProblems] = useState<Problem[]>([])
-  const [runtimeProblems, setRuntimeProblems] = useState<Problem[]>([])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -1004,6 +1035,32 @@ export default function ScapeEditor() {
                                     }
                                   }
 
+                                  // 1.5 Handle PDFs
+                                  if (activeFile.name.toLowerCase().endsWith(".pdf")) {
+                                    let src = ""
+                                    if (activeFile.content instanceof Blob) {
+                                      src = URL.createObjectURL(activeFile.content)
+                                    } else if (activeFile.content instanceof Uint8Array) {
+                                      src = URL.createObjectURL(
+                                        new Blob([activeFile.content as unknown as BlobPart], {
+                                          type: "application/pdf",
+                                        })
+                                      )
+                                    }
+
+                                    if (src) {
+                                      return (
+                                        <div className="flex h-full flex-col bg-muted/5">
+                                          <iframe
+                                            src={src}
+                                            className="h-full w-full border-none"
+                                            title={activeFile.name}
+                                          />
+                                        </div>
+                                      )
+                                    }
+                                  }
+
                                   // 2. Handle Text Code
                                   if (typeof activeFile.content === "string") {
                                     return (
@@ -1014,7 +1071,7 @@ export default function ScapeEditor() {
                                         language={activeFile.language}
                                         onChange={handleCodeChange}
                                         onValidate={handleValidate}
-                                        files={files}
+                                        files={deferredFiles}
                                         onRun={handleRun}
                                       />
                                     )
@@ -1064,6 +1121,8 @@ export default function ScapeEditor() {
                                   scapeName={scape?.name}
                                   scapeId={id}
                                   onDeleteFile={deleteFileDirectly}
+                                  onCreateFile={handleCreateFile}
+                                  onUpdateFile={async (name, content) => updateFile(name, content)}
                                   outputLogs={outputLogs}
                                   onExecCommand={handleExecCommand}
                                   inputPrompt={inputPrompt}

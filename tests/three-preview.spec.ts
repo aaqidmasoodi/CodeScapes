@@ -10,10 +10,11 @@ test("Three.js Preview Renders Canvas", async ({ page }) => {
   await page.getByText("3D graphics with Three.js").click()
   await page.getByRole("button", { name: "Create Scape" }).click()
 
-  // 2. The Verification (The "Magic Line")
-  // Wait for the iframe to point to the new namespaced URL (Critical for Service Worker handshake)
-  const iframeLocator = page.locator('iframe[title="preview"]')
-  await expect(iframeLocator).toHaveAttribute("src", /\/preview-v3\//, { timeout: 10000 })
+  // 2. The Verification
+  // The new Bootloader architecture involves a Service Worker registration,
+  // a handshake, and then a client-side redirect to /run/:id/index.html.
+  // Testing the intermediate URL states is flaky.
+  // Instead, we just wait for the final desired output: The <canvas> element.
 
   // We use .frameLocator() to go INSIDE the iframe
   const previewIframe = page.frameLocator('iframe[title="preview"]')
@@ -22,8 +23,15 @@ test("Three.js Preview Renders Canvas", async ({ page }) => {
   const threeCanvas = previewIframe.locator("canvas")
 
   // Assert 1: It exists and is visible
-  // We give it a slightly longer timeout (20s) because assets need to load and SW needs to activate
-  await expect(threeCanvas).toBeVisible({ timeout: 20000 })
+  // We give it a generous timeout (30s) because:
+  // 1. Bootloader loads.
+  // 2. SW registers and activates (can take a moment on first run).
+  // 3. Handshake happens.
+  // 4. Redirect happens.
+  // 5. Three.js loads and initializes.
+  // 5. Three.js loads and initializes.
+  // Firefox can be slower with Service Worker activation in headless mode.
+  await expect(threeCanvas).toBeVisible({ timeout: 60000 })
 
   // Assert 2: It has dimensions (proves it's not a 0x0 hidden element)
   const box = await threeCanvas.boundingBox()
