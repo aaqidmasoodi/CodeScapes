@@ -89,13 +89,9 @@
 
         // Ensure we are controlled before proceeding
         if (!navigator.serviceWorker.controller) {
-          console.log(`[Bootloader ${ID}] Waiting for Controller...`)
-          await new Promise(resolve => {
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-              console.log(`[Bootloader ${ID}] Controller Acquired!`)
-              resolve()
-            }, { once: true })
-          })
+          console.warn(`[Bootloader ${ID}] No controller found. Reloading to acquire...`)
+          window.location.reload()
+          return
         }
 
         console.log(`[Bootloader ${ID}] SW Ready! Broadcasting SANDBOX_READY...`)

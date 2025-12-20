@@ -18,6 +18,7 @@ export function usePreviewBridge(
 ): PreviewBridge {
   // State for tracking reset
   const [prevVersionKey, setPrevVersionKey] = useState(versionKey)
+  const [prevFiles, setPrevFiles] = useState(files)
 
   // Initialize state with correct URL
   const [bridgeState, setBridgeState] = useState<PreviewBridge>(() => {
@@ -36,8 +37,10 @@ export function usePreviewBridge(
   })
 
   // Render-time state derivation (Correct Pattern for Prop Driven Resets)
-  if (versionKey !== prevVersionKey) {
+  if (versionKey !== prevVersionKey || files !== prevFiles) {
     setPrevVersionKey(versionKey)
+    setPrevFiles(files)
+
     // Determine URL immediately for the new version
     let bootloaderOrigin = ""
     const currentHost = window.location.hostname
@@ -48,7 +51,10 @@ export function usePreviewBridge(
     }
     // eslint-disable-next-line react-hooks/purity
     const version = versionKey || Date.now()
-    const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}`
+    // Add file hash param to force reload even if versionKey is same
+    // eslint-disable-next-line react-hooks/purity
+    const fileHash = Date.now()
+    const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${fileHash}`
 
     // Reset state immediately
 
