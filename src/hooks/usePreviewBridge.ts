@@ -12,7 +12,9 @@ interface PreviewBridge {
 export function usePreviewBridge(
   files: ScapeFile[],
   scapeId: string,
-  iframeRef?: React.RefObject<HTMLIFrameElement | null>
+  iframeRef?: React.RefObject<HTMLIFrameElement | null>,
+  env?: Record<string, string>,
+  versionKey?: number
 ): PreviewBridge {
   const [bridgeState, setBridgeState] = useState<PreviewBridge>({
     ready: false,
@@ -42,8 +44,9 @@ export function usePreviewBridge(
     }
 
     // Versioning forces the iframe to reload if we re-mount or important state changes
-    // Ideally we just reload the iframe content, but the URL param helps during dev.
-    const version = Date.now()
+    // ideally we just reload the iframe content, but the URL param helps during dev.
+    // Use the explicit version key if provided, otherwise Date.now()
+    const version = versionKey || Date.now()
     const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}`
 
     // Initial State: Point to Bootloader, but NOT ready (waiting for handshake)
@@ -74,7 +77,7 @@ export function usePreviewBridge(
         iframeRef.current?.contentWindow?.postMessage(
           {
             type: "COMPILE_FILES",
-            payload: { scapeId, files },
+            payload: { scapeId, files, env },
           },
           bootloaderOrigin
         )
@@ -97,7 +100,7 @@ export function usePreviewBridge(
     return () => {
       window.removeEventListener("message", handleMessage)
     }
-  }, [scapeId, files, iframeRef]) // removed mode, isSwReady
+  }, [scapeId, files, iframeRef, env, versionKey]) // removed mode, isSwReady
 
   return bridgeState
 }

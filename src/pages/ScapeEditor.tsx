@@ -13,6 +13,7 @@ import { PackagePane } from "@/components/editor/PackagePane"
 import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane"
 
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
+import { SecretsPanel } from "@/components/secrets/SecretsPanel"
 import { SaveStatus } from "@/components/editor/SaveStatus"
 import { ShareDialog } from "@/components/editor/ShareDialog"
 import type { ScapeFile } from "@/types/file"
@@ -138,13 +139,15 @@ export default function ScapeEditor() {
   const [syntaxProblems, setSyntaxProblems] = useState<Problem[]>([])
   const [runtimeProblems, setRuntimeProblems] = useState<Problem[]>([])
 
+  // Secrets Ref for .env interception
+  const secretsPanelRef = useRef<{ handlePasteEnv: (t: string) => void }>(null)
+
   // --- PERSISTENT STATE ---
 
   // Activity Bar State
-  const [activeTool, setActiveTool] = usePersistentState<"explorer" | "search" | "packages" | null>(
-    "codescape:ui:activeTool",
-    "explorer"
-  )
+  const [activeTool, setActiveTool] = usePersistentState<
+    "explorer" | "search" | "packages" | "secrets" | null
+  >("codescape:ui:activeTool", "explorer")
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // 1. Validate Sidebar Constraint (10% - 30%)
@@ -429,7 +432,7 @@ export default function ScapeEditor() {
 
       return { success: false, error: "Unknown command handling" }
     },
-    [scape?.dependencies, emitUpdate, optimisticDependencies, updateScape]
+    [scape?.dependencies, emitUpdate, updateScape]
   )
 
   const handleDeletePackage = useCallback(
@@ -590,6 +593,25 @@ export default function ScapeEditor() {
     content?: string | Blob | ArrayBuffer | Uint8Array
   ) => {
     if (!fileName) return
+
+    // --- SECRETS INTERCEPTION ---
+    if (fileName === ".env" || fileName.endsWith("/.env")) {
+      setActiveTool("secrets")
+
+      // If content is provided (e.g. paste/upload), parse it
+      if (typeof content === "string" && content.trim().length > 0) {
+        // Small timeout to allow effect to run if panel wasn't open
+        setTimeout(() => {
+          secretsPanelRef.current?.handlePasteEnv(content)
+        }, 100)
+      } else if (content instanceof Uint8Array || content instanceof Blob) {
+        // Try to decode blob/uint8 if simplest case
+        // For now, just show panel
+      }
+      return // BLOCK
+    }
+    // ----------------------------
+
     if (files.some((f) => f.name === fileName)) {
       alert("File already exists")
       return
@@ -988,6 +1010,14 @@ export default function ScapeEditor() {
                       onDeletePackage={handleDeletePackage}
                     />
                   )}
+                {activeTool === "secrets" && (
+                  <SecretsPanel
+                    scapeId={id}
+                    isOpen={true}
+                    ref={secretsPanelRef}
+                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                  />
+                )}
               </ResizablePanel>
               <ResizableHandle />
             </>

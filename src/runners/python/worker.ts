@@ -287,6 +287,21 @@ self.onmessage = async (e: MessageEvent) => {
         builtins.input = _input
       `)
 
+      // 0.6 Inject Secrets (Environment Variables)
+      if (payload.env) {
+        // Safe JSON injection via triple-quoted string
+        const envJson = JSON.stringify(payload.env)
+        await py.runPythonAsync(`
+          import os
+          import json
+          try:
+            _env_data = json.loads('''${envJson}''')
+            os.environ.update(_env_data)
+          except Exception as e:
+            print(f"Failed to inject secrets: {e}")
+        `)
+      }
+
       // 1. Clean up Virtual FS (Remove old user files)
       // Safer and Easier: Use Python to clean up the current directory
       // This handles recursion and permissions cleanly and avoids missing definitions in PyodideInterface

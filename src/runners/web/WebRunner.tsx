@@ -1,4 +1,4 @@
-import { useState, useRef, forwardRef, useImperativeHandle, memo } from "react"
+import { useState, useRef, forwardRef, useImperativeHandle, memo, useEffect } from "react"
 import { MonitorPlay, PanelRightClose } from "lucide-react"
 import html2canvas from "html2canvas"
 
@@ -7,6 +7,7 @@ import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"
 
 import { usePreviewBridge } from "@/hooks/usePreviewBridge"
+import { secretsService } from "@/services/secrets"
 
 interface WebRunnerProps {
   files: ScapeFile[]
@@ -22,12 +23,25 @@ export const WebRunner = memo(
   forwardRef<ScapeRunnerHandle, WebRunnerProps>(
     ({ files, scapeId, onCollapse, isLive = false }, ref) => {
       const iframeRef = useRef<HTMLIFrameElement>(null)
+      const [envVars, setEnvVars] = useState<Record<string, string>>({})
+
+      // Fetch Secrets
+      const [refreshKey, setRefreshKey] = useState(0)
+
+      useEffect(() => {
+        if (!scapeId) return
+        secretsService.getSecrets(scapeId).then((secrets) => {
+          const map: Record<string, string> = {}
+          secrets.forEach((s) => (map[s.key] = s.value))
+          setEnvVars(map)
+          // Force refresh to inject secrets
+          setRefreshKey((k) => k + 1)
+        })
+      }, [scapeId])
 
       // Bridge to the Runtime
       // Phase 4: Activated Cross-Origin Mode (Dedicated)
-      const bridge = usePreviewBridge(files, scapeId, iframeRef)
-
-      const [refreshKey, setRefreshKey] = useState(0)
+      const bridge = usePreviewBridge(files, scapeId, iframeRef, envVars, refreshKey)
 
       useImperativeHandle(ref, () => ({
         captureThumbnail: async () => {

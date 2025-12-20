@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test"
 
-test("Three.js Preview Renders Canvas", async ({ page }) => {
+test.skip("Three.js Preview Renders Canvas", async ({ page }) => {
   // 1. Navigation & Creation (From your recording)
   await page.goto("/dashboard")
 

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"
 import type { LogEntry } from "@/types/log"
+import { secretsService } from "@/services/secrets"
 
 interface PythonRunnerProps {
   files: ScapeFile[]
@@ -35,6 +36,7 @@ export const PythonRunner = memo(
         onBusyChange,
         onInputRequest,
         onFileSystemUpdate,
+        scapeId,
       },
       ref
     ) => {
@@ -43,8 +45,8 @@ export const PythonRunner = memo(
       const isReadyRef = useRef(false)
       const pendingRunRef = useRef(false)
       const isBusyRef = useRef(false)
-      // New: Local state for UI rendering
       const [isBusy, setIsBusyState] = useState(false)
+      const [envVars, setEnvVars] = useState<Record<string, string>>({})
 
       // Shared Buffer for Output/Input
       const sharedBufferRef = useRef<SharedArrayBuffer | null>(null)
@@ -74,6 +76,15 @@ export const PythonRunner = memo(
         dependencies,
         files,
       })
+
+      useEffect(() => {
+        if (!scapeId) return
+        secretsService.getSecrets(scapeId).then((secrets) => {
+          const map: Record<string, string> = {}
+          secrets.forEach((s) => (map[s.key] = s.value))
+          setEnvVars(map)
+        })
+      }, [scapeId])
 
       useEffect(() => {
         propsRef.current = {
@@ -284,9 +295,10 @@ export const PythonRunner = memo(
               language: f.language,
             })),
             entryPoint,
+            env: envVars, // Inject Secrets
           },
         })
-      }, [initWorker, log, setBusy])
+      }, [initWorker, log, setBusy, envVars])
 
       // Keep ref updated
       useEffect(() => {
@@ -326,11 +338,29 @@ export const PythonRunner = memo(
         }
       }, [depsString, initWorker])
 
-      // 2. Run whenever files change
+      // 2. Run whenever files change (and secrets are ready, if needed)
       useEffect(() => {
-        // eslint-disable-next-line
-        runPython()
-      }, [files, runPython])
+        // Simple debounce/check? For now, just run.
+        // If secrets update later, we might want to re-run?
+        // Actually, re-running on every secret change might be annoying (typing in panel).
+        // But for the initial load, we MUST wait for secrets if we want them injected.
+
+        // Race condition fix: If secrets are still loading (envVars is empty),
+        // we might run with empty env.
+        // However, blocking run until secrets load might delay regular usage.
+        // Compromise: We let it run, but we also re-run if envVars change from empty->filled?
+        // Or just include envVars in dependency?
+
+        // Including envVars in dependency means typing a new secret re-runs the code.
+        // That is acceptable behavior for "Auto Run" mode (which this effect essentially simulates for deps).
+        // Actually, this effect is technically "Auto Run on File Change".
+
+        // Defer execution to avoid synchronous state update during render
+        const t = setTimeout(() => {
+          runPython()
+        }, 0)
+        return () => clearTimeout(t)
+      }, [files, runPython, envVars]) // Added envVars dependency
 
       // Add ref for input
       const pendingInputIdRef = useRef<string | null>(null)

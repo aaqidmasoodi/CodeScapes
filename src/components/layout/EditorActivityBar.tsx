@@ -1,8 +1,8 @@
-import { Files, Search, Settings, Package } from "lucide-react"
+import { Files, Search, Settings, Package, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
-export type EditorTool = "explorer" | "search" | "packages" | null
+export type EditorTool = "explorer" | "search" | "packages" | "secrets" | null
 
 interface EditorActivityBarProps {
   activeTool: EditorTool
@@ -22,6 +22,7 @@ export function EditorActivityBar({
   const topTools = [
     { id: "explorer", icon: Files, label: "Explorer" },
     { id: "search", icon: Search, label: "Search" },
+    { id: "secrets", icon: Lock, label: "Secrets" },
     ...(showPackages ? [{ id: "packages", icon: Package, label: "Packages" }] : []),
   ]
 
