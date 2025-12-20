@@ -272,6 +272,60 @@ self.onmessage = async (e: MessageEvent) => {
         for name in list(globals().keys()):
           if name not in ['__name__', '__doc__', '__package__', '__loader__', '__spec__', '__annotations__', '__builtins__', 'micropip']:
             del globals()[name]
+            
+        # 0.1 Aggressive Module Cleanup (Fixes Hot Reload)
+        # We must remove user modules from sys.modules so they are re-imported from disk.
+        import sys
+        import os
+        import importlib
+        
+        to_delete = []
+        # Get current working directory (virtual fs root)
+        cwd = os.getcwd()
+        
+        # Iterate over all loaded modules
+        for name, module in list(sys.modules.items()):
+            # Check if the module has a file path
+            if hasattr(module, '__file__') and module.__file__:
+                fpath = module.__file__
+                
+                # Robust User Module Detection:
+                # If it's NOT in the system library path (/lib), it's user code.
+                # Pyodide places stdlib and site-packages in /lib.
+                # User code is in /home/pyodide or .
+                
+                if not fpath.startswith('/lib'):
+                   to_delete.append(name)
+                   
+        for name in to_delete:
+            del sys.modules[name]
+            
+        importlib.invalidate_caches()
+
+        # 0.2 State Hardening (Env, Logs, Figures, Argv)
+        # Snapshotting env vars is hard because we want to keep what WE injected, but clear what USER added.
+        # Simple strategy: We re-inject secrets every run (see 0.6), so strict clearing is safe IF we do it before injection.
+        # But wait, 0.6 runs LATER. So we can just clear os.environ here? 
+        # CAUTION: Pyodide needs some env vars? Generally safe to reset to basic defaults?
+        # Better approach: We don't track 'default' env yet. 
+        # Safer: Just handle Logging and Plots for now to avoid breaking Pyodide internals.
+        # Pyodide's os.environ is minimal.
+        
+        # Reset Logging
+        import logging
+        try:
+            # Clear root logger handlers (prevent duplicates)
+            logging.getLogger().handlers.clear()
+        except: pass
+        
+        # Reset Matplotlib
+        try:
+             import matplotlib.pyplot as plt
+             plt.close('all')
+        except: pass
+        
+        # Reset Sys Argv (Scripts might mutate it)
+        sys.argv = ['']
       `)
 
       // 0.5 Patch Input

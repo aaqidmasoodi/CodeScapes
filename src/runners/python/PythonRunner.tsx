@@ -269,12 +269,26 @@ export const PythonRunner = memo(
           return
         }
 
+        // Strict Entry Point Logic
         const entryPoint = currentFiles.find((f) => f.name === "main.py")
           ? "main.py"
-          : currentFiles.find((f) => f.name.endsWith(".py"))?.name
+          : currentFiles.find((f) => f.name === "app.py")
+            ? "app.py"
+            : null
+
+        // Conflict Warning
+        if (
+          currentFiles.find((f) => f.name === "main.py") &&
+          currentFiles.find((f) => f.name === "app.py")
+        ) {
+          log("system", "Note: Both 'main.py' and 'app.py' found. Defaulting to 'main.py'.")
+        }
 
         if (!entryPoint) {
-          log("stderr", "No Python entry point found (e.g. main.py)")
+          log(
+            "stderr",
+            "Error: No entry point found.\nPlease create a 'main.py' or 'app.py' file in the root directory to run your code."
+          )
           return
         }
 
