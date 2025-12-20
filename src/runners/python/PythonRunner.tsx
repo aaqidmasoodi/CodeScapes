@@ -145,8 +145,16 @@ export const PythonRunner = memo(
             case "OUTPUT":
               log("stdout", payload)
               break
-            case "ERROR":
-              log("stderr", payload)
+            case "ERROR": {
+              // Sanitize Pyodide error messages
+              let cleanPayload = payload
+              if (cleanPayload.includes("is included in the Pyodide distribution")) {
+                cleanPayload = cleanPayload.replace(
+                  /The module '(.+?)' is included in the Pyodide distribution, but it is not installed[\s\S]*/,
+                  "The module '$1' is not installed.\nYou can install it by running:\n  pip install $1\n"
+                )
+              }
+              log("stderr", cleanPayload)
               // Don't clear busy on simple stderr, only on finish/error
               // Actually stderr usually means execution continues or finishes differently.
               // We'll let DidRun clear the busy state.
@@ -155,6 +163,7 @@ export const PythonRunner = memo(
                 // Python usually sends DidRun after error too.
               }
               break
+            }
             case "PREVIEW_HTML":
               setPreviewItems((prev) => [...prev, { type: "html", content: payload }])
               break
