@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState, useLayoutEffect } from "react"
 import type { ScapeFile } from "@/types/file"
 
 // We are now fully committed to the Cross-Origin Bootloader architecture.
@@ -16,64 +16,81 @@ export function usePreviewBridge(
   env?: Record<string, string>,
   versionKey?: number
 ): PreviewBridge {
-  const [bridgeState, setBridgeState] = useState<PreviewBridge>({
-    ready: false,
-    url: "",
+  // State for tracking reset
+  const [prevVersionKey, setPrevVersionKey] = useState(versionKey)
+
+  // Initialize state with correct URL
+  const [bridgeState, setBridgeState] = useState<PreviewBridge>(() => {
+    let bootloaderOrigin = ""
+    const currentHost = window.location.hostname
+    if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+      bootloaderOrigin = `${window.location.protocol}//localhost:3002`
+    } else {
+      bootloaderOrigin = window.location.origin
+    }
+    const version = versionKey || Date.now()
+    return {
+      ready: false,
+      url: `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}`,
+    }
   })
 
-  useEffect(() => {
+  // Render-time state derivation (Correct Pattern for Prop Driven Resets)
+  if (versionKey !== prevVersionKey) {
+    setPrevVersionKey(versionKey)
+    // Determine URL immediately for the new version
+    let bootloaderOrigin = ""
+    const currentHost = window.location.hostname
+    if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+      bootloaderOrigin = `${window.location.protocol}//localhost:3002`
+    } else {
+      bootloaderOrigin = window.location.origin
+    }
+    // eslint-disable-next-line react-hooks/purity
+    const version = versionKey || Date.now()
+    const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}`
+
+    // Reset state immediately
+
+    setBridgeState({ ready: false, url: bootloaderUrl })
+  }
+
+  // useLayoutEffect ensures the listener is attached BEFORE the iframe has a chance
+  // to load and fire its message, guarding against race conditions.
+  useLayoutEffect(() => {
     if (!iframeRef) {
       console.error("Frame ref required for Bridge")
       return
     }
 
-    // 1. Determine Bootloader URL
-    // Development: Use the dedicated Sandbox Server on Port 3001
-    // Production: Use current origin (or subdomain logic if configured)
-
+    // 1. Determine Bootloader Origin
     let bootloaderOrigin = ""
     const currentHost = window.location.hostname
 
     if (currentHost === "localhost" || currentHost === "127.0.0.1") {
-      // DEV MODE: Port Isolation
-      // Use localhost:3002 (Fresh Origin, no ghost SW)
       bootloaderOrigin = `${window.location.protocol}//localhost:3002`
     } else {
-      // PROD MODE: Fallback to same origin for now, but ideally subdomains.
       bootloaderOrigin = window.location.origin
     }
 
-    // Versioning forces the iframe to reload if we re-mount or important state changes
-    // ideally we just reload the iframe content, but the URL param helps during dev.
-    // Use the explicit version key if provided, otherwise Date.now()
-    const version = versionKey || Date.now()
-    const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}`
-
-    // Initial State: Point to Bootloader, but NOT ready (waiting for handshake)
-    // eslint-disable-next-line
-    setBridgeState({ ready: false, url: bootloaderUrl })
-
     // 2. Setup Handshake Listener
     const handleMessage = (event: MessageEvent) => {
-      // Debugging: Log what we see
+      // Filter irrelevant logs
       if (event.data?.type === "SANDBOX_LOG") {
         const { level, payload } = event.data
         const prefix = `%c[Sandbox]`
         const style = "background: #222; color: #bada55"
-        // Replay log
         if (level === "log") console.log(prefix, style, ...payload)
         if (level === "warn") console.warn(prefix, style, ...payload)
         if (level === "error") console.error(prefix, style, ...payload)
-        return // Don't block
+        return
       }
 
-      // Strict Origin Check
       if (event.origin !== bootloaderOrigin) return
 
       if (event.data.type === "SANDBOX_READY") {
-        console.log("[Bridge] Sandbox is Ready. Sending Files...")
+        console.log("[Bridge] Handshake Received! Sending Compile Payload...")
 
-        // 3. Send Files
         iframeRef.current?.contentWindow?.postMessage(
           {
             type: "COMPILE_FILES",
@@ -82,25 +99,16 @@ export function usePreviewBridge(
           bootloaderOrigin
         )
 
-        // Mark ready. The iframe will redirect itself to /run/...
         setBridgeState((prev) => ({ ...prev, ready: true }))
       }
     }
 
     window.addEventListener("message", handleMessage)
 
-    // Timeout Safety (Removed to avoid stale closure issues and lint warnings)
-    // If the sandbox doesn't load, the user will see the loading screen indefinitely.
-    /*
-    const timeoutId = setTimeout(() => {
-       ...
-    }, 5000)
-    */
-
     return () => {
       window.removeEventListener("message", handleMessage)
     }
-  }, [scapeId, files, iframeRef, env, versionKey]) // removed mode, isSwReady
+  }, [scapeId, files, iframeRef, env, versionKey])
 
   return bridgeState
 }
