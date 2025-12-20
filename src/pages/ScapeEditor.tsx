@@ -323,6 +323,12 @@ export default function ScapeEditor() {
     setTerminalTab("output")
   }, [files, setTerminalTab])
 
+  // Open Output pane on initial load (First Run / Entry)
+  useEffect(() => {
+    setIsTerminalOpen(true)
+    setTerminalTab("output")
+  }, [setIsTerminalOpen, setTerminalTab])
+
   const handleRun = useCallback(() => {
     if (!isRunning) setIsRunning(true)
     handleManualRefresh()
