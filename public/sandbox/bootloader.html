@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 
 <head>
@@ -39,90 +39,105 @@
   <!-- Default Loading State -->
   <div class="loader"></div>
   <script>
-    (async function () {
+    ; (async function () {
       // DEBUG: Scream existence
-      // window.alert("Bootloader JS is Running!"); 
+      // window.alert("Bootloader JS is Running!");
       // Commented out alert to avoid annoying popups, using console only now.
       // Wait, user said "I don't see anything". I NEED the alert.
 
-      const ID = Math.floor(Math.random() * 1000);
+      const ID = Math.floor(Math.random() * 1000)
 
-      const PARENT_ORIGIN = "*";
+      const PARENT_ORIGIN = "*"
 
       // Proxy Console to Parent
       function proxyConsole() {
-        const original = { log: console.log, warn: console.warn, error: console.error };
+        const original = { log: console.log, warn: console.warn, error: console.error }
 
         function send(level, args) {
           // Convert args to strings (cant pass objects easily in postMessage if they have circular refs)
-          const payload = args.map(a => {
+          const payload = args.map((a) => {
             try {
-              return typeof a === 'object' ? JSON.stringify(a) : String(a);
-            } catch (e) { return String(a); }
-          });
-          window.parent.postMessage({ type: "SANDBOX_LOG", level, payload }, PARENT_ORIGIN);
-          original[level].apply(console, args);
+              return typeof a === "object" ? JSON.stringify(a) : String(a)
+            } catch (e) {
+              return String(a)
+            }
+          })
+          window.parent.postMessage({ type: "SANDBOX_LOG", level, payload }, PARENT_ORIGIN)
+          original[level].apply(console, args)
         }
 
-        console.log = (...args) => send("log", args);
-        console.warn = (...args) => send("warn", args);
-        console.error = (...args) => send("error", args);
+        console.log = (...args) => send("log", args)
+        console.warn = (...args) => send("warn", args)
+        console.error = (...args) => send("error", args)
       }
-      proxyConsole();
+      proxyConsole()
 
-      console.log(`[Bootloader ${ID}] Starting...`);
+      console.log(`[Bootloader ${ID}] Starting...`)
 
       if (!("serviceWorker" in navigator)) {
-        console.error(`[Bootloader ${ID}] No Service Worker Support`);
-        return;
+        console.error(`[Bootloader ${ID}] No Service Worker Support`)
+        return
       }
 
       try {
-        console.log(`[Bootloader ${ID}] Registering SW...`);
+        console.log(`[Bootloader ${ID}] Registering SW...`)
         // Explicitly requesting sw.js
-        const reg = await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+        const reg = await navigator.serviceWorker.register("./sw.js", { scope: "./" })
 
-        console.log(`[Bootloader ${ID}] Waiting for Ready...`);
-        await navigator.serviceWorker.ready;
+        console.log(`[Bootloader ${ID}] Waiting for Ready...`)
+        await navigator.serviceWorker.ready
 
-        console.log(`[Bootloader ${ID}] SW Ready! Broadcasting SANDBOX_READY...`);
-        window.parent.postMessage({ type: "SANDBOX_READY" }, PARENT_ORIGIN);
+        // Ensure we are controlled before proceeding
+        if (!navigator.serviceWorker.controller) {
+          console.warn(`[Bootloader ${ID}] No controller found. Reloading to acquire...`)
+          window.location.reload()
+          return
+        }
+
+        console.log(`[Bootloader ${ID}] SW Ready! Broadcasting SANDBOX_READY...`)
+        window.parent.postMessage({ type: "SANDBOX_READY" }, PARENT_ORIGIN)
 
         window.addEventListener("message", async (event) => {
-          if (!event.data) return;
+          if (!event.data) return
 
           if (event.data.type === "COMPILE_FILES") {
-            const { scapeId, files } = event.data.payload;
-            console.log(`[Bootloader ${ID}] Compiling ${scapeId}...`);
-            console.log(`[Bootloader ${ID}] Files received:`, files.map(f => f.name));
+            const { scapeId, files, env } = event.data.payload
+            console.log(`[Bootloader ${ID}] Compiling ${scapeId}...`)
+            console.log(
+              `[Bootloader ${ID}] Files received:`,
+              files.map((f) => f.name)
+            )
+            console.log(`[Bootloader ${ID}] Env received:`, env ? Object.keys(env) : "NONE")
 
-            const sw = navigator.serviceWorker.controller;
+            const sw = navigator.serviceWorker.controller
             if (!sw) {
-              console.error(`[Bootloader ${ID}] No SW Controller. Forcing reload...`);
-              window.location.reload();
-              return;
+              console.error(`[Bootloader ${ID}] No SW Controller. Forcing reload...`)
+              window.location.reload()
+              return
             }
 
-            const channel = new MessageChannel();
+            const channel = new MessageChannel()
             channel.port1.onmessage = (e) => {
               if (e.data.type === "ACK") {
-                console.log(`[Bootloader ${ID}] Redirecting...`);
-                window.location.replace(`./run/${scapeId}/index.html`);
+                console.log(`[Bootloader ${ID}] Redirecting...`)
+                window.location.replace(`./run/${scapeId}/index.html`)
               }
-            };
+            }
 
-            sw.postMessage({
-              type: "HYDRATE",
-              payload: { scapeId, files }
-            }, [channel.port2]);
+            sw.postMessage(
+              {
+                type: "HYDRATE",
+                payload: { scapeId, files, env },
+              },
+              [channel.port2]
+            )
           }
-        });
-
+        })
       } catch (e) {
-        console.error(`[Bootloader ${ID}] Critical Error:`, e);
-        document.body.innerHTML = "<h1>Sandbox Error</h1><pre>" + e.message + "</pre>";
+        console.error(`[Bootloader ${ID}] Critical Error:`, e)
+        document.body.innerHTML = "<h1>Sandbox Error</h1><pre>" + e.message + "</pre>"
       }
-    })();
+    })()
   </script>
 </body>
 

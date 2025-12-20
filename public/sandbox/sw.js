@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = "codescape-sandbox-v1"
+const CACHE_NAME = "codescape-sandbox-v2"
 // Map<ScapeId, Map<FilePath, Blob>>
 const fileSystem = new Map()
 
@@ -10,7 +10,7 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim())
-  console.log("[Sandbox SW] Activated")
+  console.log("[Sandbox SW] Activated v2")
 })
 
 const MIME_TYPES = {
@@ -33,14 +33,47 @@ self.addEventListener("message", async (event) => {
   switch (event.data.type) {
     case "HYDRATE": {
       // Load files into memory
-      const { scapeId, files } = event.data.payload
+      const { scapeId, files, env } = event.data.payload
       console.log(`[Sandbox SW] Hydrating ${scapeId} (${files.length} files)`)
+
+      // Prepare Injection Script
+      // Always inject to ensure process is defined
+      const envSafe = env || {}
+      const injectionScript = `<script>
+        (function() {
+          console.log("[Sandbox Preamble] Setting process.env", ${JSON.stringify(Object.keys(envSafe))});
+          var env = ${JSON.stringify(envSafe)};
+          window.process = window.process || {};
+          window.process.env = env;
+          if (typeof process === 'undefined') {
+            window.process = { env: env };
+          }
+        })();
+      </script>`
 
       const scapeFs = new Map()
       for (const file of files) {
         let blob = file.content
         const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase()
         let type = MIME_TYPES[ext] || "text/plain"
+
+        // Inject Secrets into HTML
+        if (injectionScript && ext === ".html" && typeof blob === "string") {
+          const hasHead = /<head/i.test(blob)
+          const hasBody = /<body/i.test(blob)
+
+          console.log(
+            `[Sandbox SW] Injecting preamble into ${file.name} (Head: ${hasHead}, Body: ${hasBody})`
+          )
+
+          if (hasHead) {
+            blob = blob.replace(/<head[^>]*>/i, (match) => `${match}${injectionScript}`)
+          } else if (hasBody) {
+            blob = blob.replace(/<body[^>]*>/i, (match) => `${match}${injectionScript}`)
+          } else {
+            blob = injectionScript + blob
+          }
+        }
 
         if (typeof blob === "string") {
           // Check if it's a Base64 Data URI
@@ -69,7 +102,8 @@ self.addEventListener("message", async (event) => {
             }
           } else {
             // Regular text content
-            blob = new Blob([file.content], { type })
+            // Use the local 'blob' variable which might have been modified (injected)
+            blob = new Blob([blob], { type })
           }
         }
 
