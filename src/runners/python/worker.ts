@@ -272,6 +272,35 @@ self.onmessage = async (e: MessageEvent) => {
         for name in list(globals().keys()):
           if name not in ['__name__', '__doc__', '__package__', '__loader__', '__spec__', '__annotations__', '__builtins__', 'micropip']:
             del globals()[name]
+            
+        # 0.1 Aggressive Module Cleanup (Fixes Hot Reload)
+        # We must remove user modules from sys.modules so they are re-imported from disk.
+        import sys
+        import os
+        import importlib
+        
+        to_delete = []
+        # Get current working directory (virtual fs root)
+        cwd = os.getcwd()
+        
+        # Iterate over all loaded modules
+        for name, module in list(sys.modules.items()):
+            # Check if the module has a file path
+            if hasattr(module, '__file__') and module.__file__:
+                # If the module matches our current directory (User Space), mark for deletion.
+                # We check:
+                # 1. Absolute path starts with cwd (e.g. /home/pyodide/app.py)
+                # 2. Relative path starts with . (e.g. ./app.py)
+                # 3. Handle edge case of root files if necessary
+                
+                fpath = module.__file__
+                if fpath.startswith(cwd) or fpath.startswith('.'):
+                   to_delete.append(name)
+                   
+        for name in to_delete:
+            del sys.modules[name]
+            
+        importlib.invalidate_caches()
       `)
 
       // 0.5 Patch Input
