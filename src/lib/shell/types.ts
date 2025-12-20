@@ -19,7 +19,8 @@ export interface ShellContext {
   // Bridge to external execution (e.g. pip)
   execCommand?: (
     cmd: string,
-    arg: string
+    arg: string,
+    onProgress?: (message: string) => void
   ) => Promise<{ success: boolean; warning?: string; error?: string }>
 }
 

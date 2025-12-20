@@ -14,5 +14,8 @@ export interface ScapeRunnerProps {
 export interface ScapeRunnerHandle {
   captureThumbnail(): Promise<string | null>
   restart(): Promise<void>
-  installPackage(pkg: string): Promise<{ success: boolean; error?: string }>
+  installPackage(
+    pkg: string,
+    onProgress?: (message: string) => void
+  ): Promise<{ success: boolean; error?: string }>
 }

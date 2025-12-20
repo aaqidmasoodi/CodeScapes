@@ -330,7 +330,7 @@ export function TerminalPane({
 
           {activeTab === "output" && (
             <div className="flex flex-col gap-0.5">
-              {outputLogs.length === 0 ? (
+              {outputLogs.length === 0 && !inputPrompt ? (
                 <div className="text-muted-foreground">No output available.</div>
               ) : (
                 outputLogs.map((log) => (

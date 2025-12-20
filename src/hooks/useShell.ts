@@ -106,21 +106,50 @@ const commands: Record<string, CommandHandler> = {
       return { type: "error", content: "pip: environment does not support package management" }
     }
 
+    // Basic Args Parser
     const subCmd = args[0]
-    const pkg = args[1]
+    const rawArgs = args.slice(1)
+
+    // Flags
+    const flags: Record<string, boolean> = {
+      noDeps: false,
+      keepGoing: false,
+      verbose: false,
+    }
+
+    const packages: string[] = []
+
+    // Parse arguments
+    for (const arg of rawArgs) {
+      if (arg === "--no-deps") flags.noDeps = true
+      else if (arg === "--keep-going") flags.keepGoing = true
+      else if (arg === "--verbose" || arg === "-v") flags.verbose = true
+      else if (!arg.startsWith("-")) packages.push(arg)
+      // else ignore unknown flags for now
+    }
 
     if (subCmd === "install") {
-      if (!pkg) return { type: "error", content: "usage: pip install <package>" }
+      if (packages.length === 0)
+        return { type: "error", content: "usage: pip install <package> [options]" }
 
-      // Standard PIP output: "Collecting <pkg>..."
-      ctx.log({ type: "stdout", content: `Collecting ${pkg}...` })
+      const pkgList = packages.join(", ")
+      ctx.log({ type: "stdout", content: `Collecting ${pkgList}...` })
+      if (flags.noDeps) ctx.log({ type: "stdout", content: "  Using cached/no-deps mode" })
 
       try {
-        const result = await ctx.execCommand("pip-install", pkg)
+        const payload = JSON.stringify({
+          packages,
+          options: flags,
+        })
+
+        const result = await ctx.execCommand("pip-install", payload, (msg) => {
+          ctx.log({ type: "stdout", content: msg })
+        })
+
         if (result.success) {
-          return { type: "stdout", content: `Successfully installed ${pkg}` }
+          return { type: "stdout", content: `Successfully installed ${pkgList}` }
         } else {
-          return { type: "error", content: `Failed to install ${pkg}: ${result.error}` }
+          return { type: "error", content: `Failed to install ${pkgList}: ${result.error}` }
         }
       } catch (e) {
         return { type: "error", content: `Error: ${e}` }
@@ -128,7 +157,15 @@ const commands: Record<string, CommandHandler> = {
     }
 
     if (subCmd === "uninstall") {
-      if (!pkg) return { type: "error", content: "usage: pip uninstall <package>" }
+      if (packages.length === 0) return { type: "error", content: "usage: pip uninstall <package>" }
+
+      const pkg = packages[0]
+      if (packages.length > 1)
+        ctx.log({
+          type: "stdout",
+          content:
+            "Note: Uninstalling multiple packages is not supported yet. Processing only the first one.",
+        })
 
       ctx.log({ type: "stdout", content: `Found existing installation: ${pkg}` })
       ctx.log({ type: "stdout", content: `Uninstalling ${pkg}...` })
