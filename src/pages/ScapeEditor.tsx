@@ -318,7 +318,10 @@ export default function ScapeEditor() {
     setIsRefreshing(true)
     setDebouncedFiles([...files]) // Force new reference to ensure update
     setTimeout(() => setIsRefreshing(false), 500)
-  }, [files])
+
+    // Ensure Output is visible (only switch tab if open)
+    setTerminalTab("output")
+  }, [files, setTerminalTab])
 
   const handleRun = useCallback(() => {
     if (!isRunning) setIsRunning(true)
