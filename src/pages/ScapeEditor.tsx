@@ -318,7 +318,26 @@ export default function ScapeEditor() {
     setIsRefreshing(true)
     setDebouncedFiles([...files]) // Force new reference to ensure update
     setTimeout(() => setIsRefreshing(false), 500)
-  }, [files])
+
+    // Ensure Output is visible (only switch tab if open)
+    setTerminalTab("output")
+  }, [files, setTerminalTab])
+
+  // Open Output pane on initial load (First Run / Entry)
+  // Open Output pane only on fresh navigation (Entry/Create), NOT on Refresh.
+  // Refresh should preserve the user's last state (handled by usePersistentState).
+  useEffect(() => {
+    const navEntries = performance.getEntriesByType("navigation")
+    if (navEntries.length > 0) {
+      const entry = navEntries[0] as PerformanceNavigationTiming
+      // If we are reloading, DO NOTHING (let persistent state handle it)
+      if (entry.type === "reload") return
+
+      // If we are triggering a new navigation (e.g. form dashboard), Force Open.
+      setIsTerminalOpen(true)
+      setTerminalTab("output")
+    }
+  }, [setIsTerminalOpen, setTerminalTab])
 
   const handleRun = useCallback(() => {
     if (!isRunning) setIsRunning(true)
@@ -337,24 +356,42 @@ export default function ScapeEditor() {
   const handleExecCommand = useCallback(
     async (
       cmd: string,
-      arg: string
+      arg: string,
+      onProgress?: (message: string) => void
     ): Promise<{ success: boolean; warning?: string; error?: string }> => {
       if (cmd === "pip-install") {
-        // 1. Install in Runtime
-        const result = (await previewRef.current?.installPackage?.(arg)) ?? {
+        // 1. Install in Runtime (expects the full payload with flags)
+        const result = (await previewRef.current?.installPackage?.(arg, onProgress)) ?? {
           success: false,
           error: "Preview not ready",
         }
 
         if (result.success) {
-          // 2. Persist to DB
+          // 2. Parse payload to get clean package names for persistence
+          let newPackages: string[] = []
+          try {
+            if (arg.trim().startsWith("{")) {
+              const parsed = JSON.parse(arg)
+              newPackages = parsed.packages || []
+            } else {
+              newPackages = [arg]
+            }
+          } catch {
+            newPackages = [arg]
+          }
+
+          // 3. Persist to DB
           const currentDeps = scape?.dependencies || []
-          if (!currentDeps.includes(arg)) {
+          // Filter out existing ones
+          const toAdd = newPackages.filter((p) => !currentDeps.includes(p))
+
+          if (toAdd.length > 0) {
+            const nextDeps = [...currentDeps, ...toAdd]
             // Optimistic Update
-            setOptimisticDependencies([...(optimisticDependencies || currentDeps), arg])
-            await updateScape({ dependencies: [...currentDeps, arg] })
+            setOptimisticDependencies(nextDeps)
+            await updateScape({ dependencies: nextDeps })
             // Broadcast to other clients
-            if (emitUpdate) emitUpdate({ dependencies: [...currentDeps, arg] })
+            if (emitUpdate) emitUpdate({ dependencies: nextDeps })
           }
         }
         return result
@@ -1127,6 +1164,7 @@ export default function ScapeEditor() {
                                   onExecCommand={handleExecCommand}
                                   inputPrompt={inputPrompt}
                                   onInputSubmit={handleInputSubmit}
+                                  isRunning={isRunning}
                                 />
                               </ResizablePanel>
                             )}
@@ -1147,6 +1185,7 @@ export default function ScapeEditor() {
                               onExecCommand={handleExecCommand}
                               inputPrompt={inputPrompt}
                               onInputSubmit={handleInputSubmit}
+                              isRunning={isRunning}
                             />
                           </div>
                         )}

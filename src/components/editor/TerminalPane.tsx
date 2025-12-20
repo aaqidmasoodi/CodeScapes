@@ -28,6 +28,7 @@ interface TerminalPaneProps {
   ) => Promise<{ success: boolean; warning?: string; error?: string }>
   inputPrompt?: string | null
   onInputSubmit?: (text: string) => void
+  isRunning?: boolean
 }
 
 type HistoryItem =
@@ -50,6 +51,7 @@ export function TerminalPane({
   onExecCommand,
   inputPrompt,
   onInputSubmit,
+  isRunning = true,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -68,6 +70,7 @@ export function TerminalPane({
   const outputBottomRef = useRef<HTMLDivElement>(null)
   const outputInputRef = useRef<HTMLInputElement>(null)
   const [programInput, setProgramInput] = useState("")
+  const [isProcessing, setIsProcessing] = useState(false)
 
   // Auto-scroll
   useEffect(() => {
@@ -103,93 +106,86 @@ export function TerminalPane({
     deleteFile: async (name: string) => {
       if (onDeleteFile) await onDeleteFile(name)
     },
+    onExecCommand,
+    onLog: (output) => {
+      // Stream output to history
+      setHistory((prev) => [
+        ...prev,
+        {
+          type: "output",
+          content: output.content,
+        },
+      ])
+    },
   })
+
+  // Clear program input buffer when not running (stopped) or prompt disappears
+  useEffect(() => {
+    if (!inputPrompt || !isRunning) {
+      setProgramInput("")
+    }
+  }, [inputPrompt, isRunning])
 
   const handleCommand = async (cmdStr: string) => {
     const trimmed = cmdStr.trim()
     if (!trimmed) return
 
-    // Detect Legacy Commands (pip)
-    const [cmd, ...args] = trimmed.split(/\s+/)
-    if (cmd === "pip" || cmd === "python" || cmd === "help" || cmd === "clear") {
-      // Keep legacy handling for now for specific commands not yet in shell
-      // Actually 'help' and 'clear' are UI specific, 'pip' is external runner specific.
+    setIsProcessing(true)
 
-      if (cmd === "clear") {
-        setHistory([])
-        return
-      }
+    try {
+      // Detect Legacy Commands (pip)
+      const [cmd] = trimmed.split(/\s+/)
+      if (cmd === "help" || cmd === "clear") {
+        // ... (existing legacy checks)
+        // Note: For 'clear' and 'help' which are sync, we still wrap them but they are fast.
 
-      if (cmd === "help") {
-        setHistory((prev) => [
-          ...prev,
-          {
-            type: "output",
-            content: (
-              <div className="text-muted-foreground">
-                Available commands:
-                <br />
-                &nbsp;&nbsp;ls, cat, touch, rm, mkdir, pwd
-                <br />
-                &nbsp;&nbsp;pip install &lt;pkg&gt;
-                <br />
-                &nbsp;&nbsp;echo "text" &gt; file.txt
-              </div>
-            ),
-          },
-        ])
-        return
-      }
-
-      if (cmd === "pip") {
-        // Legacy Pip Logic
-        const subCmd = args[0]
-        const pkg = args[1]
-        if (subCmd === "install" && pkg) {
-          setHistory((prev) => [...prev, { type: "output", content: `Collecting ${pkg}...` }])
-          if (onExecCommand) {
-            onExecCommand("pip-install", pkg).then((result) => {
-              const { success, error } = result
-              setHistory((prev) => [
-                ...prev,
-                {
-                  type: "output",
-                  content: success ? `Successfully installed ${pkg}` : `Failed: ${error}`,
-                },
-              ])
-            })
-          }
-        } else if (subCmd === "uninstall" && pkg) {
-          setHistory((prev) => [...prev, { type: "output", content: `Uninstalling ${pkg}...` }])
-          if (onExecCommand) {
-            onExecCommand("pip-uninstall", pkg).then((result) => {
-              const { success, error } = result
-              setHistory((prev) => [
-                ...prev,
-                {
-                  type: "output",
-                  content: success ? `Successfully uninstalled ${pkg}` : `Failed: ${error}`,
-                },
-              ])
-            })
-          }
-        } else {
-          setHistory((prev) => [...prev, { type: "output", content: "Usage: pip install <pkg>" }])
+        if (cmd === "clear") {
+          setHistory([])
+          setIsProcessing(false)
+          return
         }
-        return
+
+        if (cmd === "help") {
+          setHistory((prev) => [
+            ...prev,
+            {
+              type: "output",
+              content: (
+                <div className="text-muted-foreground">
+                  Available commands:
+                  <br />
+                  &nbsp;&nbsp;ls, cat, touch, rm, mkdir, pwd
+                  <br />
+                  &nbsp;&nbsp;pip install &lt;pkg&gt;
+                  <br />
+                  &nbsp;&nbsp;echo "text" &gt; file.txt
+                </div>
+              ),
+            },
+          ])
+          setIsProcessing(false)
+          return
+        }
       }
-    }
 
-    // Execute via Shell
-    const result = await shell.execute(trimmed)
+      // Execute via Shell
+      const result = await shell.execute(trimmed)
 
-    // Render Output
-    if (result.type === "success") {
-      // no op
-    } else if (result.type === "error") {
-      setHistory((prev) => [...prev, { type: "output", content: `Error: ${result.content}` }])
-    } else {
-      setHistory((prev) => [...prev, { type: "output", content: result.content }])
+      // Render Output
+      if (result.type === "success") {
+        // no op
+      } else if (result.type === "error") {
+        setHistory((prev) => [...prev, { type: "output", content: `Error: ${result.content}` }])
+      } else {
+        setHistory((prev) => [...prev, { type: "output", content: result.content }])
+      }
+    } catch (e) {
+      setHistory((prev) => [...prev, { type: "output", content: `Error: ${e}` }])
+    } finally {
+      setIsProcessing(false)
+      // Re-focus input after processing (if it became visible again)
+      // setTimeout to allow React to render the input
+      setTimeout(() => inputRef.current?.focus(), 10)
     }
   }
 
@@ -318,29 +314,32 @@ export function TerminalPane({
                 </div>
               ))}
 
-              <div className="flex items-center gap-2">
-                <span className="text-green-500">➜</span>
-                <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
-                <form onSubmit={handleSubmit} className="min-w-0 flex-1">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
-                    autoFocus
-                    autoComplete="off"
-                    spellCheck="false"
-                  />
-                </form>
-              </div>
               <div ref={bottomRef} />
+
+              {!isProcessing && (
+                <div className="flex items-center gap-2">
+                  <span className="text-green-500">➜</span>
+                  <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
+                  <form onSubmit={handleSubmit} className="min-w-0 flex-1">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
+                      autoFocus
+                      autoComplete="off"
+                      spellCheck="false"
+                    />
+                  </form>
+                </div>
+              )}
             </>
           )}
 
           {activeTab === "output" && (
             <div className="flex flex-col gap-0.5">
-              {outputLogs.length === 0 ? (
+              {outputLogs.length === 0 && !inputPrompt ? (
                 <div className="text-muted-foreground">No output available.</div>
               ) : (
                 outputLogs.map((log) => (
@@ -375,8 +374,12 @@ export function TerminalPane({
                       type="text"
                       value={programInput}
                       onChange={(e) => setProgramInput(e.target.value)}
-                      className="w-full bg-transparent font-mono text-foreground outline-none"
+                      className={cn(
+                        "w-full bg-transparent font-mono text-foreground outline-none",
+                        !isRunning && "cursor-text opacity-50"
+                      )}
                       autoFocus
+                      disabled={!isRunning}
                       autoComplete="off"
                     />
                   </form>

@@ -16,6 +16,12 @@ export interface ShellContext {
   deleteFile: (name: string) => Promise<void>
   // Output handler (for streaming output if needed, though usually we return formatted output)
   log: (output: ShellOutput) => void
+  // Bridge to external execution (e.g. pip)
+  execCommand?: (
+    cmd: string,
+    arg: string,
+    onProgress?: (message: string) => void
+  ) => Promise<{ success: boolean; warning?: string; error?: string }>
 }
 
 export interface ParsedCommand {

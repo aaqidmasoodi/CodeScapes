@@ -54,7 +54,13 @@ export const PythonRunner = memo(
         { type: "image" | "html"; content: string }[]
       >([])
       const pendingInstalls = useRef<
-        Map<string, (result: { success: boolean; error?: string }) => void>
+        Map<
+          string,
+          {
+            resolve: (result: { success: boolean; error?: string }) => void
+            onProgress?: (message: string) => void
+          }
+        >
       >(new Map())
 
       // --- Stable Refs for Props ---
@@ -130,13 +136,25 @@ export const PythonRunner = memo(
 
           switch (type) {
             case "STATUS":
-              // System logs suppressed for cleaner output
+              // Route to pending installs if active (for pip progress in terminal)
+              if (pendingInstalls.current.size > 0) {
+                pendingInstalls.current.forEach((handler) => handler.onProgress?.(payload))
+              }
+              // Otherwise, suppress system logs (Blue text) from Output Pane as requested.
               break
             case "OUTPUT":
               log("stdout", payload)
               break
-            case "ERROR":
-              log("stderr", payload)
+            case "ERROR": {
+              // Sanitize Pyodide error messages
+              let cleanPayload = payload
+              if (cleanPayload.includes("is included in the Pyodide distribution")) {
+                cleanPayload = cleanPayload.replace(
+                  /The module '(.+?)' is included in the Pyodide distribution, but it is not installed[\s\S]*/,
+                  "The module '$1' is not installed.\nYou can install it by running:\n  pip install $1\n"
+                )
+              }
+              log("stderr", cleanPayload)
               // Don't clear busy on simple stderr, only on finish/error
               // Actually stderr usually means execution continues or finishes differently.
               // We'll let DidRun clear the busy state.
@@ -145,6 +163,7 @@ export const PythonRunner = memo(
                 // Python usually sends DidRun after error too.
               }
               break
+            }
             case "PREVIEW_HTML":
               setPreviewItems((prev) => [...prev, { type: "html", content: payload }])
               break
@@ -162,9 +181,14 @@ export const PythonRunner = memo(
               }
               break
             case "INSTALL_SUCCESS":
-              log("system", `Package ${payload} ready.`)
+              // Do NOT log to system (Output Pane)
               if (pendingInstalls.current.has(payload)) {
-                pendingInstalls.current.get(payload)?.({ success: true })
+                // Notify progress one last time if needed, or just resolve
+                // user prefers terminal feedback so maybe confirmation here?
+                // The 'resolve' itself returns to useShell which prints "Successfully installed...".
+                // So we don't need to double print.
+
+                pendingInstalls.current.get(payload)?.resolve({ success: true })
                 pendingInstalls.current.delete(payload)
               }
               setBusy(false)
@@ -174,7 +198,7 @@ export const PythonRunner = memo(
               if (payload && typeof payload === "object") {
                 const { pkg, error } = payload
                 if (pendingInstalls.current.has(pkg)) {
-                  pendingInstalls.current.get(pkg)?.({
+                  pendingInstalls.current.get(pkg)?.resolve({
                     success: false,
                     error,
                   })
@@ -317,7 +341,7 @@ export const PythonRunner = memo(
         restart: async () => {
           initWorker()
         },
-        installPackage: async (pkg) => {
+        installPackage: async (pkg, onProgress) => {
           // ... (keep existing)
           return new Promise((resolve) => {
             if (!workerRef.current) {
@@ -325,7 +349,7 @@ export const PythonRunner = memo(
               return
             }
             setBusy(true)
-            pendingInstalls.current.set(pkg, resolve)
+            pendingInstalls.current.set(pkg, { resolve, onProgress })
 
             workerRef.current.postMessage({
               type: "INSTALL",
@@ -335,7 +359,7 @@ export const PythonRunner = memo(
             // Timeout fallback
             setTimeout(() => {
               if (pendingInstalls.current.has(pkg)) {
-                pendingInstalls.current.get(pkg)?.({
+                pendingInstalls.current.get(pkg)?.resolve({
                   success: false,
                   error: "Timeout",
                 })

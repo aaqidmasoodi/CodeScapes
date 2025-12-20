@@ -40,9 +40,9 @@ export const PreviewPane = memo(
         }
         return null
       },
-      installPackage: async (pkg: string) => {
+      installPackage: async (pkg: string, onProgress?: (message: string) => void) => {
         if (isRunning && runnerRef.current?.installPackage) {
-          return await runnerRef.current.installPackage(pkg)
+          return await runnerRef.current.installPackage(pkg, onProgress)
         }
         return { success: false, error: "Environment not running or packages not supported" }
       },

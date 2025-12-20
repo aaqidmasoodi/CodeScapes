@@ -186,19 +186,69 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === "INSTALL") {
     const runInstall = async () => {
       const py = await loadPyodide()
-      const packageName = payload
+
+      let packages: string[] = []
+      let options: any = {}
+
+      // Robust Payload Parsing
+      let parsedPayload = payload
+      if (typeof payload === "string" && payload.trim().startsWith("{")) {
+        try {
+          parsedPayload = JSON.parse(payload)
+        } catch {
+          // treat as raw string
+        }
+      }
+
+      if (typeof parsedPayload === "string") {
+        packages = [parsedPayload]
+      } else if (typeof parsedPayload === "object") {
+        packages = parsedPayload.packages || []
+        options = parsedPayload.options || {}
+      }
+
+      if (packages.length === 0) {
+        postMessage({ type: "ERROR", payload: "No packages specified for install" })
+        return
+      }
+
+      const packageListStr = packages.join(", ")
+
       try {
-        postMessage({ type: "STATUS", payload: `Installing ${packageName}...` })
+        postMessage({ type: "STATUS", payload: `Installing ${packageListStr}...` })
+
+        // Pass options to micropip?
+        // micropip.install(requirements, keep_going=False, deps=True, credentials=None, pre=False, index_urls=None, verbose=False)
+        // We will construct the kwargs string based on options
+
+        const kwargs: string[] = []
+        if (options.noDeps) kwargs.push("deps=False")
+        if (options.keepGoing) kwargs.push("keep_going=True")
+        if (options.verbose) kwargs.push("verbose=True")
+
+        const kwargsStr = kwargs.length > 0 ? `, ${kwargs.join(", ")}` : ""
+        const requirementsJson = JSON.stringify(packages)
+
         await py.runPythonAsync(`
             import micropip
-            await micropip.install("${packageName}")
+            await micropip.install(${requirementsJson}${kwargsStr})
             `)
-        postMessage({ type: "INSTALL_SUCCESS", payload: packageName })
+
+        // Send "Ready" status via onProgress (STATUS) before final success signal?
+        // Or just let Success signal handle it.
+        // Note: The STATUS handler in PythonRunner broadcasts to all active installs, so valid.
+
+        // IMPORTANT: We must send back the ORIGINAL 'payload' string as the ID
+        // so PythonRunner can find the Promise in its map.
+        postMessage({ type: "INSTALL_SUCCESS", payload: payload })
       } catch (err: any) {
-        postMessage({ type: "ERROR", payload: `Failed to install ${packageName}: ${err.message}` })
+        postMessage({
+          type: "ERROR",
+          payload: `Failed to install ${packageListStr}: ${err.message}`,
+        })
         postMessage({
           type: "INSTALL_ERROR",
-          payload: { pkg: packageName, error: err.message },
+          payload: { pkg: payload, error: err.message },
         })
       }
     }
