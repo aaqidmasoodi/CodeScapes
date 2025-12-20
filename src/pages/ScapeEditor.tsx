@@ -324,9 +324,19 @@ export default function ScapeEditor() {
   }, [files, setTerminalTab])
 
   // Open Output pane on initial load (First Run / Entry)
+  // Open Output pane only on fresh navigation (Entry/Create), NOT on Refresh.
+  // Refresh should preserve the user's last state (handled by usePersistentState).
   useEffect(() => {
-    setIsTerminalOpen(true)
-    setTerminalTab("output")
+    const navEntries = performance.getEntriesByType("navigation")
+    if (navEntries.length > 0) {
+      const entry = navEntries[0] as PerformanceNavigationTiming
+      // If we are reloading, DO NOTHING (let persistent state handle it)
+      if (entry.type === "reload") return
+
+      // If we are triggering a new navigation (e.g. form dashboard), Force Open.
+      setIsTerminalOpen(true)
+      setTerminalTab("output")
+    }
   }, [setIsTerminalOpen, setTerminalTab])
 
   const handleRun = useCallback(() => {
