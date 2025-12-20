@@ -117,6 +117,13 @@ export function TerminalPane({
     },
   })
 
+  // Clear program input buffer when prompt disappears (e.g. stop/restart)
+  useEffect(() => {
+    if (!inputPrompt) {
+      setProgramInput("")
+    }
+  }, [inputPrompt])
+
   const handleCommand = async (cmdStr: string) => {
     const trimmed = cmdStr.trim()
     if (!trimmed) return

@@ -849,6 +849,7 @@ export default function ScapeEditor() {
                   onClick={() => {
                     if (isRunning) {
                       setIsRunning(false)
+                      setInputPrompt(null) // Remove input prompt immediately
                     } else {
                       handleRun()
                     }
