@@ -849,7 +849,6 @@ export default function ScapeEditor() {
                   onClick={() => {
                     if (isRunning) {
                       setIsRunning(false)
-                      setInputPrompt(null) // Remove input prompt immediately
                     } else {
                       handleRun()
                     }
@@ -1146,6 +1145,7 @@ export default function ScapeEditor() {
                                   onExecCommand={handleExecCommand}
                                   inputPrompt={inputPrompt}
                                   onInputSubmit={handleInputSubmit}
+                                  isRunning={isRunning}
                                 />
                               </ResizablePanel>
                             )}
@@ -1166,6 +1166,7 @@ export default function ScapeEditor() {
                               onExecCommand={handleExecCommand}
                               inputPrompt={inputPrompt}
                               onInputSubmit={handleInputSubmit}
+                              isRunning={isRunning}
                             />
                           </div>
                         )}

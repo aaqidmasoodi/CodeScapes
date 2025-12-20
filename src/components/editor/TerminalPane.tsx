@@ -28,6 +28,7 @@ interface TerminalPaneProps {
   ) => Promise<{ success: boolean; warning?: string; error?: string }>
   inputPrompt?: string | null
   onInputSubmit?: (text: string) => void
+  isRunning?: boolean
 }
 
 type HistoryItem =
@@ -50,6 +51,7 @@ export function TerminalPane({
   onExecCommand,
   inputPrompt,
   onInputSubmit,
+  isRunning = true,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -117,12 +119,12 @@ export function TerminalPane({
     },
   })
 
-  // Clear program input buffer when prompt disappears (e.g. stop/restart)
+  // Clear program input buffer when not running (stopped) or prompt disappears
   useEffect(() => {
-    if (!inputPrompt) {
+    if (!inputPrompt || !isRunning) {
       setProgramInput("")
     }
-  }, [inputPrompt])
+  }, [inputPrompt, isRunning])
 
   const handleCommand = async (cmdStr: string) => {
     const trimmed = cmdStr.trim()
@@ -372,8 +374,12 @@ export function TerminalPane({
                       type="text"
                       value={programInput}
                       onChange={(e) => setProgramInput(e.target.value)}
-                      className="w-full bg-transparent font-mono text-foreground outline-none"
+                      className={cn(
+                        "w-full bg-transparent font-mono text-foreground outline-none",
+                        !isRunning && "cursor-text opacity-50"
+                      )}
                       autoFocus
+                      disabled={!isRunning}
                       autoComplete="off"
                     />
                   </form>
