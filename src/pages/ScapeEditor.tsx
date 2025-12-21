@@ -325,11 +325,7 @@ export default function ScapeEditor() {
     setOutputLogs([]) // Clear output
     setInputPrompt(null) // Clear any pending input prompt
     setIsRefreshing(true)
-
-    // Explicitly restart the runner (forces iframe reload)
-    previewRef.current?.restart?.()
-
-    setDebouncedFiles([...files]) // Force new reference (optional now but keeps React happy)
+    setDebouncedFiles([...files]) // Force new reference to ensure update
     setTimeout(() => setIsRefreshing(false), 500)
 
     // Ensure Output is visible (only switch tab if open)
@@ -1041,7 +1037,7 @@ export default function ScapeEditor() {
                     scapeId={id}
                     isOpen={true}
                     ref={secretsPanelRef}
-                  // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
                   />
                 )}
               </ResizablePanel>
