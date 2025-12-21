@@ -49,16 +49,6 @@ export const TOOLBOX_CATEGORIES = [
   },
 ]
 
-const INITIAL_TOOLBOX = {
-  kind: "categoryToolbox",
-  contents: TOOLBOX_CATEGORIES.map((c) => ({
-    kind: "category",
-    name: c.name,
-    colour: c.colour,
-    contents: c.contents,
-  })),
-}
-
 // --- CUSTOM BLOCKS DEFINITION (Phase 3.1) ---
 // We define them globally for now. In future, move to 'blocks/definitions.ts'
 Blockly.Blocks["move_steps"] = {
@@ -101,9 +91,9 @@ export interface BlockEditorHandle {
   loadJSON: (json: object) => void
   resize: () => void
   activateCategory: (name: string) => void
+  spawnBlock: (type: string, clientX: number, clientY: number) => void
 }
 
-// 102
 export interface BlockEditorProps {
   onChange?: (code: string, json: object) => void
   onInit?: () => void
@@ -114,7 +104,6 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
     const editorDiv = useRef<HTMLDivElement>(null)
     const workspaceRef = useRef<Blockly.WorkspaceSvg | null>(null)
     const onChangeRef = useRef(onChange)
-
     const onInitRef = useRef<(() => void) | undefined>(onInit)
 
     // Keep ref updated
@@ -143,6 +132,45 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
           toolbox.selectCategoryByName(name)
         }
       },
+      spawnBlock: (type: string, clientX: number, clientY: number) => {
+        const workspace = workspaceRef.current
+        if (!workspace) return
+
+        // 1. Create Block
+        const block = workspace.newBlock(type)
+        block.initSvg()
+        block.render()
+
+        // 2. Position it relative to the viewport
+        // We need to convert clientX/Y to workspace coordinates.
+        // Blockly has utility for this, but standard SVG matrix math is reliable.
+        const injectionDiv = workspace.getInjectionDiv()
+        const boundingRect = injectionDiv.getBoundingClientRect()
+
+        // Calculate relative to the injection div (0,0 of workspace visual area)
+        const relX = clientX - boundingRect.left
+        const relY = clientY - boundingRect.top
+
+        // Convert to Workspace scale/pan
+        const scrollX = workspace.scrollX
+        const scrollY = workspace.scrollY
+        const scale = workspace.scale
+
+        const workspaceX = relX / scale - scrollX / scale
+        const workspaceY = relY / scale - scrollY / scale
+
+        block.moveTo(new Blockly.utils.Coordinate(workspaceX, workspaceY))
+
+        // 3. Initiate Drag (The "Ghost" Handoff)
+        if (Blockly.Gesture.inProgress()) {
+          // @ts-expect-error - Internal
+          const gesture = Blockly.Gesture.inprogress_
+          gesture.setStartBlock(block)
+        } else {
+          // Fallback: Just select it
+          block.select()
+        }
+      },
     }))
 
     useEffect(() => {
@@ -150,7 +178,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
 
       // Inject workspace
       workspaceRef.current = Blockly.inject(editorDiv.current, {
-        toolbox: INITIAL_TOOLBOX,
+        toolbox: { kind: "flyoutToolbox", contents: [] }, // Custom Sidebar replacement
         theme: CODESCAPE_THEME,
         renderer: "zelos", // Scratch-like renderer
         zoom: {
@@ -168,7 +196,6 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
       })
 
       // Signal Readiness
-      // Signal Readiness
       if (onInitRef.current) {
         onInitRef.current()
       }
@@ -177,7 +204,11 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
       const style = document.createElement("style")
       style.innerHTML = `
       .blocklyToolboxDiv { display: none !important; } 
-      .blocklyFlyout { z-index: 999; }
+      .blocklyFlyout { display: none !important; }
+      .blocklyFlyoutBackground { display: none !important; }
+      .blocklyFlyoutScrollbar { display: none !important; }
+      .blocklySvg { border: none !important; outline: none !important; }
+      .blocklyMainBackground { stroke-width: 0 !important; stroke: none !important; }
     `
       document.head.appendChild(style)
 

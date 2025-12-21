@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AuthDialog } from "@/components/auth/AuthDialog"
+import { CodeScapeLogo } from "@/components/brand/Logo"
 
 interface HeaderProps {
   actions?: React.ReactNode
@@ -25,9 +26,9 @@ export function Header({ actions, customTitle, endActions }: HeaderProps) {
         {customTitle ? (
           customTitle
         ) : (
-          <span className="bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-xl font-bold text-transparent">
-            CodeScapes
-          </span>
+          <div className="flex items-center gap-2">
+            <CodeScapeLogo size={32} />
+          </div>
         )}
       </div>
 

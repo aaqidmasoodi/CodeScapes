@@ -8,18 +8,17 @@ import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import { FileExplorer } from "@/components/editor/FileExplorer"
 import { buildFileTree } from "@/lib/file-tree"
 import { Button } from "@/components/ui/button"
-import { Flag, Maximize, LogOut } from "lucide-react"
-import {
-  BlockEditor,
-  type BlockEditorHandle,
-  TOOLBOX_CATEGORIES,
-} from "@/components/editor/BlockEditor"
+import { Flag, Maximize, LogOut, FileCode, MousePointer2, Zap } from "lucide-react"
+import { BlockEditor, type BlockEditorHandle } from "@/components/editor/BlockEditor"
+import { BlockPalette } from "@/components/editor/BlockPalette"
 import { LoadingOverlay } from "@/components/ui/spinner"
 import { useAuth } from "@/hooks/useAuth"
 import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useFileSystem } from "@/hooks/useFileSystem"
 import type { FileType } from "@/types/file"
 import type { FileNode } from "@/lib/file-tree"
+import type { ActivityTool } from "@/components/layout/EditorActivityBar"
+import { CodeScapeLogo } from "@/components/brand/Logo"
 
 const StopIcon = ({ className }: { className?: string }) => (
   <div
@@ -45,14 +44,20 @@ export default function FlowEditor() {
   const [isRunning, setIsRunning] = useState(false)
   const previewRef = useRef<PreviewPaneHandle>(null)
   const blockEditorRef = useRef<BlockEditorHandle>(null)
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
   // 4. LAYOUT STATE
-  const [activeTool, setActiveTool] = useState<
-    "explorer" | "search" | "packages" | "secrets" | null
-  >("explorer")
+  const [activeTool, setActiveTool] = useState<string | null>("Motion")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [isEditorReady, setIsEditorReady] = useState(false)
+
+  // 5. ACTIVITY BAR CONFIG
+  const topTools: ActivityTool[] = [
+    { id: "Motion", icon: MousePointer2, label: "Motion" },
+    { id: "Events", icon: Zap, label: "Events" }, // Or Play for Events? Zap is good for "When..."
+    { id: "Control", icon: FileCode, label: "Control" }, // FileCode is a placeholder, maybe Workflow?
+  ]
+
+  const bottomTools: ActivityTool[] = [{ id: "explorer", icon: FileCode, label: "Explorer" }]
 
   const handleToggleFolder = (path: string) => {
     const next = new Set(expandedFolders)
@@ -61,7 +66,7 @@ export default function FlowEditor() {
     setExpandedFolders(next)
   }
 
-  // 5. COMPUTED STATE (Moved up before guards)
+  // 6. COMPUTED STATE (Moved up before guards)
   // File Tree Construction
   const fileTree = useMemo(() => {
     if (!files) return []
@@ -80,7 +85,6 @@ export default function FlowEditor() {
     return files.filter((f) => f.name !== "script.js" && f.name !== "blocks.json")
   }, [files])
 
-  // 6. EFFECTS (Moved up before guards)
   // 5. EFFECTS (Moved up before guards)
   const blocksLoaded = useRef(false)
 
@@ -99,12 +103,6 @@ export default function FlowEditor() {
     if (!blocksLoaded.current) {
       const blocksFile = files.find((f) => f.name === "blocks.json")
       const localBackup = localStorage.getItem(`flow_backup_${id}`)
-
-      // Priority: DB -> Local Backup
-      // Actually, Local Backup might be fresher if debounce didn't finish?
-      // For now, let's prefer DB, but fall back to Local.
-      // Or better: Check timestamps? No timestamps easily available.
-      // Let's assume: If DB has it, use it. If not, try Local.
 
       let jsonToLoad = null
 
@@ -139,30 +137,19 @@ export default function FlowEditor() {
   }, [isInitialized, files, isEditorReady, id])
 
   // 6. HANDLERS
-  // 6. HANDLERS
-  // 6. HANDLERS
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const lastCodeRef = useRef<string>("")
 
   const handleCodeChange = (code: string, json: object) => {
-    // 1. Runtime Update (INTELLIGENT)
-    // Only update the runtime if the generated CODE actually changed.
-    // Moving blocks visually (changing JSON) should NOT trigger a script update.
     if (code !== lastCodeRef.current) {
       previewRef.current?.updateScript?.(code)
       lastCodeRef.current = code
     }
 
-    // 2. Persistence (Storage) - LAYERING
-
-    // Layer A: IMMEDIATE Local Storage (Safety Net)
-    // Saves every single move instantly to local storage so you never lose a drag.
     if (json) {
       localStorage.setItem(`flow_backup_${id}`, JSON.stringify(json))
     }
 
-    // Layer B: DEBOUNCED Database Save (Efficiency)
-    // We debounce the actual Database/File writes to prevent spamming the server.
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
 
     saveTimeoutRef.current = setTimeout(() => {
@@ -188,12 +175,7 @@ export default function FlowEditor() {
     }, 1000) // 1s debounce
   }
 
-  const handleCategoryClick = (category: string) => {
-    setSelectedCategory(category)
-    if (blockEditorRef.current) {
-      blockEditorRef.current.activateCategory(category)
-    }
-  }
+  // No longer need separate handleCategoryClick since EditorActivityBar handles it via activeTool
 
   const handleRun = () => {
     console.log("[FlowEditor] Run Button Clicked")
@@ -207,7 +189,6 @@ export default function FlowEditor() {
   }
 
   // 7. GUARDS (Moved down after all hooks)
-  // ACCESS CONTROL
   if (scape && scape.source === "cloud") {
     const isOwner = user && user.id === scape.authorId
     if (!isOwner) {
@@ -215,7 +196,6 @@ export default function FlowEditor() {
     }
   }
 
-  // LOADING STATES
   if (!id) return <div className="flex h-screen items-center justify-center">Invalid ID</div>
   if (isLoading)
     return (
@@ -238,9 +218,7 @@ export default function FlowEditor() {
       <Header
         customTitle={
           <div className="flex items-center gap-2">
-            <span className="bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-xl font-bold text-transparent">
-              CodeScape
-            </span>
+            <CodeScapeLogo size={32} />
             <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-500">
               canvas
             </span>
@@ -303,12 +281,13 @@ export default function FlowEditor() {
           activeTool={activeTool}
           onToolSelect={setActiveTool}
           onSettingsClick={() => {}}
-          showPackages={false}
+          topTools={topTools}
+          bottomTools={bottomTools}
         />
 
         <ResizablePanelGroup direction="horizontal" className="flex-1">
-          {/* 2b. SIDEBAR (Explorer) */}
-          {activeTool === "explorer" && (
+          {/* 2b. SIDEBAR (Explorer OR Block Palette) */}
+          {activeTool && (
             <>
               <ResizablePanel
                 defaultSize={20}
@@ -316,17 +295,22 @@ export default function FlowEditor() {
                 maxSize={40}
                 className="flex flex-col border-r border-border bg-muted/5"
               >
-                <FileExplorer
-                  files={fileTree}
-                  onFileSelect={() => {}}
-                  onToggleFolder={handleToggleFolder}
-                  onCreateFile={(name, type, content) =>
-                    createFile(name, type as FileType, content)
-                  }
-                  onCreateFolder={(name) => createFile(name, "folder")}
-                  onDelete={(path) => console.log("Delete TODO", path)} // Implement if needed
-                  onMove={() => {}} // Implement if needed
-                />
+                {activeTool === "explorer" ? (
+                  <FileExplorer
+                    files={fileTree}
+                    onFileSelect={() => {}}
+                    onToggleFolder={handleToggleFolder}
+                    onCreateFile={(name, type, content) =>
+                      createFile(name, type as FileType, content)
+                    }
+                    onCreateFolder={(name) => createFile(name, "folder")}
+                    onDelete={(path) => console.log("Delete TODO", path)} // Implement if needed
+                    onMove={() => {}} // Implement if needed
+                  />
+                ) : (
+                  // It must be a category (Motion, Events, Control)
+                  <BlockPalette category={activeTool} editorRef={blockEditorRef} />
+                )}
               </ResizablePanel>
               <ResizableHandle />
             </>
@@ -335,31 +319,6 @@ export default function FlowEditor() {
           {/* 2c. WORKSPACE */}
           <ResizablePanel defaultSize={activeTool ? 80 : 100}>
             <div className="flex h-full w-full">
-              {/* CUSTOM ACTIVITY BAR (The "Tray Selector") */}
-              <div className="flex w-20 flex-col items-center gap-4 border-r border-border bg-muted/10 py-4">
-                {TOOLBOX_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.name}
-                    onClick={() => handleCategoryClick(cat.name)}
-                    className={`group flex w-full flex-col items-center justify-center gap-1 px-1`}
-                  >
-                    <div
-                      className={`h-6 w-6 rounded-full transition-transform group-hover:scale-110 ${selectedCategory === cat.name ? "ring-2 ring-offset-2 ring-offset-background" : ""}`}
-                      style={{
-                        backgroundColor: cat.colour,
-                        boxShadow:
-                          selectedCategory === cat.name ? `0 0 10px ${cat.colour}80` : "none",
-                      }}
-                    />
-                    <span
-                      className={`text-[10px] font-medium transition-colors ${selectedCategory === cat.name ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"}`}
-                    >
-                      {cat.name}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
               <ResizablePanelGroup direction="horizontal" className="flex-1">
                 {/* CENTER (Blockly Editor) */}
                 <ResizablePanel defaultSize={70} minSize={30}>

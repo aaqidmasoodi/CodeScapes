@@ -1,15 +1,20 @@
-import { Files, Search, Settings, Package, Lock } from "lucide-react"
+import { Files, Search, Settings, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
-export type EditorTool = "explorer" | "search" | "packages" | "secrets" | null
+export interface ActivityTool {
+  id: string
+  icon: React.ElementType
+  label: string
+}
 
 interface EditorActivityBarProps {
-  activeTool: EditorTool
-  onToolSelect: (tool: EditorTool) => void
+  activeTool: string | null
+  onToolSelect: (toolId: string | null) => void
   onSettingsClick: () => void
   className?: string
-  showPackages?: boolean
+  topTools?: ActivityTool[]
+  bottomTools?: ActivityTool[]
 }
 
 export function EditorActivityBar({
@@ -17,21 +22,23 @@ export function EditorActivityBar({
   onToolSelect,
   onSettingsClick,
   className,
-  showPackages = false,
+  topTools = [],
+  bottomTools = [],
 }: EditorActivityBarProps) {
-  const topTools = [
+  // Default tools if none provided (backward compatibility)
+  const defaultTopTools: ActivityTool[] = [
     { id: "explorer", icon: Files, label: "Explorer" },
     { id: "search", icon: Search, label: "Search" },
     { id: "secrets", icon: Lock, label: "Secrets" },
-    ...(showPackages ? [{ id: "packages", icon: Package, label: "Packages" }] : []),
   ]
 
+  const toolsToRender = topTools.length > 0 ? topTools : defaultTopTools
+
   const handleToolClick = (toolId: string) => {
-    // Toggle logic: if clicking active tool, deselect it (collapse)
     if (activeTool === toolId) {
       onToolSelect(null)
     } else {
-      onToolSelect(toolId as EditorTool)
+      onToolSelect(toolId)
     }
   }
 
@@ -43,7 +50,7 @@ export function EditorActivityBar({
       )}
     >
       <div className="flex flex-col items-center gap-2">
-        {topTools.map((tool) => (
+        {toolsToRender.map((tool) => (
           <Button
             key={tool.id}
             variant={activeTool === tool.id ? "secondary" : "ghost"}
@@ -61,6 +68,22 @@ export function EditorActivityBar({
       </div>
 
       <div className="flex flex-col items-center gap-2">
+        {bottomTools.map((tool) => (
+          <Button
+            key={tool.id}
+            variant={activeTool === tool.id ? "secondary" : "ghost"}
+            size="icon"
+            className={cn(
+              "h-10 w-10 text-muted-foreground",
+              activeTool === tool.id && "text-foreground"
+            )}
+            onClick={() => handleToolClick(tool.id)}
+            title={tool.label}
+          >
+            <tool.icon className="h-5 w-5" />
+          </Button>
+        ))}
+
         <Button
           variant="ghost"
           size="icon"
