@@ -83,9 +83,7 @@ export default function Dashboard() {
         <div className="sticky top-0 z-10 flex flex-col gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">My Scapes</h1>
-            <p className="text-sm text-muted-foreground">
-              Manage your local and cloud projects
-            </p>
+            <p className="text-sm text-muted-foreground">Manage your local and cloud projects</p>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative w-full md:w-64">
@@ -132,12 +130,13 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {filteredScapes.map((scape) => {
                 // Determine Environment Label
-                const envLabel = {
-                  web: "Web",
-                  python: "Python",
-                  flowscape: "FlowScape",
-                  node: "Node",
-                }[scape.environment] || scape.environment
+                const envLabel =
+                  {
+                    web: "Web",
+                    python: "Python",
+                    flowscape: "FlowScape",
+                    node: "Node",
+                  }[scape.environment] || scape.environment
 
                 return (
                   <Card
@@ -264,7 +263,7 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <Header />
+      <Header showFullLogo />
       <div className="flex flex-1 overflow-hidden">
         {/* Desktop Sidebar (Hidden on Mobile) */}
         {/* Desktop Sidebar (Spacer + Overlay) */}

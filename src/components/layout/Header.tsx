@@ -11,24 +11,25 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AuthDialog } from "@/components/auth/AuthDialog"
-import { CodeScapeLogo } from "@/components/brand/Logo"
+import { CodeScapeLogo, CodeScapeFullLogo } from "@/components/brand/Logo"
 
 interface HeaderProps {
   actions?: React.ReactNode
   customTitle?: React.ReactNode
   endActions?: React.ReactNode
+  showFullLogo?: boolean
 }
 
-export function Header({ actions, customTitle, endActions }: HeaderProps) {
+export function Header({ actions, customTitle, endActions, showFullLogo = false }: HeaderProps) {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-2">
         {customTitle ? (
           customTitle
+        ) : showFullLogo ? (
+          <CodeScapeFullLogo height={28} className="text-foreground" />
         ) : (
-          <div className="flex items-center gap-2">
-            <CodeScapeLogo size={32} />
-          </div>
+          <CodeScapeLogo size={32} />
         )}
       </div>
 
