@@ -205,13 +205,17 @@ export class CloudRepository implements IScapeRepository {
 
     const contentStr = await this.processContentForStorage(file.id, file.content, file.language)
 
-    const { error } = await supabase.from("files").insert({
-      id: file.id,
-      scape_id: file.scapeId,
-      name: file.name,
-      language: file.language,
-      content: contentStr,
-    })
+    // Use upsert to handle cases where file already exists (e.g., reopening project)
+    const { error } = await supabase.from("files").upsert(
+      {
+        id: file.id,
+        scape_id: file.scapeId,
+        name: file.name,
+        language: file.language,
+        content: contentStr,
+      },
+      { onConflict: "scape_id,name" }
+    )
 
     if (error) throw error
   }
