@@ -43,7 +43,7 @@ export default function FlowEditor() {
   const { scape, source, isLoading } = useScapeLoading(id)
 
   // 2. FILESYSTEM
-  const { files, isInitialized: isFsInitialized, updateFile, createFile } = useFileSystem(id, source)
+  const { files, isInitialized: isFsInitialized, updateFile, createFile, updateScape } = useFileSystem(id, source)
 
   // 3. FLOW STORE (Global State)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -182,6 +182,35 @@ export default function FlowEditor() {
     setIsRunning(false)
     previewRef.current?.stop?.()
   }
+
+  // THUMBNAIL CAPTURE on Run (after 2s delay to let animations run)
+  const lastCaptureRef = useRef(0)
+  useEffect(() => {
+    // Capture thumbnail 2 seconds after user clicks Run
+    if (!isRunning) return // Only capture when running starts
+    if (!previewRef.current || !id) return
+
+    const now = Date.now()
+    // Throttle: only capture if > 30s since last
+    if (now - lastCaptureRef.current < 30000) return
+
+    const capture = async () => {
+      try {
+        const thumb = await previewRef.current?.captureThumbnail()
+        if (thumb) {
+          await updateScape({ thumbnail: thumb })
+          lastCaptureRef.current = Date.now()
+          console.log("[FlowEditor] Thumbnail Captured")
+        }
+      } catch (e) {
+        console.warn("[FlowEditor] Thumbnail capture failed", e)
+      }
+    }
+
+    // Wait 2 seconds for sprites to move/animate
+    const t = setTimeout(capture, 2000)
+    return () => clearTimeout(t)
+  }, [isRunning, id, updateScape])
 
   // LIVE SYNC (Receive updates from Engine)
   // This updates store but DOES NOT trigger saveProjectFile

@@ -39,7 +39,8 @@ self.addEventListener("message", async (event) => {
       // Prepare Injection Script
       // Always inject to ensure process is defined
       const envSafe = env || {}
-      const injectionScript = `<script>
+      const injectionScript = `<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+      <script>
         (function() {
           console.log("[Sandbox Preamble] Setting process.env", ${JSON.stringify(Object.keys(envSafe))});
           var env = ${JSON.stringify(envSafe)};
@@ -48,6 +49,71 @@ self.addEventListener("message", async (event) => {
           if (typeof process === 'undefined') {
             window.process = { env: env };
           }
+          
+          // Content Ready Detection for Thumbnail Capture
+          function notifyReady() {
+            window.parent.postMessage({ type: "SANDBOX_CONTENT_READY" }, "*");
+          }
+          
+          window.addEventListener("load", function() {
+            // Wait for fonts and give extra time for CSS animations
+            var waitForFonts = document.fonts && document.fonts.ready 
+              ? document.fonts.ready 
+              : Promise.resolve();
+            
+            waitForFonts.then(function() {
+              // Extra 500ms for CSS transitions/animations
+              setTimeout(notifyReady, 500);
+            });
+          });
+          
+          // Handle thumbnail capture requests from parent
+          window.addEventListener("message", function(e) {
+            if (e.data && e.data.type === "SANDBOX_CAPTURE_THUMBNAIL") {
+              // First try canvas elements (p5.js, Three.js)
+              var canvas = document.querySelector("canvas");
+              if (canvas) {
+                try {
+                  var data = canvas.toDataURL("image/jpeg", 0.7);
+                  window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: data }, "*");
+                  return;
+                } catch(err) {
+                  console.warn("[Sandbox] Canvas capture failed, trying html2canvas");
+                }
+              }
+              
+              // Fallback to html2canvas
+              if (typeof html2canvas !== "undefined") {
+                // Add a small delay to ensure styles are applied
+                setTimeout(function() {
+                  html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false,
+                    scale: 1,
+                    backgroundColor: window.getComputedStyle(document.body).backgroundColor || "#ffffff",
+                    onclone: function(clonedDoc) {
+                      // Inline all computed styles to ensure they're captured
+                      var elements = clonedDoc.querySelectorAll("*");
+                      elements.forEach(function(el) {
+                        var computed = window.getComputedStyle(document.body.querySelector(el.tagName) || document.body);
+                        el.style.cssText = el.style.cssText || "";
+                      });
+                    }
+                  }).then(function(cvs) {
+                    var data = cvs.toDataURL("image/jpeg", 0.7);
+                    window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: data }, "*");
+                  }).catch(function(err) {
+                    console.error("[Sandbox] html2canvas failed:", err);
+                    window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: null }, "*");
+                  });
+                }, 200);
+              } else {
+                console.warn("[Sandbox] html2canvas not loaded");
+                window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: null }, "*");
+              }
+            }
+          });
         })();
       </script>`
 

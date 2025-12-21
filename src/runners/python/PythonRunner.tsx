@@ -55,6 +55,7 @@ export const PythonRunner = memo(
       const [previewItems, setPreviewItems] = useState<
         { type: "image" | "html"; content: string }[]
       >([])
+      const lastFigureRef = useRef<string | null>(null)
       const pendingInstalls = useRef<
         Map<
           string,
@@ -98,7 +99,7 @@ export const PythonRunner = memo(
       }, [onOutput, onBusyChange, onInputRequest, onFileSystemUpdate, dependencies, files])
 
       // Forward declaration for initWorker to use
-      const runPythonRef = useRef<() => Promise<void>>(async () => {})
+      const runPythonRef = useRef<() => Promise<void>>(async () => { })
 
       // --- Stable Helpers ---
 
@@ -180,6 +181,10 @@ export const PythonRunner = memo(
               break
             case "IMAGE":
               setPreviewItems((prev) => [...prev, { type: "image", content: payload }])
+              // Store first figure for thumbnail
+              if (!lastFigureRef.current) {
+                lastFigureRef.current = payload
+              }
               break
             case "DidRun":
               setBusy(false)
@@ -381,7 +386,7 @@ export const PythonRunner = memo(
 
       // --- Handle ---
       useImperativeHandle(ref, () => ({
-        captureThumbnail: async () => null,
+        captureThumbnail: async () => lastFigureRef.current,
         stop: async () => {
           // Explicit Force Stop (Kill Worker)
           initWorker()

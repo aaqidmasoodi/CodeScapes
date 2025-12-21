@@ -438,6 +438,21 @@ window.addEventListener("message", (event) => {
             console.error("Script Update Failed:", e);
         }
     }
+    if (type === "FlowScape:CaptureThumbnail") {
+        // Capture the p5 canvas and send back
+        try {
+            const canvas = document.querySelector("canvas");
+            if (canvas) {
+                const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+                window.parent.postMessage({ type: "FlowScape:ThumbnailData", payload: dataUrl }, "*");
+            } else {
+                window.parent.postMessage({ type: "FlowScape:ThumbnailData", payload: null }, "*");
+            }
+        } catch(e) {
+            console.error("[FlowScape] Thumbnail capture failed:", e);
+            window.parent.postMessage({ type: "FlowScape:ThumbnailData", payload: null }, "*");
+        }
+    }
 });
 
 // --- P5 LOOP ---
@@ -525,7 +540,25 @@ export const FlowRunner = memo(
       )
 
       useImperativeHandle(ref, () => ({
-        captureThumbnail: async () => null, // Todo
+        captureThumbnail: async () => {
+          return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              window.removeEventListener("message", handler)
+              resolve(null)
+            }, 2000)
+
+            const handler = (e: MessageEvent) => {
+              if (e.data?.type === "FlowScape:ThumbnailData") {
+                clearTimeout(timeout)
+                window.removeEventListener("message", handler)
+                resolve(e.data.payload || null)
+              }
+            }
+
+            window.addEventListener("message", handler)
+            iframeRef.current?.contentWindow?.postMessage({ type: "FlowScape:CaptureThumbnail" }, "*")
+          })
+        },
         restart: async () => {
           console.log("[FlowRunner] Hard Restarting...")
           setRefreshKey((k) => k + 1)

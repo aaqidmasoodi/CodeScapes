@@ -127,7 +127,7 @@ export default function Dashboard() {
               {!searchQuery && <CreateScapeDialog />}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            <div className="columns-1 gap-4 space-y-4 md:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5">
               {filteredScapes.map((scape) => {
                 // Determine Environment Label
                 const envLabel =
@@ -138,22 +138,31 @@ export default function Dashboard() {
                     node: "Node",
                   }[scape.environment] || scape.environment
 
+                const hasThumbnail = scape.thumbnail && scape.thumbnail.length > 100
+
+                // Normalize thumbnail - ensure it has data: prefix
+                const thumbnailSrc = hasThumbnail
+                  ? scape.thumbnail?.startsWith("data:")
+                    ? scape.thumbnail
+                    : `data:image/jpeg;base64,${scape.thumbnail}`
+                  : null
+
                 return (
                   <Card
                     key={scape.id}
-                    className="group relative flex cursor-pointer flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
+                    className="group relative mb-4 flex break-inside-avoid cursor-pointer flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
                     onClick={() => navigate(`/scape/${scape.id}`)}
                   >
-                    {/* Thumbnail or Placeholder */}
-                    {scape.thumbnail && scape.thumbnail.length > 100 ? (
-                      <div className="h-36 w-full overflow-hidden border-b bg-muted/20">
+                    {/* Thumbnail (only if valid) */}
+                    {thumbnailSrc && (
+                      <div className="max-h-48 w-full overflow-hidden border-b bg-muted/20">
                         <img
-                          src={scape.thumbnail}
+                          src={thumbnailSrc}
                           alt="Scape Preview"
                           className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
                         />
                       </div>
-                    ) : null}
+                    )}
 
                     <CardHeader className="px-4 pb-2 pt-4">
                       <div className="flex items-start justify-between">

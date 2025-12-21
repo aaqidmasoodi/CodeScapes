@@ -1,6 +1,6 @@
 import { useState, useRef, forwardRef, useImperativeHandle, memo, useEffect } from "react"
 import { MonitorPlay, PanelRightClose } from "lucide-react"
-import html2canvas from "html2canvas"
+
 
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
@@ -57,28 +57,27 @@ export const WebRunner = memo(
       useImperativeHandle(ref, () => ({
         captureThumbnail: async () => {
           const iframe = iframeRef.current
-          if (!iframe || !iframe.contentDocument || !iframe.contentDocument.body) return null
+          if (!iframe || !iframe.contentWindow) return null
 
-          try {
-            // Keep it simple for now as html2canvas might struggle with cross-origin in SW mode?
-            // Actually SW is same-origin, so it might be EASIER!
-            // But for now, let's just try basic canvas capture if present.
-            const canvasEl = iframe.contentDocument.querySelector("canvas")
-            if (canvasEl) {
-              return canvasEl.toDataURL("image/jpeg", 0.7)
+          return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              window.removeEventListener("message", handler)
+              console.warn("[WebRunner] Thumbnail capture timeout")
+              resolve(null)
+            }, 5000)
+
+            const handler = (e: MessageEvent) => {
+              if (e.data?.type === "SANDBOX_THUMBNAIL_DATA") {
+                clearTimeout(timeout)
+                window.removeEventListener("message", handler)
+                console.log("[WebRunner] Thumbnail received")
+                resolve(e.data.payload || null)
+              }
             }
-            // Fallback to html2canvas
-            const canvas = await html2canvas(iframe.contentDocument.body, {
-              useCORS: true,
-              logging: false,
-              ignoreElements: (element) =>
-                element.tagName === "SCRIPT" || element.tagName === "LINK",
-            })
-            return canvas.toDataURL("image/jpeg", 0.7)
-          } catch (e) {
-            console.error("Thumbnail capture failed", e)
-            return null
-          }
+
+            window.addEventListener("message", handler)
+            iframe.contentWindow!.postMessage({ type: "SANDBOX_CAPTURE_THUMBNAIL" }, "*")
+          })
         },
         restart: async () => {
           setRefreshKey((prev) => prev + 1)

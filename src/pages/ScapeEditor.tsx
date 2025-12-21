@@ -290,22 +290,32 @@ export default function ScapeEditor() {
 
       if (!previewRef.current || !id) return
 
-      // Cooldown check?
-      // For Manual Run, we want immediate capture.
-      // For Auto, we want throttled.
-      // How to distinguish?
-      // Maybe we just always capture on preview update?
-      // Use a shorter cooldown (e.g. 5s) just to prevent rapid spam?
+      // Cooldown check
       const now = Date.now()
       // If it was manual (autoRefresh=false), we force capture.
-      // If auto, we use 60s rule?
-      // Let's use 10s rule generally to be safe.
+      // If auto, we use 10s rule generally to be safe.
       if (now - lastCaptureRef.current > 10000 || !autoRefresh) {
         try {
-          // Wait for iframe to load?
-          // The srcDoc update is fast but script execution takes time.
-          // Let's wait 500ms?
-          await new Promise((r) => setTimeout(r, 1000))
+          // Wait for SANDBOX_CONTENT_READY or timeout (15s max for slow resources)
+          await new Promise<void>((resolve) => {
+            const timeout = setTimeout(() => {
+              window.removeEventListener("message", handler)
+              console.log("[Thumbnail] Timeout reached, capturing anyway")
+              resolve()
+            }, 15000)
+
+            const handler = (e: MessageEvent) => {
+              if (e.data?.type === "SANDBOX_CONTENT_READY") {
+                clearTimeout(timeout)
+                window.removeEventListener("message", handler)
+                console.log("[Thumbnail] Content ready signal received")
+                resolve()
+              }
+            }
+
+            window.addEventListener("message", handler)
+          })
+
           const thumb = await previewRef.current.captureThumbnail()
           if (thumb) {
             await updateScape({ thumbnail: thumb })
@@ -1037,7 +1047,7 @@ export default function ScapeEditor() {
                     scapeId={id}
                     isOpen={true}
                     ref={secretsPanelRef}
-                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                  // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
                   />
                 )}
               </ResizablePanel>
