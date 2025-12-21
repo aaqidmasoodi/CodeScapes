@@ -60,12 +60,17 @@ export default function FlowEditor() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // 5. HYDRATION & AUTOSAVE
+  // 5. HYDRATION & AUTOSAVE
   useEffect(() => {
     // Only hydrate once FS is ready (to check for project.json)
+    console.log("[FlowEditor] Hydration Check:", { id, isFsInitialized, filesCount: files?.length })
+
     if (!id || !isFsInitialized) return
 
     // Find project.json if exists
     const projectFile = files.find(f => f.name === "project.json")
+    console.log("[FlowEditor] Project File Found?", !!projectFile)
+
     let initialProject = null
     if (projectFile && projectFile.content) {
       try {
@@ -73,7 +78,10 @@ export default function FlowEditor() {
       } catch (e) { console.error("Bad project.json", e) }
     }
 
+    console.log("[FlowEditor] Calling store.hydrate...")
     store.hydrate(id, initialProject)
+      .then(() => console.log("[FlowEditor] Hydration Complete"))
+      .catch((err: any) => console.error("[FlowEditor] Hydration Failed:", err))
 
   }, [id, isFsInitialized]) // Run once when FS is ready
 

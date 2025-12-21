@@ -45,6 +45,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
             console.log("[FlowStore] Hydrated from File")
         }
 
+        // Validate Project Structure (Defensive)
+        if (!projectToLoad || !Array.isArray(projectToLoad.targets)) {
+            console.error("[FlowStore] Invalid project data found (missing targets). Reverting to default.", projectToLoad)
+            projectToLoad = DEFAULT_PROJECT
+        }
+
         // Ensure active target is valid
         let targetId = get().activeTargetId
         const targetExists = projectToLoad.targets.find(t => t.id === targetId)
