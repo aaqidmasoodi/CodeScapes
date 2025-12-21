@@ -273,7 +273,7 @@ function windowResized() {
   python: {
     id: "python",
     name: "Python 3",
-    description: "Python runtime with Turtle graphics support",
+    description: "Python runtime with data science support",
     icon: Terminal,
     entryPoint: "main.py",
     allowedExtensions: [".py", ".txt", ".json"],
@@ -297,65 +297,10 @@ function windowResized() {
         ],
       },
       {
-        id: "turtle",
-        name: "Turtle Graphics",
-        description: "Classic Turtle drawing example",
-        files: [
-          {
-            name: "main.py",
-            language: "python",
-            content: `import turtle
-
-t = turtle.Turtle()
-t.speed(5)
-t.color("blue")
-
-for i in range(4):
-    t.forward(100)
-    t.right(90)
-
-print("Drawing complete")
-turtle.done()`,
-          },
-        ],
-      },
-      {
-        id: "pong",
-        name: "Pong Game",
-        description: "Simple Pong game using Turtle",
-        files: [
-          {
-            name: "main.py",
-            language: "python",
-            content: `import turtle
-
-wn = turtle.Screen()
-wn.title("Pong by CodeScape")
-wn.bgcolor("black")
-wn.setup(width=800, height=600)
-wn.tracer(0)
-
-# Paddle A
-paddle_a = turtle.Turtle()
-paddle_a.speed(0)
-paddle_a.shape("square")
-paddle_a.color("white")
-paddle_a.shapesize(stretch_wid=5, stretch_len=1)
-paddle_a.penup()
-paddle_a.goto(-350, 0)
-paddle_a.visible = True
-
-# Main Game Loop
-while True:
-    wn.update()
-`,
-          },
-        ],
-      },
-      {
         id: "matplotlib",
         name: "Data Visualization",
-        description: "Matplotlib Example",
+        description: "Matplotlib & NumPy starter",
+        dependencies: ["matplotlib", "numpy"],
         files: [
           {
             name: "main.py",
