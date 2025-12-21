@@ -224,6 +224,11 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
           toolbox: { kind: "flyoutToolbox", contents: [] }, // Custom Sidebar replacement
           theme: initialTheme,
           renderer: "zelos", // Scratch-like renderer
+          move: {
+            scrollbars: true,
+            drag: true,
+            wheel: true,
+          },
           zoom: {
             controls: true,
             wheel: true,

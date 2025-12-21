@@ -180,13 +180,13 @@ export default function FlowEditor() {
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const { type, payload } = event.data
-      if (type === "FlowScape:StateUpdate" && isRunning) {
+      if (type === "FlowScape:StateUpdate") {
         store.syncTargets(payload)
       }
     }
     window.addEventListener("message", handleMessage)
     return () => window.removeEventListener("message", handleMessage)
-  }, [isRunning, store.syncTargets])
+  }, [store.syncTargets])
 
 
   // 9. COMPUTED UI

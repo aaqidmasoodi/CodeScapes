@@ -134,6 +134,7 @@ class Runtime {
                 target.size = tData.size ?? 100;
                 target.visible = tData.visible ?? true;
                 target.currentCostume = tData.currentCostume ?? 0;
+                // console.log("Load Target", target.name, "Costume:", target.currentCostume);
                 if (tData.costumes) target.costumes = tData.costumes;
                 
                 // target.x = tData.x; // Don't overwrite runtime X
@@ -150,9 +151,10 @@ class Runtime {
                     
                     try {
                         const scriptFn = eval(target.code);
-                        if (typeof scriptFn === 'function') {
-                            this.scheduler.start(scriptFn, target);
-                        }
+                        // FIX: Do NOT auto-start script on edit. Wait for Green Flag.
+                        // if (typeof scriptFn === 'function') {
+                        //    this.scheduler.start(scriptFn, target);
+                        // }
                     } catch (e) {
                          console.error("Failed to hot-swap script for", target.name, e);
                     }
@@ -228,6 +230,62 @@ class Runtime {
             }
         }, "*");
     }
+
+    // --- INTERACTION ---
+
+    handleMousePress(mx, my) {
+        // Convert to Scratch Coordinates
+        const centerX = this.p.width / 2;
+        const centerY = this.p.height / 2;
+        const scratchX = mx - centerX;
+        const scratchY = centerY - my; // Invert Y
+
+        // Hit Test (Reverse order to grab top-most)
+        for (let i = this.targets.length - 1; i >= 0; i--) {
+            const t = this.targets[i];
+            if (t.isStage || !t.visible) continue;
+
+            // Simple Box Hit Test (Assuming 40x40 size for now, ideally use t.size/costume)
+            // Default rect is 40x40 scaled.
+            const halfSize = (40 * (t.size / 100)) / 2;
+            
+            if (
+                scratchX >= t.x - halfSize && 
+                scratchX <= t.x + halfSize &&
+                scratchY >= t.y - halfSize &&
+                scratchY <= t.y + halfSize
+            ) {
+                this.draggingTarget = t;
+                // Offset to keep sprite under mouse relatively
+                this.dragOffsetX = t.x - scratchX;
+                this.dragOffsetY = t.y - scratchY;
+                return;
+            }
+        }
+    }
+
+    handleMouseDrag(mx, my) {
+        if (!this.draggingTarget) return;
+
+        const centerX = this.p.width / 2;
+        const centerY = this.p.height / 2;
+        const scratchX = mx - centerX;
+        const scratchY = centerY - my;
+
+        this.draggingTarget.x = scratchX + this.dragOffsetX;
+        this.draggingTarget.y = scratchY + this.dragOffsetY;
+        
+        // VISUAL UPDATE ONLY (p5 state) - Do NOT broadcast to React yet.
+        // this.broadcastState(); 
+    }
+
+    handleMouseRelease() {
+        if (this.draggingTarget) {
+            // Final broadcast to update React UI
+            this.broadcastState();
+        }
+        this.draggingTarget = null;
+    }
 }
 
 class Target {
@@ -300,10 +358,16 @@ class Target {
             // Check for costume
             if (this.costumes && this.costumes.length > this.currentCostume) {
                 const costume = this.costumes[this.currentCostume];
-                // Check if simple color (Basic Hack for V1)
-                if (costume.assetId && costume.assetId.startsWith("#")) {
-                    this.p.background(costume.assetId);
-                    bgDrawn = true;
+                // Allow any string assetId to be tried as a background color
+                // (e.g. "red", "blue", "#ff0000")
+                // Future: Implement loadImage for blobs/urls
+                if (costume && costume.assetId) {
+                    try {
+                        this.p.background(costume.assetId);
+                        bgDrawn = true;
+                    } catch(e) {
+                         // Ignore invalid colors
+                    }
                 }
             }
             
@@ -391,6 +455,22 @@ new p5((p) => {
 
     p.draw = () => {
         if (vm) vm.tick(p.deltaTime);
+    };
+
+    // --- INPUT HANDLING (Dragging) ---
+    p.mousePressed = () => {
+        if (!vm) return;
+        vm.handleMousePress(p.mouseX, p.mouseY);
+    };
+
+    p.mouseDragged = () => {
+        if (!vm) return;
+        vm.handleMouseDrag(p.mouseX, p.mouseY);
+    };
+
+    p.mouseReleased = () => {
+        if (!vm) return;
+        vm.handleMouseRelease();
     };
 
     p.windowResized = () => {
