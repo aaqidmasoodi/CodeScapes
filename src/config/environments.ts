@@ -226,7 +226,6 @@ canvas {
 <html lang="en">
   <head>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/p5.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/addons/p5.sound.min.js"></script>
     <link rel="stylesheet" type="text/css" href="style.css">
     <meta charset="utf-8" />
   </head>
@@ -243,6 +242,7 @@ canvas {
             content: `html, body {
   margin: 0;
   padding: 0;
+  overflow: hidden;
 }
 canvas {
   display: block;
@@ -251,19 +251,74 @@ canvas {
           {
             name: "sketch.js",
             language: "javascript",
-            content: `function setup() {
+            content: `// Particle System - Move your mouse to create particles!
+let particles = [];
+
+function setup() {
   createCanvas(windowWidth, windowHeight);
+  colorMode(HSB, 360, 100, 100, 100);
+  background(0);
 }
 
 function draw() {
-  background(20);
-  fill(255, 0, 100);
-  noStroke();
-  circle(mouseX, mouseY, 50);
+  // Fade background for trail effect
+  background(0, 0, 0, 15);
+  
+  // Add new particles at mouse position
+  if (mouseIsPressed || frameCount % 3 === 0) {
+    for (let i = 0; i < 3; i++) {
+      particles.push(new Particle(mouseX, mouseY));
+    }
+  }
+  
+  // Update and display particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update();
+    particles[i].display();
+    
+    // Remove dead particles
+    if (particles[i].isDead()) {
+      particles.splice(i, 1);
+    }
+  }
+  
+  // Limit particles for performance
+  if (particles.length > 500) {
+    particles.splice(0, particles.length - 500);
+  }
+}
+
+class Particle {
+  constructor(x, y) {
+    this.pos = createVector(x, y);
+    this.vel = p5.Vector.random2D().mult(random(1, 4));
+    this.acc = createVector(0, 0.05); // Gravity
+    this.lifespan = 255;
+    this.size = random(5, 15);
+    this.hue = (frameCount * 2) % 360; // Rainbow effect
+  }
+  
+  update() {
+    this.vel.add(this.acc);
+    this.pos.add(this.vel);
+    this.lifespan -= 3;
+    this.size *= 0.98;
+  }
+  
+  display() {
+    noStroke();
+    fill(this.hue, 80, 100, this.lifespan / 2.55);
+    circle(this.pos.x, this.pos.y, this.size);
+  }
+  
+  isDead() {
+    return this.lifespan < 0 || this.size < 0.5;
+  }
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+  background(0);
 }`,
           },
         ],
