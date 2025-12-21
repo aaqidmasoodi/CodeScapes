@@ -25,45 +25,96 @@ export const initCompiler = () => {
 
   // 2. Motion: Turn Right
   // Block: "turn right [15] degrees"
-  // Output: sprite.turn(15);
-  javascriptGenerator.forBlock["turn_right"] = (block) => {
+  javascriptGenerator.forBlock["motion_turn_right"] = (block: Blockly.Block) => {
     const degrees = block.getFieldValue("DEGREES")
     return `sprite.turn(${degrees});\n`
   }
 
-  // 3. Events: Flag Clicked
-  // Block: "When Flag Clicked"
-  // This is a "Hat" block. It marks the start of a stack.
-  // We don't need to recursively call 'next' here because Blockly's generator (scrub_)
-  // Automatically appends the code of the next block to our return value.
+  // 3. Motion: Turn Left
+  javascriptGenerator.forBlock["motion_turn_left"] = (block: Blockly.Block) => {
+    const degrees = block.getFieldValue("DEGREES")
+    return `sprite.turn(-${degrees});\n`
+  }
+
+  // 4. Motion: Go To X/Y
+  javascriptGenerator.forBlock["motion_gotoxy"] = (block: Blockly.Block) => {
+    const x = block.getFieldValue("X")
+    const y = block.getFieldValue("Y")
+    return `sprite.setXY(${x}, ${y});\nyield 0.01;\n`
+  }
+
+  // 5. Motion: Go To Random Position
+  javascriptGenerator.forBlock["motion_gotorandom"] = () => {
+    return `sprite.goToRandom();\nyield 0.01;\n`
+  }
+
+  // 6. Looks: Show
+  javascriptGenerator.forBlock["looks_show"] = () => {
+    return `sprite.setVisible(true);\nyield 0.01;\n`
+  }
+
+  // 7. Looks: Hide
+  javascriptGenerator.forBlock["looks_hide"] = () => {
+    return `sprite.setVisible(false);\nyield 0.01;\n`
+  }
+
+  // 8. Looks: Set Size
+  javascriptGenerator.forBlock["looks_setsize"] = (block: Blockly.Block) => {
+    const size = block.getFieldValue("SIZE")
+    return `sprite.setSize(${size});\nyield 0.01;\n`
+  }
+
+  // 9. Looks: Switch Backdrop
+  javascriptGenerator.forBlock["looks_switchbackdrop"] = (block: Blockly.Block) => {
+    const backdrop = block.getFieldValue("BACKDROP")
+    return `runtime.setBackdrop("${backdrop}");\nyield 0.01;\n`
+  }
+
+  // 10. Looks: Say
+  javascriptGenerator.forBlock["looks_say"] = (block: Blockly.Block) => {
+    const message = block.getFieldValue("MESSAGE")
+    return `sprite.say("${message}");\nyield 0.5;\n`
+  }
+
+  // 11. Events: Flag Clicked
   javascriptGenerator.forBlock["event_when_flag_clicked"] = () => {
     return `// EVENT: FLAG CLICKED\n`
   }
 }
 
 // --- COMPILE FUNCTION ---
+// --- COMPILE FUNCTION ---
 export const compileWorkspace = (workspace: Blockly.Workspace) => {
   initCompiler()
 
-  // Generate raw code from top blocks
-  const code = javascriptGenerator.workspaceToCode(workspace)
+  // 1. Find the "Hat" block (Entry Point)
+  // Current limitation: Only supports ONE "When Flag Clicked" script per sprite
+  const topBlocks = workspace.getTopBlocks(false)
 
-  // WRAPPER:
-  // We need to wrap this loose code into a structure the engine understands.
-  // The engine looks for "run(sprite)" or similar.
-  // In our `engine.js` (see FlowRunner), we used `scheduler.start(testScript, cat)`.
-  // So we need to generate that `testScript` function.
+  let flagBlock = null
+  for (const block of topBlocks) {
+    if (block.type === "event_when_flag_clicked") {
+      flagBlock = block
+      break
+    }
+  }
 
+  // 2. Generate code ONLY for that stack
+  let code = ""
+  if (flagBlock) {
+    // We need to generate code for the blocks AFTER the flag
+    // The flag block itself returns a comment, but we want the *next* block's code.
+    // javascriptGenerator.blockToCode returns the code for the block and its successors.
+    code = javascriptGenerator.blockToCode(flagBlock) as string
+    console.log("[Compiler] Generated Code for Stack:", code)
+  }
+
+  // 3. WRAPPER:
   const finalScript = `
-// FlowScape Compiled Script
-console.log("[FlowScape] Script Loaded");
-
-window.userScript = function* (sprite) {
+(function* (sprite) {
     ${code}
     yield; // Safety yield at end
-};
-
-console.log("[FlowScape] Script Ready");
+})
 `
   return finalScript
 }

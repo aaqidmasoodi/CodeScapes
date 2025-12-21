@@ -12,7 +12,17 @@ interface BlockPaletteProps {
 const CATEGORY_BLOCKS: Record<string, { type: string; label: string }[]> = {
   Motion: [
     { type: "move_steps", label: "move 10 steps" },
-    { type: "turn_right", label: "turn right 15 deg" },
+    { type: "motion_turn_right", label: "turn right 15 deg" },
+    { type: "motion_turn_left", label: "turn left 15 deg" },
+    { type: "motion_gotoxy", label: "go to x: 0 y: 0" },
+    { type: "motion_gotorandom", label: "go to random position" },
+  ],
+  Looks: [
+    { type: "looks_say", label: "say Hello!" },
+    { type: "looks_show", label: "show" },
+    { type: "looks_hide", label: "hide" },
+    { type: "looks_setsize", label: "set size to 100%" },
+    { type: "looks_switchbackdrop", label: "switch backdrop" },
   ],
   Events: [{ type: "event_when_flag_clicked", label: "when flag clicked" }],
   Control: [

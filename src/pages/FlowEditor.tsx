@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { useParams, Navigate } from "react-router-dom"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 
@@ -8,7 +8,7 @@ import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import { FileExplorer } from "@/components/editor/FileExplorer"
 import { buildFileTree } from "@/lib/file-tree"
 import { Button } from "@/components/ui/button"
-import { Flag, Maximize, LogOut, FileCode, MousePointer2, Zap } from "lucide-react"
+import { Flag, Maximize, LogOut, FileCode, MousePointer2, Zap, Eye } from "lucide-react"
 import { BlockEditor, type BlockEditorHandle } from "@/components/editor/BlockEditor"
 import { BlockPalette } from "@/components/editor/BlockPalette"
 import { LoadingOverlay } from "@/components/ui/spinner"
@@ -16,10 +16,13 @@ import { useAuth } from "@/hooks/useAuth"
 import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useFileSystem } from "@/hooks/useFileSystem"
 import { useTheme } from "next-themes"
-import type { FileType } from "@/types/file"
 import type { FileNode } from "@/lib/file-tree"
+import type { FileType } from "@/types/file"
 import type { ActivityTool } from "@/components/layout/EditorActivityBar"
 import { CodeScapeLogo } from "@/components/brand/Logo"
+import { useFlowStore, initAutosave } from "@/stores/flowStore"
+import { SpritePane } from "@/components/editor/SpritePane"
+
 
 const StopIcon = ({ className }: { className?: string }) => (
   <div
@@ -40,35 +43,153 @@ export default function FlowEditor() {
   const { scape, source, isLoading } = useScapeLoading(id)
 
   // 2. FILESYSTEM
-  const { files, isInitialized, updateFile, createFile } = useFileSystem(id, source)
+  const { files, isInitialized: isFsInitialized, updateFile, createFile } = useFileSystem(id, source)
 
-  // 3. STATE & REFS (Moved up before guards)
+  // 3. FLOW STORE (Global State)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const store = useFlowStore() as any
+
+  // 4. STATE & REFS
   const [isRunning, setIsRunning] = useState(false)
   const previewRef = useRef<PreviewPaneHandle>(null)
   const blockEditorRef = useRef<BlockEditorHandle>(null)
-
-  // 4. LAYOUT STATE
   const [activeTool, setActiveTool] = useState<string | null>("Motion")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
   const [isEditorReady, setIsEditorReady] = useState(false)
 
-  // 5. ACTIVITY BAR CONFIG
-  const topTools: ActivityTool[] = [
-    { id: "Motion", icon: MousePointer2, label: "Motion" },
-    { id: "Events", icon: Zap, label: "Events" }, // Or Play for Events? Zap is good for "When..."
-    { id: "Control", icon: FileCode, label: "Control" }, // FileCode is a placeholder, maybe Workflow?
-  ]
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  const bottomTools: ActivityTool[] = [{ id: "explorer", icon: FileCode, label: "Explorer" }]
+  // 5. HYDRATION & AUTOSAVE
+  useEffect(() => {
+    // Only hydrate once FS is ready (to check for project.json)
+    if (!id || !isFsInitialized) return
 
-  const handleToggleFolder = (path: string) => {
-    const next = new Set(expandedFolders)
-    if (next.has(path)) next.delete(path)
-    else next.add(path)
-    setExpandedFolders(next)
+    // Find project.json if exists
+    const projectFile = files.find(f => f.name === "project.json")
+    let initialProject = null
+    if (projectFile && projectFile.content) {
+      try {
+        initialProject = JSON.parse(String(projectFile.content))
+      } catch (e) { console.error("Bad project.json", e) }
+    }
+
+    store.hydrate(id, initialProject)
+
+  }, [id, isFsInitialized]) // Run once when FS is ready
+
+  // Initialize Autosave Subscription (IndexedDB - Immediate)
+  useEffect(() => {
+    if (!id) return
+    const unsubscribe = initAutosave(id)
+    return () => unsubscribe()
+  }, [id])
+
+  // 6. SYNC BACKGROUND FILE (Explicit Save Helper)
+  // We removed the generic useEffect loop to prevent "Runtime Update -> Store -> File -> Preview Reload" loop.
+  // Now we strictly save only on User Actions.
+
+  const saveProjectFile = useCallback(() => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
+    saveTimeoutRef.current = setTimeout(() => {
+      // Use latest store state
+      const currentProject = useFlowStore.getState().project
+      const projectJson = JSON.stringify(currentProject, null, 2)
+      const file = files.find(f => f.name === "project.json")
+      if (file) {
+        updateFile("project.json", projectJson)
+      } else {
+        createFile("project.json", "json", projectJson)
+      }
+      console.log("[FlowEditor] Persisted project.json")
+    }, 1000)
+  }, [files, updateFile, createFile])
+
+
+  // 7. WORKSPACE SWITCHING & INITIAL LOAD
+  // Initialize as null to force first load
+  const prevTargetIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    // Determine active target object
+    const target = store.project.targets.find((t: any) => t.id === store.activeTargetId)
+
+    if (target && blockEditorRef.current && isEditorReady) {
+      // Load if ID changed OR if it's the very first run (prev is null)
+      if (prevTargetIdRef.current !== store.activeTargetId) {
+        console.log("[FlowEditor] Loading Blocks for", target.name)
+        // Load Blocks
+        if (target.blocks && Object.keys(target.blocks).length > 0) {
+          blockEditorRef.current.loadJSON(target.blocks)
+        } else {
+          blockEditorRef.current.clear()
+        }
+      }
+      prevTargetIdRef.current = store.activeTargetId
+    }
+  }, [store.activeTargetId, isEditorReady, store.project.targets])
+
+
+  // 8. HANDLERS (With Save)
+
+  // A. Block/Code Changes
+  const handleCodeChange = (code: string, json: object) => {
+    store.updateTargetBlocks(store.activeTargetId, json)
+    store.updateTargetCode(store.activeTargetId, code)
+    saveProjectFile() // Trigger File Save
   }
 
-  // 6. COMPUTED STATE (Moved up before guards)
+  // B. Sprite/Backdrop Updates (Wrap store actions with save)
+  const handleAddSprite = (asset?: any) => {
+    store.addSprite(asset)
+    saveProjectFile()
+  }
+
+  const handleAddBackdrop = (asset: any) => {
+    store.addBackdrop(asset)
+    saveProjectFile()
+  }
+
+  const handleUpdateTarget = (id: string, data: any) => {
+    store.updateTarget(id, data)
+    saveProjectFile()
+  }
+
+  const handleDeleteBackdrop = (id: string) => {
+    store.deleteBackdrop(id)
+    saveProjectFile()
+  }
+
+  const handleDeleteSprite = (id: string) => {
+    store.deleteTarget(id)
+    saveProjectFile()
+  }
+
+  const handleRun = () => {
+    console.log("[FlowEditor] Run")
+    setIsRunning(true)
+    previewRef.current?.run?.()
+  }
+
+  const handleStop = () => {
+    setIsRunning(false)
+    previewRef.current?.stop?.()
+  }
+
+  // LIVE SYNC (Receive updates from Engine)
+  // This updates store but DOES NOT trigger saveProjectFile
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const { type, payload } = event.data
+      if (type === "FlowScape:StateUpdate" && isRunning) {
+        store.syncTargets(payload)
+      }
+    }
+    window.addEventListener("message", handleMessage)
+    return () => window.removeEventListener("message", handleMessage)
+  }, [isRunning, store.syncTargets])
+
+
+  // 9. COMPUTED UI
   // File Tree Construction
   const fileTree = useMemo(() => {
     if (!files) return []
@@ -84,135 +205,38 @@ export default function FlowEditor() {
 
   const filteredFiles = useMemo(() => {
     if (!files) return []
-    return files.filter((f) => f.name !== "script.js" && f.name !== "blocks.json")
+    return files.filter((f) => f.name !== "script.js" && f.name !== "blocks.json" && f.name !== "project.json")
   }, [files])
 
-  // 5. EFFECTS (Moved up before guards)
-  const blocksLoaded = useRef(false)
+  const topTools: ActivityTool[] = [
+    { id: "Motion", icon: MousePointer2, label: "Motion" },
+    { id: "Looks", icon: Eye, label: "Looks" },
+    { id: "Events", icon: Zap, label: "Events" },
+    { id: "Control", icon: FileCode, label: "Control" },
+  ]
+  const bottomTools: ActivityTool[] = [{ id: "explorer", icon: FileCode, label: "Explorer" }]
 
-  useEffect(() => {
-    if (!isInitialized || !files || !isEditorReady) return
-
-    // 1. Inject Script (Only on change, handled by filteredFiles logic mostly, but good for initial)
-    const script = files.find((f) => f.name === "script.js")
-    if (script && script.content && previewRef.current) {
-      setTimeout(() => {
-        previewRef.current?.updateScript?.(String(script.content))
-      }, 1000)
-    }
-
-    // 2. Load Blocks (ONLY ONCE)
-    if (!blocksLoaded.current) {
-      const blocksFile = files.find((f) => f.name === "blocks.json")
-      const localBackup = localStorage.getItem(`flow_backup_${id}`)
-
-      let jsonToLoad = null
-
-      if (blocksFile && blocksFile.content) {
-        try {
-          jsonToLoad = JSON.parse(String(blocksFile.content))
-          console.log("[FlowEditor] Loading blocks from Database")
-        } catch (e) {
-          console.error("Failed to parse DB blocks", e)
-        }
-      } else if (localBackup) {
-        try {
-          jsonToLoad = JSON.parse(localBackup)
-          console.log("[FlowEditor] Loading blocks from LocalStorage Backup")
-        } catch (e) {
-          console.error("Failed to parse LocalStorage blocks", e)
-        }
-      }
-
-      if (jsonToLoad && blockEditorRef.current) {
-        try {
-          blockEditorRef.current.loadJSON(jsonToLoad)
-          blocksLoaded.current = true
-        } catch (e) {
-          console.error("Failed to load blocks into workspace", e)
-        }
-      } else if (blockEditorRef.current) {
-        // If no file exists anywhere, mark as loaded (empty workspace)
-        blocksLoaded.current = true
-      }
-    }
-  }, [isInitialized, files, isEditorReady, id])
-
-  // 6. HANDLERS
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const lastCodeRef = useRef<string>("")
-
-  const handleCodeChange = (code: string, json: object) => {
-    if (code !== lastCodeRef.current) {
-      previewRef.current?.updateScript?.(code)
-      lastCodeRef.current = code
-    }
-
-    if (json) {
-      localStorage.setItem(`flow_backup_${id}`, JSON.stringify(json))
-    }
-
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-
-    saveTimeoutRef.current = setTimeout(() => {
-      // A. Save Script
-      const scriptExists = files.some((f) => f.name === "script.js")
-      if (scriptExists) {
-        updateFile("script.js", code)
-      } else {
-        createFile("script.js", "javascript", code)
-      }
-
-      // B. Save Blocks JSON (The Workspace State)
-      if (json) {
-        const jsonContent = JSON.stringify(json)
-        const blocksExists = files.some((f) => f.name === "blocks.json")
-        if (blocksExists) {
-          updateFile("blocks.json", jsonContent)
-        } else {
-          createFile("blocks.json", "json", jsonContent)
-        }
-      }
-      console.log("[FlowEditor] Auto-saved blocks & script to DB")
-    }, 1000) // 1s debounce
+  const handleToggleFolder = (path: string) => {
+    const next = new Set(expandedFolders)
+    if (next.has(path)) next.delete(path)
+    else next.add(path)
+    setExpandedFolders(next)
   }
 
-  // No longer need separate handleCategoryClick since EditorActivityBar handles it via activeTool
-
-  const handleRun = () => {
-    console.log("[FlowEditor] Run Button Clicked")
-    setIsRunning(true)
-    previewRef.current?.run?.()
-  }
-
-  const handleStop = () => {
-    setIsRunning(false)
-    previewRef.current?.stop?.()
-  }
-
-  // 7. GUARDS (Moved down after all hooks)
+  // GUARDS
   if (scape && scape.source === "cloud") {
     const isOwner = user && user.id === scape.authorId
-    if (!isOwner) {
-      return <Navigate to={`/live/${scape.id}`} replace />
-    }
+    if (!isOwner) return <Navigate to={`/live/${scape.id}`} replace />
   }
 
   if (!id) return <div className="flex h-screen items-center justify-center">Invalid ID</div>
-  if (isLoading)
+  if (isLoading || !store.isHydrated)
     return (
       <div className="h-screen w-screen">
-        <LoadingOverlay message="Loading Scape..." />
+        <LoadingOverlay message={isLoading ? "Loading Scape..." : "Restoring Session..."} />
       </div>
     )
-  if (!scape)
-    return <div className="flex h-screen items-center justify-center">Scape not found</div>
-  if (!isInitialized)
-    return (
-      <div className="h-screen w-screen">
-        <LoadingOverlay message="Initializing..." />
-      </div>
-    )
+  if (!scape) return <div className="flex h-screen items-center justify-center">Scape not found</div>
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -282,7 +306,7 @@ export default function FlowEditor() {
         <EditorActivityBar
           activeTool={activeTool}
           onToolSelect={setActiveTool}
-          onSettingsClick={() => {}}
+          onSettingsClick={() => { }}
           topTools={topTools}
           bottomTools={bottomTools}
         />
@@ -300,14 +324,14 @@ export default function FlowEditor() {
                 {activeTool === "explorer" ? (
                   <FileExplorer
                     files={fileTree}
-                    onFileSelect={() => {}}
+                    onFileSelect={() => { }}
                     onToggleFolder={handleToggleFolder}
                     onCreateFile={(name, type, content) =>
                       createFile(name, type as FileType, content)
                     }
                     onCreateFolder={(name) => createFile(name, "folder")}
                     onDelete={(path) => console.log("Delete TODO", path)} // Implement if needed
-                    onMove={() => {}} // Implement if needed
+                    onMove={() => { }} // Implement if needed
                   />
                 ) : (
                   // It must be a category (Motion, Events, Control)
@@ -326,29 +350,59 @@ export default function FlowEditor() {
           <ResizablePanel defaultSize={activeTool ? 80 : 100}>
             <div className="flex h-full w-full">
               <ResizablePanelGroup direction="horizontal" className="flex-1">
-                {/* CENTER (Blockly Editor) */}
-                <ResizablePanel defaultSize={70} minSize={30}>
+                {/* CENTER: BlockEditor */}
+                <ResizablePanel defaultSize={55} minSize={30} className="relative">
                   <BlockEditor
                     ref={blockEditorRef}
                     onChange={handleCodeChange}
                     onInit={() => setIsEditorReady(true)}
                     theme={resolvedTheme === "light" ? "light" : "dark"}
                   />
+                  {/* Overlay current target name */}
+                  <div className="absolute left-4 top-4 z-10 rounded-md bg-background/50 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur border border-border/50 shadow-sm">
+                    Editing: <span className="text-foreground font-bold">
+                      {store.project.targets.find((t: any) => t.id === store.activeTargetId)?.name || "?"}
+                    </span>
+                  </div>
                 </ResizablePanel>
 
                 <ResizableHandle />
 
-                {/* PREVIEW */}
-                <ResizablePanel defaultSize={30} minSize={20}>
-                  <PreviewPane
-                    ref={previewRef}
-                    files={filteredFiles}
-                    scapeId={scapeId || "flow-demo"}
-                    environment="flowscape"
-                    isRunning={isRunning}
-                    showStoppedOverlay={false}
-                    onCollapse={() => {}}
-                  />
+                {/* RIGHT: Stack (Preview + Sprites) */}
+                <ResizablePanel defaultSize={45} minSize={20}>
+                  <ResizablePanelGroup direction="vertical">
+
+                    {/* Top: Preview */}
+                    <ResizablePanel defaultSize={50} minSize={20}>
+                      <PreviewPane
+                        ref={previewRef}
+                        files={filteredFiles}
+                        scapeId={scapeId || "flow-demo"}
+                        environment="flowscape"
+                        isRunning={isRunning}
+                        showStoppedOverlay={false}
+                        onCollapse={() => { }}
+                        project={store.project} // ZERO-LATENCY SYNC
+                      />
+                    </ResizablePanel>
+
+                    <ResizableHandle />
+
+                    {/* Bottom: Sprite Pane */}
+                    <ResizablePanel defaultSize={50} minSize={20}>
+                      <SpritePane
+                        targets={store.project.targets}
+                        activeTargetId={store.activeTargetId}
+                        onSelect={store.setActiveTarget}
+                        onAdd={handleAddSprite}
+                        onAddBackdrop={handleAddBackdrop}
+                        onUpdate={handleUpdateTarget}
+                        onDelete={handleDeleteSprite}
+                        onDeleteBackdrop={handleDeleteBackdrop}
+                      />
+                    </ResizablePanel>
+
+                  </ResizablePanelGroup>
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>

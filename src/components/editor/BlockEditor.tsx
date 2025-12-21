@@ -34,6 +34,8 @@ export const TOOLBOX_CATEGORIES = [
 export interface BlockEditorHandle {
   getCode: () => string
   loadJSON: (json: object) => void
+  toJSON: () => object // Serialization
+  clear: () => void // Clear workspace
   resize: () => void
   activateCategory: (name: string) => void
   spawnBlock: (type: string, clientX: number, clientY: number) => void
@@ -77,6 +79,15 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
           }
         } else {
           console.warn("[BlockEditor] Workspace exists but is NOT rendered. Cannot load blocks.")
+        }
+      },
+      toJSON: () => {
+        if (!workspaceRef.current) return {}
+        return Blockly.serialization.workspaces.save(workspaceRef.current)
+      },
+      clear: () => {
+        if (workspaceRef.current) {
+          workspaceRef.current.clear()
         }
       },
       resize: () => {
@@ -225,6 +236,7 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
             snap: true,
           },
           trashcan: true,
+          modalInputs: false, // Force inline editing
         })
         console.log("[Blockly] Injection Complete. Rendered:", workspaceRef.current.rendered)
       } catch (e) {

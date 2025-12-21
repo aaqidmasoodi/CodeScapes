@@ -86,16 +86,106 @@ export const registerBlocks = () => {
     },
   }
 
-  Blockly.Blocks["turn_right"] = {
+  Blockly.Blocks["motion_turn_right"] = {
     init: function () {
       this.appendDummyInput()
         .appendField("turn")
-        .appendField("dw") // Icon placeholder
+        .appendField("dw") // Icon
         .appendField(new Blockly.FieldNumber(15), "DEGREES")
         .appendField("degrees")
       this.setPreviousStatement(true, null)
       this.setNextStatement(true, null)
       this.setStyle("motion_blocks")
+    },
+  }
+
+  Blockly.Blocks["motion_turn_left"] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField("turn")
+        .appendField("ccw") // Icon
+        .appendField(new Blockly.FieldNumber(15), "DEGREES")
+        .appendField("degrees")
+      this.setPreviousStatement(true, null)
+      this.setNextStatement(true, null)
+      this.setStyle("motion_blocks")
+    },
+  }
+
+  Blockly.Blocks["motion_gotoxy"] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField("go to x:")
+        .appendField(new Blockly.FieldNumber(0), "X")
+        .appendField("y:")
+        .appendField(new Blockly.FieldNumber(0), "Y")
+      this.setPreviousStatement(true, null)
+      this.setNextStatement(true, null)
+      this.setStyle("motion_blocks")
+    },
+  }
+
+  Blockly.Blocks["motion_gotorandom"] = {
+    init: function () {
+      this.appendDummyInput().appendField("go to random position")
+      this.setPreviousStatement(true, null)
+      this.setNextStatement(true, null)
+      this.setStyle("motion_blocks")
+    },
+  }
+
+  // --- LOOKS ---
+
+  Blockly.Blocks["looks_show"] = {
+    init: function () {
+      this.appendDummyInput().appendField("show")
+      this.setPreviousStatement(true, null)
+      this.setNextStatement(true, null)
+      this.setStyle("loop_blocks") // Looks usually purple, mapping to loop color for now or add looks style
+    },
+  }
+
+  Blockly.Blocks["looks_hide"] = {
+    init: function () {
+      this.appendDummyInput().appendField("hide")
+      this.setPreviousStatement(true, null)
+      this.setNextStatement(true, null)
+      this.setStyle("loop_blocks")
+    },
+  }
+
+  Blockly.Blocks["looks_setsize"] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField("set size to")
+        .appendField(new Blockly.FieldNumber(100), "SIZE")
+        .appendField("%")
+      this.setPreviousStatement(true, null)
+      this.setNextStatement(true, null)
+      this.setStyle("loop_blocks")
+    },
+  }
+
+  Blockly.Blocks["looks_switchbackdrop"] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField("switch backdrop to")
+        .appendField(new Blockly.FieldTextInput("backdrop1"), "BACKDROP")
+      this.setPreviousStatement(true, null)
+      this.setNextStatement(true, null)
+      this.setStyle("loop_blocks")
+    },
+  }
+
+  Blockly.Blocks["looks_say"] = {
+    init: function () {
+      this.appendDummyInput()
+        .appendField("say")
+        .appendField(new Blockly.FieldTextInput("Hello!"), "MESSAGE")
+        .appendField("for 2 seconds")
+      this.setPreviousStatement(true, null)
+      this.setNextStatement(true, null)
+      this.setStyle("loop_blocks")
     },
   }
 

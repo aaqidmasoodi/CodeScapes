@@ -26,6 +26,8 @@ interface PreviewPaneProps {
   onInputRequest?: (prompt: string) => void
   onFileSystemUpdate?: (files: ScapeFile[]) => void
   showStoppedOverlay?: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  project?: any // For FlowScape High-Speed Sync
 }
 
 // --- SWITCHBOARD ---
@@ -112,8 +114,6 @@ export const PreviewPane = memo(
     const config = ENVIRONMENTS[environment]
     // Default to WebRunner if unknown, or specifically PythonRunner for python
     // In future this can be dynamic based on 'runner' field in config
-    // Default to WebRunner if unknown, or specifically PythonRunner for python
-    // In future this can be dynamic based on 'runner' field in config
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let RunnerComponent: any = WebRunner
 
@@ -130,6 +130,7 @@ export const PreviewPane = memo(
         onBusyChange={onBusyChange}
         onInputRequest={props.onInputRequest}
         onFileSystemUpdate={props.onFileSystemUpdate}
+        project={props.project}
         ref={runnerRef}
       />
     )

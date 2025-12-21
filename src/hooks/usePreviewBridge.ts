@@ -1,4 +1,4 @@
-import { useState, useLayoutEffect } from "react"
+import { useState, useLayoutEffect, useMemo, useRef } from "react"
 import type { ScapeFile } from "@/types/file"
 
 // We are now fully committed to the Cross-Origin Bootloader architecture.
@@ -16,9 +16,33 @@ export function usePreviewBridge(
   env?: Record<string, string>,
   versionKey?: number
 ): PreviewBridge {
+
+  // Helper to compute stable file hash
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const filesHash = useMemo(() => {
+    return files
+      .map(f => {
+        let size = 0
+        let preview = ""
+        if (typeof f.content === 'string') {
+          size = f.content.length
+          preview = f.content.slice(0, 20)
+        } else if (f.content instanceof Blob) {
+          size = f.content.size
+          preview = "blob"
+        } else if (f.content instanceof Uint8Array || f.content instanceof ArrayBuffer) {
+          size = f.content.byteLength
+          preview = "bin"
+        }
+        return `${f.name}:${size}:${preview}`
+      })
+      .sort()
+      .join("|")
+  }, [files])
+
   // State for tracking reset
   const [prevVersionKey, setPrevVersionKey] = useState(versionKey)
-  const [prevFiles, setPrevFiles] = useState(files)
+  const [prevFilesHash, setPrevFilesHash] = useState(filesHash)
 
   // Initialize state with correct URL
   const [bridgeState, setBridgeState] = useState<PreviewBridge>(() => {
@@ -37,9 +61,9 @@ export function usePreviewBridge(
   })
 
   // Render-time state derivation (Correct Pattern for Prop Driven Resets)
-  if (versionKey !== prevVersionKey || (files !== prevFiles && !env?.hotUpdate)) {
+  if (versionKey !== prevVersionKey) {
     setPrevVersionKey(versionKey)
-    setPrevFiles(files)
+    setPrevFilesHash(filesHash)
 
     // Determine URL immediately for the new version
     let bootloaderOrigin = ""
@@ -49,18 +73,35 @@ export function usePreviewBridge(
     } else {
       bootloaderOrigin = window.location.origin
     }
-    // eslint-disable-next-line react-hooks/purity
-    const version = versionKey || Date.now()
-    // Add file hash param to force reload even if versionKey is same
-    // eslint-disable-next-line react-hooks/purity
-    const fileHash = Date.now()
-    const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${fileHash}`
+    // Use a stable random value for this render cycle context if needed
+    // But since we are resetting state, we want a new value.
+    // The issue is that calling Date.now() inside render is impure.
+    // We can't side-effect (set ref) during render safe either.
+    // However, since we are setting state (setBridgeState), we are triggering a re-render anyway.
+
+    // Hack: Just use a fixed value + versionKey if present. If versionKey is missing, we need a trigger.
+    // If the user wants a reset, they pass a new versionKey.
+    // If they don't pass versionKey, we shouldn't be here (resetting).
+
+    // BUT this block is `if (versionKey !== prevVersionKey)`.
+    // So `versionKey` MUST be defined and different.
+    // So `version` will be `versionKey`.
+    // The `|| Date.now()` is a fallback if versionKey is falsy? 
+    // If versionKey is passed as 0?
+
+    const version = versionKey ?? 0;
+
+    // File hash needs to be unique to force iframe reload?
+    // Let's use the fileHash itself.
+    const uniqueHash = filesHash.length + "-" + Math.random().toString(36).slice(2);
+
+    const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${uniqueHash}`
 
     // Reset state immediately
     setBridgeState({ ready: false, url: bootloaderUrl })
-  } else if (files !== prevFiles && env?.hotUpdate && bridgeState.ready) {
+  } else if (filesHash !== prevFilesHash && env?.hotUpdate && bridgeState.ready) {
     // HOT UPDATE PATH: Update State refs but DO NOT Reset Bridge
-    setPrevFiles(files)
+    setPrevFilesHash(filesHash)
     // We will trigger the message update in a useEffect
   }
 
@@ -119,28 +160,34 @@ export function usePreviewBridge(
     }
   }, [scapeId, files, iframeRef, env, versionKey])
 
-  // HOT UPDATE EFFECT
+  // Revised Hot Update Effect using Ref for stability check
+  const lastSentHash = useRef<string>(filesHash)
+
   useLayoutEffect(() => {
     if (env?.hotUpdate && bridgeState.ready && iframeRef?.current) {
-      // Determine Origin (Re-used logic, maybe should extract)
-      let bootloaderOrigin = ""
-      const currentHost = window.location.hostname
-      if (currentHost === "localhost" || currentHost === "127.0.0.1") {
-        bootloaderOrigin = `${window.location.protocol}//localhost:3002`
-      } else {
-        bootloaderOrigin = window.location.origin
-      }
+      if (lastSentHash.current !== filesHash) {
+        lastSentHash.current = filesHash
 
-      console.log("[Bridge] Hot Swapping Files...")
-      iframeRef.current.contentWindow?.postMessage(
-        {
-          type: "COMPILE_FILES",
-          payload: { scapeId, files, env },
-        },
-        bootloaderOrigin
-      )
+        // Determine Origin (Re-used logic, maybe should extract)
+        let bootloaderOrigin = ""
+        const currentHost = window.location.hostname
+        if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+          bootloaderOrigin = `${window.location.protocol}//localhost:3002`
+        } else {
+          bootloaderOrigin = window.location.origin
+        }
+
+        console.log("[Bridge] Hot Swapping Files...")
+        iframeRef.current.contentWindow?.postMessage(
+          {
+            type: "COMPILE_FILES",
+            payload: { scapeId, files, env },
+          },
+          bootloaderOrigin
+        )
+      }
     }
-  }, [files, bridgeState.ready, env?.hotUpdate, scapeId, env, iframeRef])
+  }, [filesHash, files, bridgeState.ready, env, iframeRef, scapeId])
 
   return bridgeState
 }

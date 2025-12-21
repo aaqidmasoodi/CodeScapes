@@ -25,15 +25,24 @@ export interface File {
   language: string
 }
 
+export interface Autosave {
+  id: string // scapeId
+  data: any // Project JSON
+  timestamp: number
+}
+
 const db = new Dexie("CodeScapeNext") as Dexie & {
   scapes: EntityTable<Scape, "id">
   files: EntityTable<File, "id">
+  autosaves: EntityTable<Autosave, "id">
 }
 
-// Version 1: Clean Slate
-db.version(1).stores({
-  scapes: "id, name, environment, source, createdAt, updatedAt, *dependencies", // 'id' (no ++) means manual UUID
-  files: "id, scapeId, name, [scapeId+name]", // 'id' (no ++) means manual UUID
+// Version 1: Clean Slate (If we need to migrate we'd add version(2))
+// Since we are dev, we can update version 1 or add 2. Let's add 2 to be safe if DB exists.
+db.version(2).stores({
+  scapes: "id, name, environment, source, createdAt, updatedAt, *dependencies",
+  files: "id, scapeId, name, [scapeId+name]",
+  autosaves: "id, timestamp"
 })
 
 // Helper to delete a scape and its files transactionally

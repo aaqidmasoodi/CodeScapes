@@ -1,10 +1,12 @@
 import type { ScapeFile } from "@/types/file"
 
+export type FileType = "file" | "folder"
+
 export interface FileNode {
   id: string
   name: string
   path: string
-  type: "file" | "folder"
+  type: FileType
   file?: ScapeFile
   children?: FileNode[]
   isOpen?: boolean
