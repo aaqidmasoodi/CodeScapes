@@ -159,7 +159,7 @@ export default function Dashboard() {
                         <img
                           src={thumbnailSrc}
                           alt="Scape Preview"
-                          className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                          className="h-full w-full transform-gpu object-cover object-center transition-transform duration-300 will-change-transform group-hover:scale-[1.02]"
                         />
                       </div>
                     )}
