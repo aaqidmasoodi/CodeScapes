@@ -5,6 +5,7 @@ import type { ScapeFile, FileType } from "@/types/file"
 import { LocalRepository } from "@/lib/repositories/LocalRepository"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import type { IScapeRepository } from "@/lib/repositories/types"
+import { toast } from "@/components/ui/use-toast"
 
 export function useFileSystem(scapeId: string, source: "local" | "cloud" = "local") {
   const [files, setFiles] = useState<ScapeFile[]>([])
@@ -152,7 +153,11 @@ export function useFileSystem(scapeId: string, source: "local" | "cloud" = "loca
         console.error("Failed to create file:", e)
         // Rollback?
         setFiles((prev) => prev.filter((f) => f.id !== newFile.id))
-        alert("Failed to create file")
+        toast({
+          title: "Failed to create file",
+          description: "Please try again.",
+          variant: "destructive",
+        })
       }
     },
     [repo, scapeId, source]

@@ -18,4 +18,7 @@ export interface ScapeRunnerHandle {
     pkg: string,
     onProgress?: (message: string) => void
   ): Promise<{ success: boolean; error?: string }>
+  run?: () => void
+  stop?: () => void
+  updateScript?: (code: string) => void
 }

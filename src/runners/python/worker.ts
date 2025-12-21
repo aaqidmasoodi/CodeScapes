@@ -6,6 +6,7 @@
 interface PyodideInterface {
   runPythonAsync: (code: string) => Promise<any>
   loadPackage: (packages: string[]) => Promise<void>
+  setInterruptBuffer: (buffer: SharedArrayBuffer) => void
   FS: {
     writeFile: (path: string, content: string | Uint8Array, options?: any) => void
     mkdir: (path: string) => void
@@ -30,9 +31,9 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
       const { loadPyodide: pyodideLoader } =
         await import("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.mjs")
 
-      pyodide = await pyodideLoader({
+      pyodide = (await pyodideLoader({
         indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.0/full/",
-      })
+      })) as unknown as PyodideInterface
 
       if (!pyodide) throw new Error("Failed to initialize Pyodide")
 
@@ -102,9 +103,14 @@ self.onmessage = async (e: MessageEvent) => {
     const runInit = async () => {
       const py = await loadPyodide()
 
+      if (payload.sharedBuffer && py) {
+        py.setInterruptBuffer(payload.sharedBuffer)
+        console.log("[Worker] Interrupt Buffer Attached")
+      }
+
       // Define blocking input function in JS
       // Using self explicitly to attach to global scope for Pyodide access
-      ;(self as any).wait_for_input = (prompt: string) => {
+      ; (self as any).wait_for_input = (prompt: string) => {
         const id = Math.random().toString(36).substring(7)
 
         // Notify Main Thread (React) to show input UI
@@ -558,4 +564,4 @@ except ImportError:
   }
 }
 
-export {}
+export { }

@@ -39,9 +39,20 @@ export const WebRunner = memo(
         })
       }, [scapeId])
 
+      // Auto-Refresh Logic: Force full reload on file changes
+      // This ensures HTML/Text updates are reflected immediately, bypassing potentially flaky HMR.
+      useEffect(() => {
+        // We rely on the parent's debounce (750ms) to avoid rapid reloading.
+        // When debounced files arrive, we trigger a refresh.
+        // eslint-disable-next-line
+        setRefreshKey((k) => k + 1)
+      }, [files])
+
       // Bridge to the Runtime
       // Phase 4: Activated Cross-Origin Mode (Dedicated)
-      const bridge = usePreviewBridge(files, scapeId, iframeRef, envVars, refreshKey)
+      // We disable hotUpdate to favor the more reliable full-reload approach implemented above.
+      const bridgeEnv = { ...envVars, hotUpdate: "false" }
+      const bridge = usePreviewBridge(files, scapeId, iframeRef, bridgeEnv, refreshKey)
 
       useImperativeHandle(ref, () => ({
         captureThumbnail: async () => {

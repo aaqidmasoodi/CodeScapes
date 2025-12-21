@@ -382,8 +382,13 @@ export const PythonRunner = memo(
       // --- Handle ---
       useImperativeHandle(ref, () => ({
         captureThumbnail: async () => null,
-        restart: async () => {
+        stop: async () => {
+          // Explicit Force Stop (Kill Worker)
           initWorker()
+        },
+        restart: async () => {
+          // Soft Restart (Re-run current code in existing worker)
+          runPython()
         },
         installPackage: async (pkg, onProgress) => {
           // ... (keep existing)

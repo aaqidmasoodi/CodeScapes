@@ -34,12 +34,17 @@ import {
   RotateCw,
   Loader2,
   MonitorPlay,
+  FileCode,
+  Search,
+  Lock,
+  Box,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
 import { SettingsModal } from "@/components/editor/SettingsModal"
 import { checkShortcut } from "@/config/shortcuts"
+import { CodeScapeLogo } from "@/components/brand/Logo"
 
 import {
   AlertDialog,
@@ -145,9 +150,10 @@ export default function ScapeEditor() {
   // --- PERSISTENT STATE ---
 
   // Activity Bar State
-  const [activeTool, setActiveTool] = usePersistentState<
-    "explorer" | "search" | "packages" | "secrets" | null
-  >("codescape:ui:activeTool", "explorer")
+  const [activeTool, setActiveTool] = usePersistentState<string | null>(
+    "codescape:ui:activeTool",
+    "explorer"
+  )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   // 1. Validate Sidebar Constraint (10% - 30%)
@@ -776,6 +782,12 @@ export default function ScapeEditor() {
       </div>
     )
 
+  // 2.5 FLOWSCAPE REDIRECT
+  // If this is a FlowScape project, redirect to the visual editor
+  if (scape.environment === "flowscape") {
+    return <Navigate to={`/flow/${scape.id}`} replace />
+  }
+
   // 3. ACCESS CONTROL (Strict Redirects)
   // This must happen BEFORE blocking on file initialization.
   // If not owner, we redirect immediately and return null (or a loader)
@@ -812,6 +824,18 @@ export default function ScapeEditor() {
       </div>
     )
 
+  // 5. TOOLBOX CONFIG
+  const defaultTools = [
+    { id: "explorer", icon: FileCode, label: "Explorer" },
+    { id: "search", icon: Search, label: "Search" },
+    { id: "secrets", icon: Lock, label: "Secrets" }, // Moved Secrets here
+  ]
+
+  const showPackages = scape && ENVIRONMENTS[scape.environment]?.capabilities.packages
+  const tools = showPackages
+    ? [...defaultTools, { id: "packages", icon: Box, label: "Packages" }]
+    : defaultTools
+
   return (
     <>
       <ScapeLayout
@@ -820,15 +844,13 @@ export default function ScapeEditor() {
             activeTool={activeTool}
             onToolSelect={setActiveTool}
             onSettingsClick={() => setIsSettingsOpen(true)}
-            showPackages={scape && ENVIRONMENTS[scape.environment]?.capabilities.packages}
+            topTools={tools}
           />
         }
         headerTitle={
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="bg-gradient-to-r from-primary to-blue-500 bg-clip-text text-xl font-bold text-transparent">
-                CodeScapes
-              </span>
+              <CodeScapeLogo size={32} />
               <Badge
                 variant="secondary"
                 className="h-5 px-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground"

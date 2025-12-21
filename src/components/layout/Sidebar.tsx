@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Users, BookOpen, Settings, Cloud, Laptop2, LogOut } from "lucide-react"
+import { Settings, Layout, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
@@ -14,7 +14,7 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export function Sidebar({
   className,
-  activeTab = "local",
+  activeTab = "scapes",
   onTabChange,
   isMobile,
   onMobileLinkClick,
@@ -27,12 +27,7 @@ export function Sidebar({
   const isExpanded = isMobile || isHovered
 
   const tabs = [
-    { id: "local", icon: Laptop2, label: "Local Scapes", path: "/dashboard/local" },
-    ...(user
-      ? [{ id: "cloud", icon: Cloud, label: "Cloud Scapes", path: "/dashboard/cloud" }]
-      : []),
-    { id: "learn", icon: BookOpen, label: "Learn", path: "/dashboard/learn" },
-    { id: "community", icon: Users, label: "Community", path: "/dashboard/community" },
+    { id: "scapes", icon: Layout, label: "My Scapes", path: "/dashboard/scapes" },
   ]
 
   const handleTabClick = (tabId: string, path: string | null) => {

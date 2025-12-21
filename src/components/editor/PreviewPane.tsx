@@ -7,6 +7,7 @@ import { ENVIRONMENTS } from "@/config/environments"
 import type { EnvironmentId } from "@/types/environment"
 import { PythonRunner } from "@/runners/python/PythonRunner"
 import { WebRunner } from "@/runners/web/WebRunner"
+import { FlowRunner } from "@/runners/flow/FlowRunner"
 import type { LogEntry } from "@/types/log"
 import type { ScapeRunnerHandle } from "@/runners/types"
 
@@ -24,6 +25,9 @@ interface PreviewPaneProps {
   onBusyChange?: (isBusy: boolean) => void
   onInputRequest?: (prompt: string) => void
   onFileSystemUpdate?: (files: ScapeFile[]) => void
+  showStoppedOverlay?: boolean
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  project?: any // For FlowScape High-Speed Sync
 }
 
 // --- SWITCHBOARD ---
@@ -57,10 +61,25 @@ export const PreviewPane = memo(
           await runnerRef.current.provideInput(text)
         }
       },
+      updateScript: (code: string) => {
+        if (runnerRef.current?.updateScript) {
+          runnerRef.current.updateScript(code)
+        }
+      },
+      run: () => {
+        if (runnerRef.current?.run) {
+          runnerRef.current.run()
+        }
+      },
+      stop: () => {
+        if (runnerRef.current?.stop) {
+          runnerRef.current.stop()
+        }
+      },
     }))
 
     // STOPPED STATE
-    if (!isRunning) {
+    if (!isRunning && props.showStoppedOverlay !== false) {
       return (
         <div className="flex h-full flex-col border-l border-border bg-muted/5 dark:border-zinc-800">
           {/* Header for Stopped State */}
@@ -95,7 +114,11 @@ export const PreviewPane = memo(
     const config = ENVIRONMENTS[environment]
     // Default to WebRunner if unknown, or specifically PythonRunner for python
     // In future this can be dynamic based on 'runner' field in config
-    const RunnerComponent = config?.runner === "python-runner" ? PythonRunner : WebRunner
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let RunnerComponent: any = WebRunner
+
+    if (config?.runner === "python-runner") RunnerComponent = PythonRunner
+    if (config?.runner === "flow-runner") RunnerComponent = FlowRunner
 
     return (
       <RunnerComponent
@@ -107,6 +130,7 @@ export const PreviewPane = memo(
         onBusyChange={onBusyChange}
         onInputRequest={props.onInputRequest}
         onFileSystemUpdate={props.onFileSystemUpdate}
+        project={props.project}
         ref={runnerRef}
       />
     )

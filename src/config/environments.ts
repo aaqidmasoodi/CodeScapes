@@ -1,4 +1,4 @@
-import { Globe, Terminal } from "lucide-react"
+import { Globe, Terminal, Blocks } from "lucide-react"
 import type { EnvironmentConfig } from "@/types/environment"
 
 export interface EnvironmentCapabilities {
@@ -10,6 +10,28 @@ export const ENVIRONMENTS: Record<
   string,
   EnvironmentConfig & { capabilities: EnvironmentCapabilities }
 > = {
+  flowscape: {
+    id: "flowscape",
+    name: "FlowScape",
+    description: "Block-based coding environment",
+    icon: Blocks,
+    entryPoint: "project.json",
+    allowedExtensions: [".json", ".png", ".svg", ".wav", ".mp3"],
+    defaultLayout: "preview",
+    runner: "flow-runner",
+    capabilities: {
+      packages: false,
+      terminal: false,
+    },
+    templates: [
+      {
+        id: "empty",
+        name: "New Flow Project",
+        description: "Empty canvas",
+        files: [{ name: "project.json", language: "json", content: "{}" }],
+      },
+    ],
+  },
   web: {
     id: "web",
     name: "Web Application",
