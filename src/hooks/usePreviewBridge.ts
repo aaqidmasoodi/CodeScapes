@@ -37,7 +37,7 @@ export function usePreviewBridge(
   })
 
   // Render-time state derivation (Correct Pattern for Prop Driven Resets)
-  if (versionKey !== prevVersionKey || files !== prevFiles) {
+  if (versionKey !== prevVersionKey || (files !== prevFiles && !env?.hotUpdate)) {
     setPrevVersionKey(versionKey)
     setPrevFiles(files)
 
@@ -57,8 +57,11 @@ export function usePreviewBridge(
     const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${fileHash}`
 
     // Reset state immediately
-
     setBridgeState({ ready: false, url: bootloaderUrl })
+  } else if (files !== prevFiles && env?.hotUpdate && bridgeState.ready) {
+    // HOT UPDATE PATH: Update State refs but DO NOT Reset Bridge
+    setPrevFiles(files)
+    // We will trigger the message update in a useEffect
   }
 
   // useLayoutEffect ensures the listener is attached BEFORE the iframe has a chance
@@ -115,6 +118,29 @@ export function usePreviewBridge(
       window.removeEventListener("message", handleMessage)
     }
   }, [scapeId, files, iframeRef, env, versionKey])
+
+  // HOT UPDATE EFFECT
+  useLayoutEffect(() => {
+    if (env?.hotUpdate && bridgeState.ready && iframeRef?.current) {
+      // Determine Origin (Re-used logic, maybe should extract)
+      let bootloaderOrigin = ""
+      const currentHost = window.location.hostname
+      if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+        bootloaderOrigin = `${window.location.protocol}//localhost:3002`
+      } else {
+        bootloaderOrigin = window.location.origin
+      }
+
+      console.log("[Bridge] Hot Swapping Files...")
+      iframeRef.current.contentWindow?.postMessage(
+        {
+          type: "COMPILE_FILES",
+          payload: { scapeId, files, env },
+        },
+        bootloaderOrigin
+      )
+    }
+  }, [files, bridgeState.ready, env?.hotUpdate, scapeId, env, iframeRef])
 
   return bridgeState
 }

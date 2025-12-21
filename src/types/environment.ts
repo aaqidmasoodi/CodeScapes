@@ -1,7 +1,7 @@
 import type { ScapeFile } from "./file"
 import type { LucideIcon } from "lucide-react"
 
-export type EnvironmentId = "web" | "python" | "node"
+export type EnvironmentId = "web" | "python" | "node" | "flowscape"
 
 export interface TemplateConfig {
   id: string
@@ -22,7 +22,7 @@ export interface EnvironmentConfig {
 
   // UI Configuration
   defaultLayout: "preview" | "terminal"
-  runner: "web-runner" | "python-runner"
+  runner: "web-runner" | "python-runner" | "flow-runner"
 
   // Templates available for this environment
   templates: TemplateConfig[]

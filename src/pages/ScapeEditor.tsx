@@ -776,6 +776,12 @@ export default function ScapeEditor() {
       </div>
     )
 
+  // 2.5 FLOWSCAPE REDIRECT
+  // If this is a FlowScape project, redirect to the visual editor
+  if (scape.environment === "flowscape") {
+    return <Navigate to={`/flow/${scape.id}`} replace />
+  }
+
   // 3. ACCESS CONTROL (Strict Redirects)
   // This must happen BEFORE blocking on file initialization.
   // If not owner, we redirect immediately and return null (or a loader)
