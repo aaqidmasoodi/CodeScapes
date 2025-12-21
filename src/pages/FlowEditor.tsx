@@ -15,6 +15,7 @@ import { LoadingOverlay } from "@/components/ui/spinner"
 import { useAuth } from "@/hooks/useAuth"
 import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useFileSystem } from "@/hooks/useFileSystem"
+import { useTheme } from "next-themes"
 import type { FileType } from "@/types/file"
 import type { FileNode } from "@/lib/file-tree"
 import type { ActivityTool } from "@/components/layout/EditorActivityBar"
@@ -33,6 +34,7 @@ export default function FlowEditor() {
   const { scapeId } = useParams()
   const id = scapeId || ""
   const { user } = useAuth()
+  const { resolvedTheme } = useTheme()
 
   // 1. DATA LOADING
   const { scape, source, isLoading } = useScapeLoading(id)
@@ -309,7 +311,11 @@ export default function FlowEditor() {
                   />
                 ) : (
                   // It must be a category (Motion, Events, Control)
-                  <BlockPalette category={activeTool} editorRef={blockEditorRef} />
+                  <BlockPalette
+                    category={activeTool}
+                    editorRef={blockEditorRef}
+                    theme={resolvedTheme as "light" | "dark"}
+                  />
                 )}
               </ResizablePanel>
               <ResizableHandle />
@@ -326,6 +332,7 @@ export default function FlowEditor() {
                     ref={blockEditorRef}
                     onChange={handleCodeChange}
                     onInit={() => setIsEditorReady(true)}
+                    theme={resolvedTheme === "light" ? "light" : "dark"}
                   />
                 </ResizablePanel>
 

@@ -3,25 +3,7 @@ import * as Blockly from "blockly"
 import { compileWorkspace } from "@/runners/flow/compiler"
 
 // --- THEME ---
-const CODESCAPE_THEME = Blockly.Theme.defineTheme("codescape", {
-  name: "codescape",
-  base: Blockly.Themes.Classic,
-  componentStyles: {
-    workspaceBackgroundColour: "#1e1e20", // Matches zinc-900/950
-    toolboxBackgroundColour: "#18181b", // Matches zinc-950
-    toolboxForegroundColour: "#cfd0d2",
-    flyoutBackgroundColour: "#27272a", // zinc-800
-    flyoutOpacity: 0.8,
-    scrollbarColour: "#52525b",
-    scrollbarOpacity: 0.5,
-  },
-  blockStyles: {
-    loop_blocks: { colourPrimary: "#10b981" }, // Green
-    logic_blocks: { colourPrimary: "#8b5cf6" }, // Purple
-    math_blocks: { colourPrimary: "#3b82f6" }, // Blue
-    procedure_blocks: { colourPrimary: "#ec4899" }, // Pink
-  },
-})
+import { CODESCAPE_DARK_THEME, CODESCAPE_LIGHT_THEME, registerBlocks } from "./blockly-init"
 
 // --- TOOLBOX DEFINITION ---
 // eslint-disable-next-line react-refresh/only-export-components
@@ -49,43 +31,6 @@ export const TOOLBOX_CATEGORIES = [
   },
 ]
 
-// --- CUSTOM BLOCKS DEFINITION (Phase 3.1) ---
-// We define them globally for now. In future, move to 'blocks/definitions.ts'
-Blockly.Blocks["move_steps"] = {
-  init: function () {
-    this.appendDummyInput()
-      .appendField("move")
-      .appendField(new Blockly.FieldNumber(10), "STEPS")
-      .appendField("steps")
-    this.setPreviousStatement(true, null)
-    this.setNextStatement(true, null)
-    this.setColour(230)
-    this.setTooltip("Move sprite forward")
-  },
-}
-
-Blockly.Blocks["turn_right"] = {
-  init: function () {
-    this.appendDummyInput()
-      .appendField("turn")
-      .appendField("dw") // Icon placeholder
-      .appendField(new Blockly.FieldNumber(15), "DEGREES")
-      .appendField("degrees")
-    this.setPreviousStatement(true, null)
-    this.setNextStatement(true, null)
-    this.setColour(230)
-  },
-}
-
-Blockly.Blocks["event_when_flag_clicked"] = {
-  init: function () {
-    this.appendDummyInput().appendField("When 🚩 clicked")
-    this.setNextStatement(true, null)
-    this.setColour(120)
-    this.setTooltip("Runs when Green Flag is clicked")
-  },
-}
-
 export interface BlockEditorHandle {
   getCode: () => string
   loadJSON: (json: object) => void
@@ -95,12 +40,13 @@ export interface BlockEditorHandle {
 }
 
 export interface BlockEditorProps {
+  theme: "light" | "dark"
   onChange?: (code: string, json: object) => void
   onInit?: () => void
 }
 
 export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
-  ({ onChange, onInit }, ref) => {
+  ({ theme, onChange, onInit }, ref) => {
     const editorDiv = useRef<HTMLDivElement>(null)
     const workspaceRef = useRef<Blockly.WorkspaceSvg | null>(null)
     const onChangeRef = useRef(onChange)
@@ -118,8 +64,20 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
         return compileWorkspace(workspaceRef.current)
       },
       loadJSON: (json: object) => {
-        if (!workspaceRef.current) return
-        Blockly.serialization.workspaces.load(json, workspaceRef.current)
+        if (!workspaceRef.current) {
+          console.warn("[BlockEditor] loadJSON called but workspace is null")
+          return
+        }
+        // Verify rendering state
+        if (workspaceRef.current.rendered) {
+          try {
+            Blockly.serialization.workspaces.load(json, workspaceRef.current)
+          } catch (err) {
+            console.error("[BlockEditor] loadJSON Failed:", err)
+          }
+        } else {
+          console.warn("[BlockEditor] Workspace exists but is NOT rendered. Cannot load blocks.")
+        }
       },
       resize: () => {
         Blockly.svgResize(workspaceRef.current as Blockly.WorkspaceSvg)
@@ -173,27 +131,106 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
       },
     }))
 
+    // Dynamic Theme Update
+    useEffect(() => {
+      if (workspaceRef.current) {
+        const targetTheme = theme === "light" ? CODESCAPE_LIGHT_THEME : CODESCAPE_DARK_THEME
+        workspaceRef.current.setTheme(targetTheme)
+        workspaceRef.current.refreshTheme()
+
+        // Update grid colors manually because setTheme doesn't affect the grid
+        const grid = workspaceRef.current.getGrid()
+        if (grid) {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore - access to private to update color
+          grid.update(theme === "light" ? "#ccc" : "#3f3f46")
+        }
+      }
+    }, [theme])
+
+    // Drag & Drop Handlers
+    const handleDragOver = (e: React.DragEvent) => {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+    }
+
+    const handleDrop = (e: React.DragEvent) => {
+      e.preventDefault()
+      const type = e.dataTransfer.getData("block-type")
+      if (type && workspaceRef.current) {
+        // We can reuse the spawnBlock logic but we need to expose it or duplicate the coorindate logic
+        // Since spawnBlock is in the handle, we can just call the logic directly here or use the imperative handle ref if we had it (we are inside the component so we don't)
+
+        // Copied/Adapted logic from spawnBlock to ensure access to closure variables
+        const workspace = workspaceRef.current
+        const block = workspace.newBlock(type)
+        block.initSvg()
+        block.render()
+
+        const injectionDiv = workspace.getInjectionDiv()
+        const boundingRect = injectionDiv.getBoundingClientRect()
+        const relX = e.clientX - boundingRect.left
+        const relY = e.clientY - boundingRect.top
+        const workspaceX = relX / workspace.scale - workspace.scrollX / workspace.scale
+        const workspaceY = relY / workspace.scale - workspace.scrollY / workspace.scale
+
+        block.moveTo(new Blockly.utils.Coordinate(workspaceX, workspaceY))
+
+        // Immediately start dragging the new block so it feels natural
+        block.select()
+        // If we want to snap to mouse, we could try:
+        if (Blockly.Gesture.inProgress()) {
+          // @ts-expect-error - Internal
+          const gesture = Blockly.Gesture.inprogress_
+          gesture.setStartBlock(block)
+        }
+      }
+    }
+
     useEffect(() => {
       if (!editorDiv.current) return
+      if (workspaceRef.current) {
+        console.log("[Blockly] Workspace already active. Skipping inject.")
+        return
+      }
+
+      // 1. Register Blocks Safely (Just in case module level didn't catch it)
+      registerBlocks()
+
+      // Use the explicitly passed theme
+      const initialTheme = theme === "light" ? CODESCAPE_LIGHT_THEME : CODESCAPE_DARK_THEME
 
       // Inject workspace
-      workspaceRef.current = Blockly.inject(editorDiv.current, {
-        toolbox: { kind: "flyoutToolbox", contents: [] }, // Custom Sidebar replacement
-        theme: CODESCAPE_THEME,
-        renderer: "zelos", // Scratch-like renderer
-        zoom: {
-          controls: true,
-          wheel: true,
-          startScale: 0.9,
-        },
-        grid: {
-          spacing: 20,
-          length: 3,
-          colour: "#3f3f46",
-          snap: true,
-        },
-        trashcan: true,
-      })
+      console.log(
+        "[Blockly] Injecting. Theme:",
+        theme,
+        "Div Connected:",
+        editorDiv.current.isConnected
+      )
+
+      try {
+        workspaceRef.current = Blockly.inject(editorDiv.current, {
+          toolbox: { kind: "flyoutToolbox", contents: [] }, // Custom Sidebar replacement
+          theme: initialTheme,
+          renderer: "zelos", // Scratch-like renderer
+          zoom: {
+            controls: true,
+            wheel: true,
+            startScale: 0.9,
+          },
+          grid: {
+            spacing: 20,
+            length: 3,
+            colour: theme === "light" ? "#ccc" : "#3f3f46",
+            snap: true,
+          },
+          trashcan: true,
+        })
+        console.log("[Blockly] Injection Complete. Rendered:", workspaceRef.current.rendered)
+      } catch (e) {
+        console.error("[Blockly] INJECTION FATAL ERROR:", e)
+        return
+      }
 
       // Signal Readiness
       if (onInitRef.current) {
@@ -230,19 +267,37 @@ export const BlockEditor = forwardRef<BlockEditorHandle, BlockEditorProps>(
 
       // ResizeObserver
       const observer = new ResizeObserver(() => {
-        Blockly.svgResize(workspaceRef.current as Blockly.WorkspaceSvg)
+        if (workspaceRef.current) {
+          Blockly.svgResize(workspaceRef.current as Blockly.WorkspaceSvg)
+        }
       })
       observer.observe(editorDiv.current)
 
       return () => {
+        console.log("[Blockly] Disposing workspace...")
         observer.disconnect()
         // clean style
-        document.head.removeChild(style)
-        workspaceRef.current?.dispose()
+        if (document.head.contains(style)) {
+          document.head.removeChild(style)
+        }
+        if (workspaceRef.current) {
+          workspaceRef.current.dispose()
+          workspaceRef.current = null
+        }
       }
     }, [])
 
-    return <div ref={editorDiv} className="h-full w-full" />
+    return (
+      <div
+        ref={editorDiv}
+        className="h-full w-full"
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        style={{
+          backgroundColor: theme === "light" ? "#dbdbe1" : "#1e1e20",
+        }}
+      />
+    )
   }
 )
 
