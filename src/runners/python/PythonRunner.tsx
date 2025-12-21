@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   useEffect,
   useRef,
@@ -98,7 +99,7 @@ export const PythonRunner = memo(
       }, [onOutput, onBusyChange, onInputRequest, onFileSystemUpdate, dependencies, files])
 
       // Forward declaration for initWorker to use
-      const runPythonRef = useRef<() => Promise<void>>(async () => {})
+      const runPythonRef = useRef<() => Promise<void>>(async () => { })
 
       // --- Stable Helpers ---
 
@@ -252,11 +253,36 @@ export const PythonRunner = memo(
         if (!currentFiles.length) return
 
         // 1. Check if busy -> Restart if so to clear input blocks
+        // 1. Check if busy -> Restart if so to clear input blocks
         if (workerRef.current && isBusyRef.current) {
-          initWorker()
-          pendingRunRef.current = true
-          return
+          if (sharedArrayRef.current) {
+            // FAST PATH: Interrupt the running execution
+            // 2 = SIGINT (KeyboardInterrupt)
+            sharedArrayRef.current[0] = 2
+            // Notify via method that checks often (Pyodide checks cyclically)
+            if (window.crossOriginIsolated) {
+              // Determine index? Pyodide uses index 0 by default for 2 bytes?
+              // Actually setInterruptBuffer docs say: "buffer: A SharedArrayBuffer... The buffer is expected to look like a C array of int32_t."
+              // "If the logic at index 0 is non-zero, the interpreter will raise a KeyboardInterrupt."
+              Atomics.store(sharedArrayRef.current, 0, 2)
+              Atomics.notify(sharedArrayRef.current, 0)
+            } else {
+              sharedArrayRef.current[0] = 2
+            }
+            console.log("[Runner] Busy: Sending Interrupt Signal (Fast Reload)")
+            pendingRunRef.current = true
+            return
+          } else {
+            // SLOW PATH: No SAB support. 
+            // FIX: Do NOT terminate immediately. Queue the run.
+            // If the current run finishes, the next one will pick up.
+            // If it hangs, the user must use the 'Stop' button.
+            console.log("[Runner] Busy: Queueing run (SAB missing)")
+            pendingRunRef.current = true
+            return
+          }
         }
+
 
         // 2. Check if init -> Queue
         if (!workerRef.current) {
@@ -382,8 +408,13 @@ export const PythonRunner = memo(
       // --- Handle ---
       useImperativeHandle(ref, () => ({
         captureThumbnail: async () => null,
-        restart: async () => {
+        stop: async () => {
+          // Explicit Force Stop (Kill Worker)
           initWorker()
+        },
+        restart: async () => {
+          // Soft Restart (Re-run current code in existing worker)
+          runPython()
         },
         installPackage: async (pkg, onProgress) => {
           // ... (keep existing)

@@ -311,14 +311,20 @@ export default function FlowEditor() {
           bottomTools={bottomTools}
         />
 
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
+        <ResizablePanelGroup
+          direction="horizontal"
+          className="flex-1"
+          autoSaveId="flow-editor-outer-layout"
+        >
           {/* 2b. SIDEBAR (Explorer OR Block Palette) */}
           {activeTool && (
             <>
               <ResizablePanel
+                id="sidebar"
                 defaultSize={20}
-                minSize={15}
+                minSize={10}
                 maxSize={40}
+                order={1}
                 className="flex flex-col border-r border-border bg-muted/5"
               >
                 {activeTool === "explorer" ? (
@@ -347,11 +353,15 @@ export default function FlowEditor() {
           )}
 
           {/* 2c. WORKSPACE */}
-          <ResizablePanel defaultSize={activeTool ? 80 : 100}>
+          <ResizablePanel id="workspace-main" order={2} defaultSize={activeTool ? 80 : 100}>
             <div className="flex h-full w-full">
-              <ResizablePanelGroup direction="horizontal" className="flex-1">
+              <ResizablePanelGroup
+                direction="horizontal"
+                className="flex-1"
+                autoSaveId="flow-editor-inner-layout"
+              >
                 {/* CENTER: BlockEditor */}
-                <ResizablePanel defaultSize={55} minSize={30} className="relative">
+                <ResizablePanel id="block-canvas" order={1} defaultSize={55} minSize={30} className="relative">
                   <BlockEditor
                     ref={blockEditorRef}
                     onChange={handleCodeChange}
@@ -369,11 +379,14 @@ export default function FlowEditor() {
                 <ResizableHandle />
 
                 {/* RIGHT: Stack (Preview + Sprites) */}
-                <ResizablePanel defaultSize={45} minSize={20}>
-                  <ResizablePanelGroup direction="vertical">
+                <ResizablePanel id="preview-stack" order={2} defaultSize={45} minSize={20}>
+                  <ResizablePanelGroup
+                    direction="vertical"
+                    autoSaveId="flow-editor-preview-stack"
+                  >
 
                     {/* Top: Preview */}
-                    <ResizablePanel defaultSize={50} minSize={20}>
+                    <ResizablePanel id="preview-pane" order={1} defaultSize={50} minSize={20}>
                       <PreviewPane
                         ref={previewRef}
                         files={filteredFiles}
@@ -389,7 +402,7 @@ export default function FlowEditor() {
                     <ResizableHandle />
 
                     {/* Bottom: Sprite Pane */}
-                    <ResizablePanel defaultSize={50} minSize={20}>
+                    <ResizablePanel id="sprite-pane" order={2} defaultSize={50} minSize={20}>
                       <SpritePane
                         targets={store.project.targets}
                         activeTargetId={store.activeTargetId}

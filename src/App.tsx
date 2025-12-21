@@ -19,7 +19,7 @@ function App() {
           <Routes>
             <Route path="/login" element={<AuthPage />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Navigate to="/dashboard/local" replace />} />
+            <Route path="/dashboard" element={<Navigate to="/dashboard/scapes" replace />} />
             <Route path="/dashboard/:tab" element={<Dashboard />} />
             <Route path="/scape/:scapeId" element={<ScapeEditor />} />
             <Route path="/flow/:scapeId" element={<FlowEditor />} />
