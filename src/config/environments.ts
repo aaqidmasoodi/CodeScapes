@@ -276,7 +276,7 @@ function windowResized() {
     description: "Python runtime with data science support",
     icon: Terminal,
     entryPoint: "main.py",
-    allowedExtensions: [".py", ".txt", ".json"],
+    allowedExtensions: [".py", ".txt", ".json", ".csv"],
     defaultLayout: "terminal",
     runner: "python-runner",
     capabilities: {
@@ -328,6 +328,57 @@ print("Showing Plot 2...")
 plt.show()
 
 print("All Done!")`,
+          },
+        ],
+      },
+      {
+        id: "data-analysis",
+        name: "Data Analysis",
+        description: "Pandas & CSV analysis starter",
+        dependencies: ["matplotlib", "numpy", "pandas"],
+        files: [
+          {
+            name: "data.csv",
+            language: "csv",
+            content: `Hospital_Name,County,Specialty,Number_of_Beds,Year
+St James Hospital,Dublin,Cardiology,950,2023
+Cork University Hospital,Cork,Oncology,820,2022
+University Hospital Galway,Galway,Neurology,700,2023
+Mater Misericordiae Hospital,Dublin,Emergency Medicine,650,2021
+Tallaght University Hospital,Dublin,Orthopedics,580,2022
+University Hospital Limerick,Limerick,General Surgery,720,2023
+Waterford University Hospital,Waterford,Cardiology,500,2021
+Sligo University Hospital,Sligo,Respiratory Medicine,410,2022
+Letterkenny University Hospital,Donegal,Pediatrics,390,2023
+Naas General Hospital,Kildare,Internal Medicine,360,2021
+Portiuncula University Hospital,Roscommon,Endocrinology,340,2022
+Mayo University Hospital,Mayo,Radiology,430,2023
+Our Lady of Lourdes Hospital,Louth,Gastroenterology,460,2021
+St Luke's General Hospital,Kilkenny,Oncology,300,2022
+Wexford General Hospital,Wexford,Emergency Medicine,350,2023`,
+          },
+          {
+            name: "main.py",
+            language: "python",
+            content: `import pandas as pd
+import matplotlib.pyplot as plt
+
+# Read the CSV
+df = pd.read_csv("data.csv")
+
+# Analysis: total beds per county
+beds_by_county = df.groupby("County")["Number_of_Beds"].sum()
+
+# Plot
+plt.figure()
+beds_by_county.plot(kind="bar")
+plt.title("Total Number of Hospital Beds by County")
+plt.xlabel("County")
+plt.ylabel("Number of Beds")
+plt.show()
+
+# Display the dataframe
+df`,
           },
         ],
       },
