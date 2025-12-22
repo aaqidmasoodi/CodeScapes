@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Copy, Globe, Loader2, Share2, CloudUpload } from "lucide-react"
+import { useState, useEffect, useCallback } from "react"
+import { Copy, Globe, Loader2, Share2, CloudUpload, UserPlus, X, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -18,6 +18,8 @@ import { useAuth } from "@/hooks/useAuth"
 import { LocalRepository } from "@/lib/repositories/LocalRepository"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import { useToast } from "@/components/ui/use-toast"
+import { collaboratorsService } from "@/services/collaborators"
+import type { Collaborator } from "@/types/collaborator"
 
 interface ShareDialogProps {
   scape: Scape
@@ -34,11 +36,65 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
   // Optimistic UI state
   const [isPublic, setIsPublic] = useState(scape.is_public)
 
-  // URL is based on the unified runner route
+  // Collaborators state
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([])
+  const [collabLoading, setCollabLoading] = useState(false)
+  const [email, setEmail] = useState("")
+  const [adding, setAdding] = useState(false)
 
-  // URL is based on the unified runner route
   const shareUrl = `${window.location.origin}/live/${scape.id}`
   const isCloud = scape.source === "cloud"
+  const isOwner = user?.id === scape.authorId
+
+  const loadCollaborators = useCallback(async () => {
+    if (!isCloud || !isOwner) return
+    try {
+      setCollabLoading(true)
+      const data = await collaboratorsService.getCollaborators(scape.id)
+      setCollaborators(data)
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setCollabLoading(false)
+    }
+  }, [scape.id, isCloud, isOwner])
+
+  useEffect(() => {
+    if (isOpen && isCloud && isOwner) {
+      loadCollaborators()
+    }
+  }, [isOpen, isCloud, isOwner, loadCollaborators])
+
+  const handleAddCollaborator = async () => {
+    if (!email.trim()) return
+
+    try {
+      setAdding(true)
+      const collab = await collaboratorsService.addCollaboratorByEmail(scape.id, email.trim())
+      setCollaborators((prev) => [collab, ...prev])
+      setEmail("")
+      toast({ title: `Added ${email} as collaborator` })
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error"
+      toast({
+        variant: "destructive",
+        title: "Failed to add collaborator",
+        description: message,
+      })
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleRemoveCollaborator = async (collab: Collaborator) => {
+    try {
+      await collaboratorsService.removeCollaborator(collab.id)
+      setCollaborators((prev) => prev.filter((c) => c.id !== collab.id))
+      toast({ title: "Collaborator removed" })
+    } catch {
+      toast({ variant: "destructive", title: "Failed to remove" })
+    }
+  }
 
   const handleSync = async () => {
     if (!user) {
@@ -55,29 +111,21 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
       const localRepo = new LocalRepository()
       const cloudRepo = new CloudRepository()
 
-      // 1. Get full local snapshot
       const files = await localRepo.getFiles(scape.id)
 
-      // 2. Prepare Cloud Scape Object
       const cloudScape: Scape = {
         ...scape,
         source: "cloud",
         authorId: user.id,
         syncStatus: "synced",
         updatedAt: new Date(),
-        // Default to private on first sync
         is_public: false,
       }
 
-      // 3. Upload Scape Metadata
       await cloudRepo.saveScape(cloudScape)
-
-      // 4. Upload Files (Bulk)
       await cloudRepo.deleteFile(scape.id)
-
       await cloudRepo.bulkCreateFiles(files.map((f) => ({ ...f, scapeId: scape.id })))
 
-      // 5. Update Local Status
       await localRepo.updateScape(scape.id, {
         source: "cloud",
         syncStatus: "synced",
@@ -108,10 +156,7 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
     navigator.clipboard.writeText(shareUrl)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-    toast({
-      title: "Link Copied",
-      description: "Share link copied to clipboard.",
-    })
+    toast({ title: "Link Copied" })
   }
 
   return (
@@ -134,18 +179,13 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
 
         {isCloud ? (
           <div className="flex flex-col gap-4">
+            {/* Copy Link */}
             <div className="flex items-center space-x-2">
               <div className="grid flex-1 gap-2">
                 <Label htmlFor="link" className="sr-only">
                   Link
                 </Label>
-                <Input
-                  id="link"
-                  defaultValue={shareUrl}
-                  readOnly
-                  className="h-9 font-mono text-xs"
-                  value={shareUrl}
-                />
+                <Input id="link" value={shareUrl} readOnly className="h-9 font-mono text-xs" />
               </div>
               <Button type="submit" size="sm" onClick={handleCopy} className="px-3">
                 {copied ? (
@@ -156,6 +196,7 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
               </Button>
             </div>
 
+            {/* Public Access Toggle */}
             <div className="rounded-md bg-muted p-4">
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium">
@@ -165,29 +206,15 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
                 <Switch
                   checked={isPublic}
                   onCheckedChange={async (checked) => {
-                    // 1. Optimistic Update
                     setIsPublic(checked)
-
                     try {
-                      // 2. Background API Call
                       const repo = new CloudRepository()
                       await repo.updateScape(scape.id, { is_public: checked })
-
-                      toast({
-                        title: checked ? "Project is now Public" : "Project is now Private",
-                      })
-
-                      // 3. Sync Parent (Success)
+                      toast({ title: checked ? "Project is now Public" : "Project is now Private" })
                       if (onSyncComplete) onSyncComplete({ ...scape, is_public: checked })
-                    } catch (err) {
-                      // 4. Revert on Failure
+                    } catch {
                       setIsPublic(!checked)
-                      console.error("Visibility toggle failed:", err)
-                      toast({
-                        title: "Failed to update visibility",
-                        description: "Reverting changes due to network error.",
-                        variant: "destructive",
-                      })
+                      toast({ title: "Failed to update visibility", variant: "destructive" })
                     }
                   }}
                 />
@@ -195,9 +222,77 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
               <p className="text-xs text-muted-foreground">
                 {isPublic
                   ? "Anyone with the link can run this project."
-                  : "Only you can run this project. The link will not work for others."}
+                  : "Only you and collaborators can run this project."}
               </p>
             </div>
+
+            {/* Collaborators Section */}
+            {isOwner && (
+              <div className="rounded-md border p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                  <Users className="h-4 w-4" />
+                  <span>Collaborators</span>
+                </div>
+
+                {/* Add Collaborator */}
+                <div className="mb-3 flex items-center gap-2">
+                  <Input
+                    placeholder="email@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddCollaborator()}
+                    className="h-8 flex-1 text-xs"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleAddCollaborator}
+                    disabled={adding || !email.trim()}
+                  >
+                    {adding ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <UserPlus className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
+
+                {/* List */}
+                <div className="max-h-32 space-y-1 overflow-auto">
+                  {collabLoading ? (
+                    <div className="flex justify-center py-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : collaborators.length === 0 ? (
+                    <p className="py-2 text-center text-xs text-muted-foreground">
+                      No collaborators yet
+                    </p>
+                  ) : (
+                    collaborators.map((collab) => (
+                      <div
+                        key={collab.id}
+                        className="flex items-center justify-between rounded border px-2 py-1"
+                      >
+                        <span className="text-xs">
+                          {collab.email || collab.user_id.slice(0, 8)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleRemoveCollaborator(collab)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <p className="mt-2 text-xs text-muted-foreground">
+                  ⚠️ Collaborators can run with your secrets.
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center gap-4 py-4 text-center">
@@ -207,8 +302,7 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
             <div className="space-y-1">
               <h4 className="text-sm font-medium">Sync Required</h4>
               <p className="text-xs text-muted-foreground">
-                This project lives on your device. Upload it to the CodeScape Cloud to share it with
-                the world.
+                This project lives on your device. Upload it to the CodeScape Cloud to share it.
               </p>
             </div>
             <Button onClick={handleSync} disabled={isSyncing} className="w-full">

@@ -7,6 +7,7 @@ export interface TemplateConfig {
   id: string
   name: string
   description: string
+  dependencies?: string[] // Pre-installed packages for this template
   files: ScapeFile[]
 }
 

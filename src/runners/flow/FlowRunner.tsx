@@ -438,6 +438,21 @@ window.addEventListener("message", (event) => {
             console.error("Script Update Failed:", e);
         }
     }
+    if (type === "FlowScape:CaptureThumbnail") {
+        // Capture the p5 canvas and send back
+        try {
+            const canvas = document.querySelector("canvas");
+            if (canvas) {
+                const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+                window.parent.postMessage({ type: "FlowScape:ThumbnailData", payload: dataUrl }, "*");
+            } else {
+                window.parent.postMessage({ type: "FlowScape:ThumbnailData", payload: null }, "*");
+            }
+        } catch(e) {
+            console.error("[FlowScape] Thumbnail capture failed:", e);
+            window.parent.postMessage({ type: "FlowScape:ThumbnailData", payload: null }, "*");
+        }
+    }
 });
 
 // --- P5 LOOP ---
@@ -498,12 +513,12 @@ export const FlowRunner = memo(
       useEffect(() => {
         const handleMsg = (e: MessageEvent) => {
           if (e.data?.type === "FlowScape:StateUpdate" && e.data?.meta?.threads !== undefined) {
-            setThreadCount(e.data.meta.threads);
+            setThreadCount(e.data.meta.threads)
           }
-        };
-        window.addEventListener("message", handleMsg);
-        return () => window.removeEventListener("message", handleMsg);
-      }, []);
+        }
+        window.addEventListener("message", handleMsg)
+        return () => window.removeEventListener("message", handleMsg)
+      }, [])
 
       // 1. INJECTION: Mix user files with Harness
       const runtimeFiles = useMemo(
@@ -525,7 +540,28 @@ export const FlowRunner = memo(
       )
 
       useImperativeHandle(ref, () => ({
-        captureThumbnail: async () => null, // Todo
+        captureThumbnail: async () => {
+          return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              window.removeEventListener("message", handler)
+              resolve(null)
+            }, 2000)
+
+            const handler = (e: MessageEvent) => {
+              if (e.data?.type === "FlowScape:ThumbnailData") {
+                clearTimeout(timeout)
+                window.removeEventListener("message", handler)
+                resolve(e.data.payload || null)
+              }
+            }
+
+            window.addEventListener("message", handler)
+            iframeRef.current?.contentWindow?.postMessage(
+              { type: "FlowScape:CaptureThumbnail" },
+              "*"
+            )
+          })
+        },
         restart: async () => {
           console.log("[FlowRunner] Hard Restarting...")
           setRefreshKey((k) => k + 1)
@@ -547,37 +583,39 @@ export const FlowRunner = memo(
 
       // Init Project on Load (Fast Path)
       useEffect(() => {
-        if (!bridge.ready) return;
+        if (!bridge.ready) return
 
         // PRIORITIZE: liveProject (Store) -> project.json (File) -> Default
-        let project = liveProject;
+        let project = liveProject
 
         if (!project) {
-          const projectFile = rawFiles.find(f => f.name === "project.json");
+          const projectFile = rawFiles.find((f) => f.name === "project.json")
           if (projectFile && projectFile.content) {
             try {
-              project = JSON.parse(projectFile.content as string);
-              console.log("[FlowRunner] Found project.json in files", project);
+              project = JSON.parse(projectFile.content as string)
+              console.log("[FlowRunner] Found project.json in files", project)
             } catch (e) {
-              console.error("[FlowRunner] Failed to parse project.json", e);
+              console.error("[FlowRunner] Failed to parse project.json", e)
             }
           }
         }
 
         // Fallback
         if (!project) {
-          console.warn("[FlowRunner] No project found, using fallback.");
-          project = { targets: [] }; // Empty
+          console.warn("[FlowRunner] No project found, using fallback.")
+          project = { targets: [] } // Empty
         }
 
         // Send to Engine
         // No debounce for Zero-Latency updates
-        iframeRef.current?.contentWindow?.postMessage({
-          type: "FlowScape:Init",
-          payload: project
-        }, "*");
-
-      }, [bridge.ready, rawFiles, liveProject]);
+        iframeRef.current?.contentWindow?.postMessage(
+          {
+            type: "FlowScape:Init",
+            payload: project,
+          },
+          "*"
+        )
+      }, [bridge.ready, rawFiles, liveProject])
 
       return (
         <div className="flex h-full flex-col border-l border-border bg-background dark:border-zinc-800">

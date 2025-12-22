@@ -15,6 +15,19 @@ export interface Scape {
   updatedAt: Date
   dependencies?: string[]
   is_public?: boolean
+  description?: string
+  parentId?: string // For forks
+  author?: {
+    name: string
+    avatar?: string
+    username?: string
+  }
+  stats?: {
+    views: number
+    likes: number
+    forks: number
+    isLiked?: boolean
+  }
 }
 
 export interface File {
@@ -27,7 +40,7 @@ export interface File {
 
 export interface Autosave {
   id: string // scapeId
-  data: any // Project JSON
+  data: Record<string, unknown> // Project JSON
   timestamp: number
 }
 
@@ -56,7 +69,7 @@ db.on("blocked", () => {
 db.version(2).stores({
   scapes: "id, name, environment, source, createdAt, updatedAt, *dependencies",
   files: "id, scapeId, name, [scapeId+name]",
-  autosaves: "id, timestamp"
+  autosaves: "id, timestamp",
 })
 
 // Helper to delete a scape and its files transactionally

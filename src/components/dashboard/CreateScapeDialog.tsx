@@ -70,6 +70,7 @@ export function CreateScapeDialog() {
         source: source,
         authorId: user?.id,
         syncStatus: source === "cloud" ? "synced" : "offline",
+        dependencies: templateConfig.dependencies || [],
         createdAt: new Date(),
         updatedAt: new Date(),
       })

@@ -23,6 +23,7 @@ interface PythonRunnerProps {
   onBusyChange?: (isBusy: boolean) => void
   onInputRequest?: (prompt: string) => void
   onFileSystemUpdate?: (files: ScapeFile[]) => void
+  isLive?: boolean
 }
 
 export const PythonRunner = memo(
@@ -37,6 +38,7 @@ export const PythonRunner = memo(
         onInputRequest,
         onFileSystemUpdate,
         scapeId,
+        isLive,
       },
       ref
     ) => {
@@ -55,6 +57,7 @@ export const PythonRunner = memo(
       const [previewItems, setPreviewItems] = useState<
         { type: "image" | "html"; content: string }[]
       >([])
+      const lastFigureRef = useRef<string | null>(null)
       const pendingInstalls = useRef<
         Map<
           string,
@@ -180,6 +183,10 @@ export const PythonRunner = memo(
               break
             case "IMAGE":
               setPreviewItems((prev) => [...prev, { type: "image", content: payload }])
+              // Store first figure for thumbnail
+              if (!lastFigureRef.current) {
+                lastFigureRef.current = payload
+              }
               break
             case "DidRun":
               setBusy(false)
@@ -376,12 +383,11 @@ export const PythonRunner = memo(
         return () => clearTimeout(t)
       }, [files, runPython, envVars]) // Added envVars dependency
 
-      // Add ref for input
       const pendingInputIdRef = useRef<string | null>(null)
 
       // --- Handle ---
       useImperativeHandle(ref, () => ({
-        captureThumbnail: async () => null,
+        captureThumbnail: async () => lastFigureRef.current,
         stop: async () => {
           // Explicit Force Stop (Kill Worker)
           initWorker()
@@ -391,7 +397,6 @@ export const PythonRunner = memo(
           runPython()
         },
         installPackage: async (pkg, onProgress) => {
-          // ... (keep existing)
           return new Promise((resolve) => {
             if (!workerRef.current) {
               resolve({ success: false, error: "Runtime not ready" })
@@ -463,25 +468,27 @@ export const PythonRunner = memo(
           ref={containerRef}
           className="flex h-full flex-col border-l border-border bg-background text-foreground dark:border-zinc-800"
         >
-          <div className="flex h-10 items-center justify-between border-b border-zinc-200 bg-muted/20 px-2 dark:border-zinc-800 dark:bg-zinc-900/50">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <MonitorPlay className="h-3.5 w-3.5" />
-              <span className="max-w-[200px] truncate">Preview (Python)</span>
+          {!isLive && (
+            <div className="flex h-10 items-center justify-between border-b border-zinc-200 bg-muted/20 px-2 dark:border-zinc-800 dark:bg-zinc-900/50">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <MonitorPlay className="h-3.5 w-3.5" />
+                <span className="max-w-[200px] truncate">Preview (Python)</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {onCollapse && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={onCollapse}
+                    title="Collapse Preview"
+                  >
+                    <PanelRightClose className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              {onCollapse && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
-                  onClick={onCollapse}
-                  title="Collapse Preview"
-                >
-                  <PanelRightClose className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </div>
+          )}
           <div className="flex flex-1 flex-col overflow-auto p-4">
             {previewItems.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-muted-foreground">

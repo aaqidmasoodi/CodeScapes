@@ -37,6 +37,7 @@ import { type Scape } from "@/lib/db"
 import { useScapes } from "@/hooks/useScapes"
 
 import { Skeleton } from "@/components/ui/skeleton"
+import { useAuth } from "@/hooks/useAuth"
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -52,10 +53,25 @@ export default function Dashboard() {
 
   // Real data from Hooks
   const { scapes: myScapes, loading, deleteScape } = useScapes()
+  const { user } = useAuth()
+
+  const activeTabValidated = ["local", "cloud"].includes(activeTab) ? activeTab : "local"
+
+  // Redirect if trying to access cloud without auth
+  if (activeTabValidated === "cloud" && !user) {
+    navigate("/dashboard/local", { replace: true })
+    return null
+  }
 
   const filteredScapes = myScapes?.filter((scape) => {
+    // 1. Filter by Tab (Source)
+    if (activeTabValidated === "local" && scape.source !== "local") return false
+    if (activeTabValidated === "cloud" && scape.source !== "cloud") return false
+
+    // 2. Filter by Search
     const matchesSearch = scape.name.toLowerCase().includes(searchQuery.toLowerCase())
     if (!matchesSearch) return false
+
     return true
   })
 
@@ -82,8 +98,14 @@ export default function Dashboard() {
         {/* Toolbar */}
         <div className="sticky top-0 z-10 flex flex-col gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">My Scapes</h1>
-            <p className="text-sm text-muted-foreground">Manage your local and cloud projects</p>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {activeTabValidated === "cloud" ? "Cloud Scapes" : "Local Scapes"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {activeTabValidated === "cloud"
+                ? "Manage your synced projects"
+                : "Manage your local projects"}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative w-full md:w-64">
@@ -127,7 +149,7 @@ export default function Dashboard() {
               {!searchQuery && <CreateScapeDialog />}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            <div className="columns-1 gap-4 space-y-4 md:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5">
               {filteredScapes.map((scape) => {
                 // Determine Environment Label
                 const envLabel =
@@ -138,24 +160,31 @@ export default function Dashboard() {
                     node: "Node",
                   }[scape.environment] || scape.environment
 
+                const hasThumbnail = scape.thumbnail && scape.thumbnail.length > 100
+
+                // Normalize thumbnail - ensure it has data: prefix
+                const thumbnailSrc = hasThumbnail
+                  ? scape.thumbnail?.startsWith("data:")
+                    ? scape.thumbnail
+                    : `data:image/jpeg;base64,${scape.thumbnail}`
+                  : null
+
                 return (
                   <Card
                     key={scape.id}
-                    className="group relative flex cursor-pointer flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
+                    className="group relative mb-4 flex cursor-pointer break-inside-avoid flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
                     onClick={() => navigate(`/scape/${scape.id}`)}
                   >
-                    {/* Decorative Banner or Thumbnail */}
-                    <div className="h-36 w-full overflow-hidden border-b bg-muted/20">
-                      {scape.thumbnail ? (
+                    {/* Thumbnail (only if valid) */}
+                    {thumbnailSrc && (
+                      <div className="max-h-48 w-full overflow-hidden border-b bg-muted/20">
                         <img
-                          src={scape.thumbnail}
+                          src={thumbnailSrc}
                           alt="Scape Preview"
-                          className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                          className="h-full w-full transform-gpu object-cover object-center transition-transform duration-300 will-change-transform group-hover:scale-[1.02]"
                         />
-                      ) : (
-                        <div className="h-full w-full bg-gradient-to-br from-muted to-muted/50 transition-colors group-hover:from-primary/5 group-hover:to-blue-500/5" />
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     <CardHeader className="px-4 pb-2 pt-4">
                       <div className="flex items-start justify-between">

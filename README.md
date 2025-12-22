@@ -1329,6 +1329,134 @@ We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for 
 
 ---
 
+### 8. Synchronous Input Architecture: Solving the Pyodide Blocking Problem
+
+**The Challenge:**
+
+When I started building CodeScapes (specifically the Python runtime), I hit a major roadblock that every browser-based Python environment faces: `input()`.
+
+In standard Python, `input()` is a **blocking** operation. The interpreter pauses, waits for the user to type something and hit Enter, and then resumes.
+\`\`\`python
+x = input('What is your name? ') # Execution HALTS here
+print(x) # Execution RESUMES only after input
+\`\`\`
+
+In a browser, however, **you cannot block the main thread**. If you pause JS execution to wait for UI input, the entire page freezes—the input box itself won't work, invalidating the whole operation.
+
+Standard Pyodide solves this by using JavaScript `async/await`. They provide an async input method. But this means users have to write:
+\`\`\`python
+x = await input('What is your name? ')
+\`\`\`
+This breaks standard Python compatibility. I wanted students and developers to be able to copy-paste standard Python code and have it just _work_. I needed a way to pause the Python execution thread _without_ freezing the browser UI.
+
+**My Solution: The Service Worker Intercept Pattern**
+
+I architected a solution that leverages three distinct browser features working in concert: **Web Workers**, **Synchronous XHR**, and **Service Workers**.
+
+Here is the exact flow of what happens when you run `x = input()` in CodeScapes:
+
+\`\`\`
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│ Python Worker │ │ Service Worker │ │ Main Thread │
+│ (Web Worker) │ │ (Network) │ │ (React UI) │
+└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+│ │ │ 1. input() called │ │
+│ │ │ 2. Patch triggers │ │
+js.wait_for_input() │ │
+│ │ │ 3. POST Message ───────────────┼────────────────────────▶│ Show Input UI
+(Request UI) │ │
+│ │ │ 4. SYNC XHR GET ─────────────▶│ Intercept Request │
+/\_wait_input?id=123 │ │
+│ │ │ 5. BLOCKED (Wait) │ 6. Hold Request │
+│ │ (Do not reply) │
+│ │ │
+│ │ User Types "Alice"
+│ │ Clicks "Send"
+│ │ │
+│ │ 7. POST /\_submit_input
+│ │◀────────────────────────┤ { id: 123, val: "Alice" }
+│ │ │
+│ 8. Find pending ID │
+│ 9. Resolve XHR (200 OK) │
+│ │ │ 10. XHR Completes ◀─────────────┘ │
+Returns "Alice" │ │
+│ │ │ 11. input() returns │ │
+"Alice" │ │
+│ │ │ 12. Execution Resumes │ │
+\`\`\`
+
+**The Code Implementation:**
+
+1.  **The Python Patch (`src/runners/python/worker.ts`):**
+    I verify that we are running in a Worker, then I override the builtin `input` function. Instead of reading from stdin, it calls a JavaScript function `js.wait_for_input`.
+
+    \`\`\`python
+    import builtins
+    import js
+    def \_input(prompt=""):
+    return js.wait_for_input(prompt) # Bridges to JS
+    builtins.input = \_input
+    \`\`\`
+
+2.  **The Blocking Mechanism (`worker.ts`):**
+    This is the "magic" trick. I use `XMLHttpRequest` with the `async: false` flag. **This is deprecated on the main thread, but fully supported and valid in Web Workers.** It allows the worker thread to freeze and wait for the network response, which is exactly the behavior we want to simulate Python blocking!
+
+    \`\`\`typescript
+    // Inside the Web Worker
+    (self as any).wait_for_input = (prompt: string) => {
+    const id = generateUniqueId();
+
+    // Tell React to show the input box
+    postMessage({ type: "INPUT_REQUEST", payload: { prompt, id } });
+
+    // BLOCK the thread until the network replies
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", `/_wait_input?id=${id}`, false); // false = Synchronous
+    xhr.send(null); // Execution STOPS here until response
+
+    return xhr.responseText; // Returns "Alice"
+    }
+    \`\`\`
+
+3.  **The Interceptor (`public/sw.js`):**
+    When the worker makes that `GET /_wait_input` request, it doesn't go to a real server. My Service Worker intercepts it. Crucially, **it does not resolve the promise immediately**. It saves the `resolve` function in a Map and leaves the request hanging.
+
+    \`\`\`javascript
+    // Service Worker
+    self.addEventListener("fetch", (event) => {
+    if (url.pathname === "/\_wait_input") {
+    event.respondWith(new Promise((resolve) => {
+    // WE DO NOT RESOLVE YET.
+    // We just save this function for later.
+    pendingInputs.set(url.searchParams.get("id"), resolve);
+    }));
+    }
+    });
+    \`\`\`
+
+4.  **The Release (`public/sw.js`):**
+    When you click "Send" in the UI, React sends a `POST /_submit_input`. The Service Worker sees this, finds the _hanging_ request from step 3, and finally resolves it.
+
+    \`\`\`javascript
+    if (url.pathname === "/\_submit_input") {
+    const { id, value } = await event.request.json();
+    const resolveHangedRequest = pendingInputs.get(id);
+
+    // Wake up the Python Worker!
+    resolveHangedRequest(new Response(value));
+    }
+    \`\`\`
+
+**Why this is robust:**
+
+- **Zero Syntax Changes**: Users write standard `input()`. No `await`, no callbacks.
+- **Performance**: The main UI thread is never blocked. Only the background worker waits.
+- **Reliability**: Since it uses standard HTTP semantics (Request/Response), it works cleanly even in complex network environments, as long as the Service Worker is active.
+
+This architecture is what allows CodeScapes to provide a true, uncompromising Python shell experience entirely in the browser.
+
+---
+
 ## Acknowledgments
 
 - [Pyodide](https://pyodide.org/) - Python in the browser via WebAssembly

@@ -92,11 +92,42 @@ export class CloudRepository implements IScapeRepository {
     return response.blob()
   }
 
-  async getScape(id: string): Promise<Scape | undefined> {
-    const { data, error } = await supabase.from("scapes").select("*").eq("id", id).maybeSingle()
+  async incrementView(scapeId: string): Promise<void> {
+    await supabase.rpc("increment_view_count", { scape_id: scapeId })
+  }
+
+  async getScape(id: string, userId?: string): Promise<Scape | undefined> {
+    // 1. Fetch Scape Data
+    const { data, error } = await supabase
+      .from("scapes")
+      .select(
+        `
+        *,
+        author:profiles(
+           full_name,
+           username,
+           avatar_url
+        )
+      `
+      )
+      .eq("id", id)
+      .maybeSingle()
 
     if (error) throw error
     if (!data) return undefined
+
+    // 2. Fetch Stats in Parallel
+    const [likesResult, forksResult, userLikeResult] = await Promise.all([
+      supabase.from("likes").select("user_id", { count: "exact", head: true }).eq("scape_id", id),
+      supabase.from("scapes").select("id", { count: "exact", head: true }).eq("parent_id", id),
+      userId
+        ? supabase
+            .from("likes")
+            .select("*", { count: "exact", head: true })
+            .eq("scape_id", id)
+            .eq("user_id", userId)
+        : Promise.resolve({ count: 0 }),
+    ])
 
     // Map snake_case DB to camelCase Application
     return {
@@ -112,6 +143,21 @@ export class CloudRepository implements IScapeRepository {
       thumbnail: data.thumbnail,
       dependencies: data.dependencies || [],
       is_public: data.is_public || false,
+      description: data.description,
+      parentId: data.parent_id,
+      author: data.author
+        ? {
+            name: data.author.full_name || data.author.username || "Unknown",
+            avatar: data.author.avatar_url,
+            username: data.author.username,
+          }
+        : undefined,
+      stats: {
+        views: data.views || 0,
+        likes: likesResult.count || 0,
+        forks: forksResult.count || 0,
+        isLiked: (userLikeResult.count || 0) > 0,
+      },
     }
   }
 
@@ -348,9 +394,12 @@ export class CloudRepository implements IScapeRepository {
           // RLS ensures we only see our own files anyway.
         },
         (payload) => {
+          // NOTE: Server-side filtering for DELETE events requires REPLICA IDENTITY FULL and can be flaky.
+          // We remove the filter here and filter client-side in the callback/hook to be safe.
+          // Raw Payload: { schema: 'public', table: 'files', commit_timestamp: '...', eventType: '...', new: {}, old: {} }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const newData = payload.new as any
-
+          const p = payload as any
+          const newData = p.new
           // Decode content if needed before callback
           if (
             (payload.eventType === "INSERT" || payload.eventType === "UPDATE") &&
@@ -374,5 +423,347 @@ export class CloudRepository implements IScapeRepository {
     return () => {
       supabase.removeChannel(channel)
     }
+  }
+
+  // --- Community Implementation ---
+
+  async getPublicScapes(filter?: "web" | "python" | "flow"): Promise<Scape[]> {
+    let query = supabase
+      .from("scapes")
+      .select(
+        `
+        *,
+        profiles (
+          full_name,
+          username,
+          avatar_url
+        ),
+        deployments!published_version_id (
+          thumbnail
+        ),
+        likes (count),
+        comments (count)
+      `
+      )
+      .eq("is_public", true)
+      .not("published_version_id", "is", null)
+      .order("updated_at", { ascending: false })
+
+    if (filter) {
+      if (filter === "web")
+        query = query.eq("environment", "html-css-js") // Map 'web' to actual env ID
+      else if (filter === "python") query = query.eq("environment", "python-script")
+      // Mapping logic might need to be more robust or match EnvironmentIds directly
+      // For now assume standard env IDs if passed directly, or map simplified
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    // Fetch stats in parallel or separate query?
+    // For now simple list. Ideally we join with likes count but that requires View/RPC.
+    // We'll leave stats empty for list view or fetch later.
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return data.map((d: any) => {
+      // Handle Supabase join sometimes returning array
+      const deploymentRaw = d.deployments
+      const deployment = Array.isArray(deploymentRaw) ? deploymentRaw[0] : deploymentRaw
+      const frozenThumbnail = deployment?.thumbnail
+
+      return {
+        id: d.id,
+        name: d.name,
+        environment: d.environment as Scape["environment"],
+        template: d.template,
+        source: "cloud",
+        authorId: d.author_id,
+        syncStatus: "synced",
+        createdAt: new Date(d.created_at),
+        updatedAt: new Date(d.updated_at),
+        thumbnail: frozenThumbnail || d.thumbnail, // PREFER FROZEN THUMBNAIL
+        dependencies: d.dependencies || [],
+        is_public: true,
+        description: d.description,
+        parentId: d.parent_id,
+        author: d.profiles
+          ? {
+              name: d.profiles.full_name || d.profiles.username || "Unknown",
+              avatar: d.profiles.avatar_url,
+              username: d.profiles.username,
+            }
+          : undefined,
+        stats: {
+          views: 0,
+          likes: d.likes?.[0]?.count || 0,
+          forks: 0,
+        },
+      }
+    })
+  }
+
+  async toggleLike(scapeId: string, userId: string): Promise<boolean> {
+    // Check if liked
+    const { data: existing } = await supabase
+      .from("likes")
+      .select("*")
+      .eq("scape_id", scapeId)
+      .eq("user_id", userId)
+      .maybeSingle()
+
+    if (existing) {
+      await supabase.from("likes").delete().eq("scape_id", scapeId).eq("user_id", userId)
+      return false
+    } else {
+      await supabase.from("likes").insert({ scape_id: scapeId, user_id: userId })
+      return true
+    }
+  }
+
+  async getComments(scapeId: string): Promise<Record<string, unknown>[]> {
+    const { data, error } = await supabase
+      .from("comments")
+      .select(
+        `
+        *,
+        author:profiles(
+          username,
+          full_name,
+          avatar_url
+        )
+      `
+      )
+      .eq("scape_id", scapeId)
+      .order("created_at", { ascending: true })
+
+    if (error) throw error
+    return data.map((c) => ({
+      ...c,
+      author: {
+        name: c.author?.full_name || c.author?.username || "Unknown",
+        avatar: c.author?.avatar_url,
+      },
+    }))
+  }
+
+  // ... (existing code for addComment, deleteComment, forkScape, deployScape, getPublishedScape) ...
+
+  async addComment(
+    scapeId: string,
+    userId: string,
+    content: string,
+    parentId?: string
+  ): Promise<void> {
+    const { error } = await supabase.from("comments").insert({
+      scape_id: scapeId,
+      author_id: userId,
+      content,
+      parent_id: parentId,
+    })
+    if (error) throw error
+  }
+
+  async deleteComment(commentId: string): Promise<void> {
+    const { error } = await supabase.from("comments").delete().eq("id", commentId)
+    if (error) throw error
+  }
+
+  async forkScape(scapeId: string, userId: string): Promise<string> {
+    // 1. Fetch Original
+    const original = await this.getScape(scapeId)
+    if (!original) throw new Error("Scape not found")
+
+    // 2. Create New Scape ID
+    const newId = crypto.randomUUID()
+
+    // 3. Save Scape Copy
+    await this.saveScape({
+      ...original,
+      id: newId,
+      name: `${original.name} (Fork)`,
+      authorId: userId, // New Owner
+      source: "cloud",
+      parentId: original.id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      is_public: false, // Private by default
+    })
+
+    // 4. Fetch Files
+    const files = await this.getFiles(scapeId)
+
+    // 5. Duplicate Files
+    await this.bulkCreateFiles(
+      files.map((f) => ({
+        ...f,
+        id: crypto.randomUUID(), // New File ID
+        scapeId: newId, // Link to New Scape
+      }))
+    )
+
+    return newId
+  }
+
+  // --- Deployment System ---
+
+  async deployScape(scapeId: string): Promise<string> {
+    // 1. Fetch current scape and files
+    const { data: scapeData, error: scapeError } = await supabase
+      .from("scapes")
+      .select("thumbnail")
+      .eq("id", scapeId)
+      .single()
+
+    if (scapeError) throw scapeError
+
+    const files = await this.getFiles(scapeId)
+
+    // 2. Create Snapshot JSON
+    const snapshot = {
+      version: 1, // Schema version for the snapshot format itself
+      timestamp: Date.now(),
+      thumbnail: scapeData.thumbnail, // Cache the thumbnail
+      files: files.map((f) => ({
+        name: f.name,
+        content:
+          f.content instanceof Uint8Array
+            ? "base64:" + btoa(String.fromCharCode(...f.content))
+            : f.content,
+        language: f.language,
+      })),
+    }
+
+    // 3. Upload to Storage
+    const deploymentId = crypto.randomUUID()
+    const path = `${scapeId}/${deploymentId}.json`
+    const fileBody = new Blob([JSON.stringify(snapshot)], { type: "application/json" })
+
+    const { error: uploadError } = await supabase.storage
+      .from("scape-deployments")
+      .upload(path, fileBody, { upsert: true })
+
+    if (uploadError) throw uploadError
+
+    // 4. Create Deployment Record
+    // Determine version number: fetch latest version + 1
+    const { data: latest } = await supabase
+      .from("deployments")
+      .select("version")
+      .eq("scape_id", scapeId)
+      .order("version", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const nextVersion = (latest?.version || 0) + 1
+
+    const { error: deployError } = await supabase.from("deployments").insert({
+      id: deploymentId,
+      scape_id: scapeId,
+      version: nextVersion,
+      url: path, // Storing path relative to bucket
+      thumbnail: scapeData.thumbnail, // Freeze the thumbnail in the DB record too
+    })
+
+    if (deployError) throw deployError
+
+    // 5. Update Scape with Published Version link
+    // And ensure is_public is true (optional, maybe user wants private deployment?)
+    // For community platform: Deployment usually implies Public.
+    const { error: updateError } = await supabase
+      .from("scapes")
+      .update({
+        published_version_id: deploymentId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", scapeId)
+
+    if (updateError) throw updateError
+
+    return deploymentId
+  }
+
+  async getPublishedScape(scapeId: string): Promise<{ scape: Scape; files: ScapeFile[] } | null> {
+    // 1. Fetch Scape with published_version_id
+    const { data: scapeData, error: scapeError } = await supabase
+      .from("scapes")
+      .select("*, published_version_id")
+      .eq("id", scapeId)
+      .maybeSingle()
+
+    if (scapeError || !scapeData || !scapeData.published_version_id) return null
+
+    // 2. Fetch Deployment Record to get Storage Path
+    const { data: deployment, error: deployError } = await supabase
+      .from("deployments")
+      .select("url")
+      .eq("id", scapeData.published_version_id)
+      .single()
+
+    if (deployError || !deployment) return null
+
+    // 3. Download Snapshot JSON
+    // Use helper if authenticated, or public URL if bucket is public.
+    // Bucket is public, so we can use publicUrl or download.
+    // "download" method requires auth usually for private buckets, but here it works for public too.
+    // Using .download() from supabase client is robust.
+
+    const { data: blob, error: downloadError } = await supabase.storage
+      .from("scape-deployments")
+      .download(deployment.url)
+
+    if (downloadError) {
+      console.error("Failed to download snapshot", downloadError)
+      return null
+    }
+
+    const text = await blob.text()
+    const snapshot = JSON.parse(text)
+
+    // 4. Hydrate
+    const files: ScapeFile[] = snapshot.files.map(
+      (f: { name: string; content: string; language: string }) => {
+        let content: string | Uint8Array = f.content
+        if (typeof content === "string" && content.startsWith("base64:")) {
+          content = base64ToArrayBuffer(content.slice(7))
+        }
+        return {
+          id: crypto.randomUUID(), // Virtual ID
+          scapeId: scapeId,
+          name: f.name,
+          language: f.language as FileType,
+          content: content,
+          updatedAt: new Date(snapshot.timestamp),
+        }
+      }
+    )
+
+    const scape: Scape = {
+      id: scapeData.id,
+      name: scapeData.name,
+      environment: scapeData.environment as Scape["environment"],
+      template: scapeData.template,
+      source: "cloud",
+      authorId: scapeData.author_id,
+      createdAt: new Date(scapeData.created_at),
+      updatedAt: new Date(scapeData.updated_at),
+      thumbnail: snapshot.thumbnail || scapeData.thumbnail, // Use cached thumbnail if available
+      dependencies: scapeData.dependencies || [],
+      is_public: scapeData.is_public,
+      description: scapeData.description,
+      parentId: scapeData.parent_id,
+    }
+
+    return { scape, files }
+  }
+
+  async getDeployments(scapeId: string): Promise<Record<string, unknown>[]> {
+    const { data, error } = await supabase
+      .from("deployments")
+      .select("id, version, created_at, thumbnail")
+      .eq("scape_id", scapeId)
+      .order("version", { ascending: false })
+
+    if (error) throw error
+    return data
   }
 }

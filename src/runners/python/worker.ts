@@ -110,7 +110,7 @@ self.onmessage = async (e: MessageEvent) => {
 
       // Define blocking input function in JS
       // Using self explicitly to attach to global scope for Pyodide access
-      ; (self as any).wait_for_input = (prompt: string) => {
+      ;(self as any).wait_for_input = (prompt: string) => {
         const id = Math.random().toString(36).substring(7)
 
         // Notify Main Thread (React) to show input UI
@@ -564,4 +564,4 @@ except ImportError:
   }
 }
 
-export { }
+export {}

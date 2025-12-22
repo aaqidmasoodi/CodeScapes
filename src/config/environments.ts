@@ -136,7 +136,7 @@ animate();
 function init() {
   // 1. Scene with Mustard Background
   scene = new THREE.Scene();
-  scene.background = new THREE.Color('#FFC857'); // Nice warm mustard
+  scene.background = new THREE.Color('rgba(210, 152, 35, 1)'); // Nice warm mustard
 
   // 2. Camera
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -151,7 +151,7 @@ function init() {
   // 4. Object: Cube with Material that reacts to light
   const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
   const material = new THREE.MeshStandardMaterial({ 
-    color: '#2E4057', // Deep Indigo contrasting color
+    color: 'rgba(77, 157, 85, 1)', // Deep Indigo contrasting color
     roughness: 0.3,   // Slightly shiny
     metalness: 0.1
   });
@@ -226,7 +226,6 @@ canvas {
 <html lang="en">
   <head>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/p5.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/addons/p5.sound.min.js"></script>
     <link rel="stylesheet" type="text/css" href="style.css">
     <meta charset="utf-8" />
   </head>
@@ -243,6 +242,7 @@ canvas {
             content: `html, body {
   margin: 0;
   padding: 0;
+  overflow: hidden;
 }
 canvas {
   display: block;
@@ -251,19 +251,74 @@ canvas {
           {
             name: "sketch.js",
             language: "javascript",
-            content: `function setup() {
+            content: `// Particle System - Move your mouse to create particles!
+let particles = [];
+
+function setup() {
   createCanvas(windowWidth, windowHeight);
+  colorMode(HSB, 360, 100, 100, 100);
+  background(0);
 }
 
 function draw() {
-  background(20);
-  fill(255, 0, 100);
-  noStroke();
-  circle(mouseX, mouseY, 50);
+  // Fade background for trail effect
+  background(0, 0, 0, 15);
+  
+  // Add new particles at mouse position
+  if (mouseIsPressed || frameCount % 3 === 0) {
+    for (let i = 0; i < 3; i++) {
+      particles.push(new Particle(mouseX, mouseY));
+    }
+  }
+  
+  // Update and display particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update();
+    particles[i].display();
+    
+    // Remove dead particles
+    if (particles[i].isDead()) {
+      particles.splice(i, 1);
+    }
+  }
+  
+  // Limit particles for performance
+  if (particles.length > 500) {
+    particles.splice(0, particles.length - 500);
+  }
+}
+
+class Particle {
+  constructor(x, y) {
+    this.pos = createVector(x, y);
+    this.vel = p5.Vector.random2D().mult(random(1, 4));
+    this.acc = createVector(0, 0.05); // Gravity
+    this.lifespan = 255;
+    this.size = random(5, 15);
+    this.hue = (frameCount * 2) % 360; // Rainbow effect
+  }
+  
+  update() {
+    this.vel.add(this.acc);
+    this.pos.add(this.vel);
+    this.lifespan -= 3;
+    this.size *= 0.98;
+  }
+  
+  display() {
+    noStroke();
+    fill(this.hue, 80, 100, this.lifespan / 2.55);
+    circle(this.pos.x, this.pos.y, this.size);
+  }
+  
+  isDead() {
+    return this.lifespan < 0 || this.size < 0.5;
+  }
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+  background(0);
 }`,
           },
         ],
@@ -273,10 +328,10 @@ function windowResized() {
   python: {
     id: "python",
     name: "Python 3",
-    description: "Python runtime with Turtle graphics support",
+    description: "Python runtime with data science support",
     icon: Terminal,
     entryPoint: "main.py",
-    allowedExtensions: [".py", ".txt", ".json"],
+    allowedExtensions: [".py", ".txt", ".json", ".csv"],
     defaultLayout: "terminal",
     runner: "python-runner",
     capabilities: {
@@ -297,65 +352,10 @@ function windowResized() {
         ],
       },
       {
-        id: "turtle",
-        name: "Turtle Graphics",
-        description: "Classic Turtle drawing example",
-        files: [
-          {
-            name: "main.py",
-            language: "python",
-            content: `import turtle
-
-t = turtle.Turtle()
-t.speed(5)
-t.color("blue")
-
-for i in range(4):
-    t.forward(100)
-    t.right(90)
-
-print("Drawing complete")
-turtle.done()`,
-          },
-        ],
-      },
-      {
-        id: "pong",
-        name: "Pong Game",
-        description: "Simple Pong game using Turtle",
-        files: [
-          {
-            name: "main.py",
-            language: "python",
-            content: `import turtle
-
-wn = turtle.Screen()
-wn.title("Pong by CodeScape")
-wn.bgcolor("black")
-wn.setup(width=800, height=600)
-wn.tracer(0)
-
-# Paddle A
-paddle_a = turtle.Turtle()
-paddle_a.speed(0)
-paddle_a.shape("square")
-paddle_a.color("white")
-paddle_a.shapesize(stretch_wid=5, stretch_len=1)
-paddle_a.penup()
-paddle_a.goto(-350, 0)
-paddle_a.visible = True
-
-# Main Game Loop
-while True:
-    wn.update()
-`,
-          },
-        ],
-      },
-      {
         id: "matplotlib",
         name: "Data Visualization",
-        description: "Matplotlib Example",
+        description: "Matplotlib & NumPy starter",
+        dependencies: ["matplotlib", "numpy"],
         files: [
           {
             name: "main.py",
@@ -383,6 +383,57 @@ print("Showing Plot 2...")
 plt.show()
 
 print("All Done!")`,
+          },
+        ],
+      },
+      {
+        id: "data-analysis",
+        name: "Data Analysis",
+        description: "Pandas & CSV analysis starter",
+        dependencies: ["matplotlib", "numpy", "pandas"],
+        files: [
+          {
+            name: "data.csv",
+            language: "csv",
+            content: `Hospital_Name,County,Specialty,Number_of_Beds,Year
+St James Hospital,Dublin,Cardiology,950,2023
+Cork University Hospital,Cork,Oncology,820,2022
+University Hospital Galway,Galway,Neurology,700,2023
+Mater Misericordiae Hospital,Dublin,Emergency Medicine,650,2021
+Tallaght University Hospital,Dublin,Orthopedics,580,2022
+University Hospital Limerick,Limerick,General Surgery,720,2023
+Waterford University Hospital,Waterford,Cardiology,500,2021
+Sligo University Hospital,Sligo,Respiratory Medicine,410,2022
+Letterkenny University Hospital,Donegal,Pediatrics,390,2023
+Naas General Hospital,Kildare,Internal Medicine,360,2021
+Portiuncula University Hospital,Roscommon,Endocrinology,340,2022
+Mayo University Hospital,Mayo,Radiology,430,2023
+Our Lady of Lourdes Hospital,Louth,Gastroenterology,460,2021
+St Luke's General Hospital,Kilkenny,Oncology,300,2022
+Wexford General Hospital,Wexford,Emergency Medicine,350,2023`,
+          },
+          {
+            name: "main.py",
+            language: "python",
+            content: `import pandas as pd
+import matplotlib.pyplot as plt
+
+# Read the CSV
+df = pd.read_csv("data.csv")
+
+# Analysis: total beds per county
+beds_by_county = df.groupby("County")["Number_of_Beds"].sum()
+
+# Plot
+plt.figure()
+beds_by_county.plot(kind="bar")
+plt.title("Total Number of Hospital Beds by County")
+plt.xlabel("County")
+plt.ylabel("Number of Beds")
+plt.show()
+
+# Display the dataframe
+df`,
           },
         ],
       },
