@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Settings, Layout, LogOut } from "lucide-react"
+import { Settings, LogOut, Database, Cloud, Globe } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
@@ -26,9 +26,13 @@ export function Sidebar({
   // Mobile always expanded, Desktop depends on hover
   const isExpanded = isMobile || isHovered
 
-  const tabs = [
-    { id: "scapes", icon: Layout, label: "My Scapes", path: "/dashboard/scapes" },
+  const allTabs = [
+    { id: "local", icon: Database, label: "Local Scapes", path: "/dashboard/local" },
+    { id: "cloud", icon: Cloud, label: "Cloud Scapes", path: "/dashboard/cloud" },
+    { id: "community", icon: Globe, label: "Community", path: "/community" },
   ]
+
+  const tabs = user ? allTabs : allTabs.filter(t => t.id !== "cloud")
 
   const handleTabClick = (tabId: string, path: string | null) => {
     if (onTabChange) {

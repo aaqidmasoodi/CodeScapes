@@ -21,6 +21,13 @@ export interface IScapeRepository {
   bulkDeleteFiles(ids: string[]): Promise<void>
   bulkUpdateFiles(updates: { id: string; changes: Partial<ScapeFile> }[]): Promise<void>
 
+  // Community Features
+  getPublicScapes(filter?: "web" | "python" | "flow"): Promise<Scape[]>
+  toggleLike(scapeId: string, userId: string): Promise<boolean> // returns true if liked
+  getComments(scapeId: string): Promise<any[]>
+  addComment(scapeId: string, userId: string, content: string): Promise<void>
+  forkScape(scapeId: string, userId: string): Promise<string> // returns new scapeId
+
   // Realtime
   subscribeToFiles?(
     scapeId: string,

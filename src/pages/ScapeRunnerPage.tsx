@@ -15,11 +15,11 @@ const localRepo = new LocalRepository()
 const cloudRepo = new CloudRepository()
 
 interface ScapeRunnerProps {
-  mode?: "dev" | "live"
+  mode?: "dev" | "live" | "published"
 }
 
 export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
-  const { scapeId } = useParams()
+  const { scapeId } = useParams() // Keep scapeId for fetching
   const [scape, setScape] = useState<Scape | null>(null)
   const [files, setFiles] = useState<ScapeFile[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,35 +32,65 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
 
   useEffect(() => {
     async function fetchScape() {
+      // Use the prop mode if available, otherwise fallback to urlMode, then default to "dev"
+      // Note: urlMode from useParams might be synonymous with route path, but we pass mode prop from App.tsx usually.
+      const currentMode = mode;
+
       if (!scapeId) return
       setLoading(true)
       setError(null)
       try {
-        console.log(`[Runner] Booting Scape: ${scapeId}`)
-        // 1. Try Local (Skip if Live Mode)
-        if (mode !== "live") {
-          const localScape = await localRepo.getScape(scapeId)
-          if (localScape) {
-            setScape(localScape)
-            setFiles(await localRepo.getFiles(scapeId))
+        console.log(`[Runner] Booting Scape: ${scapeId} In Mode: ${currentMode}`)
+
+        // 1. Published Mode (Community/Public View)
+        if (currentMode === "published") {
+          const published = await cloudRepo.getPublishedScape(scapeId)
+          if (published) {
+            setScape(published.scape)
+            setFiles(published.files)
+            setLoading(false)
+            return
+          } else {
+            throw new Error("No published version found for this Scape.")
+          }
+        }
+
+        // 2. Live Mode (Developer Preview - Draft)
+        if (currentMode === "live") {
+          // Fetch remote draft explicitly
+          const cloudScape = await cloudRepo.getScape(scapeId)
+          if (cloudScape) {
+            setScape(cloudScape)
+            setFiles(await cloudRepo.getFiles(scapeId))
             setLoading(false)
             return
           }
         }
-        // 2. Try Cloud
-        const cloudScape = await cloudRepo.getScape(scapeId)
 
-        if (cloudScape) {
-          setScape(cloudScape)
-          const cloudFiles = await cloudRepo.getFiles(scapeId)
-          setFiles(cloudFiles)
+        // 3. Dev Mode (Local -> Cloud Draft Fallback)
+        // Try Local First
+        const localScape = await localRepo.getScape(scapeId)
+        if (localScape) {
+          setScape(localScape)
+          setFiles(await localRepo.getFiles(scapeId))
           setLoading(false)
           return
         }
+
+        // Fallback to Cloud Draft
+        const cloudScape = await cloudRepo.getScape(scapeId)
+        if (cloudScape) {
+          setScape(cloudScape)
+          setFiles(await cloudRepo.getFiles(scapeId))
+          setLoading(false)
+          return
+        }
+
         setError("Scape not found")
-      } catch (err) {
+      } catch (err: unknown) {
         console.error(err)
-        setError("Failed to load Scape")
+        const message = err instanceof Error ? err.message : "Failed to load Scape"
+        setError(message)
       } finally {
         setLoading(false)
       }
@@ -99,8 +129,9 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
     })
   }
 
-  // Live Mode: Render only the runner, no chrome
-  if (mode === "live") {
+  // Live/Published Mode: Render only the runner, no chrome, no console (unless desired for live debugging?)
+  // User said "live link should... [not] have console".
+  if (mode === "live" || mode === "published") {
     return (
       <div className="relative h-screen w-full overflow-hidden bg-background">
         {RunnerComponent && (
@@ -108,7 +139,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
             files={files}
             scapeId={scape.id}
             dependencies={scape.dependencies}
-            onOutput={addLog}
+            onOutput={addLog} // We still capture logs, maybe for internal use, but don't show UI
             isLive={true}
           />
         )}
@@ -130,9 +161,8 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
 
       {/* Console Drawer (Overlay) */}
       <div
-        className={`absolute bottom-0 left-0 right-0 z-50 flex flex-col border-t border-border bg-background/95 backdrop-blur transition-all duration-300 ease-in-out ${
-          isConsoleOpen ? "h-1/3" : "h-10"
-        }`}
+        className={`absolute bottom-0 left-0 right-0 z-50 flex flex-col border-t border-border bg-background/95 backdrop-blur transition-all duration-300 ease-in-out ${isConsoleOpen ? "h-1/3" : "h-10"
+          }`}
       >
         {/* Drawer Handle / Header */}
         <div

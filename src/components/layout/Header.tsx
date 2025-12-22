@@ -1,3 +1,4 @@
+import { Link, useLocation } from "react-router-dom"
 import { ModeToggle } from "@/components/mode-toggle"
 import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
@@ -18,12 +19,14 @@ interface HeaderProps {
   customTitle?: React.ReactNode
   endActions?: React.ReactNode
   showFullLogo?: boolean
+  startContent?: React.ReactNode
 }
 
-export function Header({ actions, customTitle, endActions, showFullLogo = false }: HeaderProps) {
+export function Header({ actions, customTitle, endActions, showFullLogo = false, startContent }: HeaderProps) {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-2">
+        {startContent}
         {customTitle ? (
           customTitle
         ) : showFullLogo ? (
@@ -45,9 +48,23 @@ export function Header({ actions, customTitle, endActions, showFullLogo = false 
 
 function AuthButtons() {
   const { user, signOut, loading } = useAuth()
+  const location = useLocation()
+
+  // Dashboard routes should redirect to full login page
+  // Editor routes (and others) should use the modal to preserve state
+  const isDashboard = location.pathname.startsWith("/dashboard") || location.pathname === "/"
+
   if (loading) return null
 
   if (!user) {
+    if (isDashboard) {
+      return (
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/login">Sign In</Link>
+        </Button>
+      )
+    }
+
     return (
       <AuthDialog>
         <Button variant="outline" size="sm">

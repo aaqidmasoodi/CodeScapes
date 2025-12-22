@@ -26,7 +26,6 @@ import { useDebounce } from "@/hooks/useDebounce"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { getLanguageFromFilename } from "@/lib/language-utils"
 import {
-  Zap,
   LogOut,
   PanelRightOpen,
   Play,
@@ -45,6 +44,7 @@ import { ENVIRONMENTS } from "@/config/environments"
 import { SettingsModal } from "@/components/editor/SettingsModal"
 import { checkShortcut } from "@/config/shortcuts"
 import { CodeScapeLogo } from "@/components/brand/Logo"
+import { DeploymentDialog } from "@/components/editor/DeploymentDialog"
 
 import {
   AlertDialog,
@@ -972,10 +972,11 @@ export default function ScapeEditor() {
                 }}
               />
 
-              <Button size="sm">
-                <Zap className="mr-2 h-4 w-4" />
-                Deploy
-              </Button>
+              <DeploymentDialog
+                scapeId={scape.id}
+                isOwner={user?.id === scape.authorId}
+                isCloud={scape.source === "cloud"}
+              />
             </div>
           </>
         }

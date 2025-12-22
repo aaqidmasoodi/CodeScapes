@@ -37,6 +37,7 @@ import { type Scape } from "@/lib/db"
 import { useScapes } from "@/hooks/useScapes"
 
 import { Skeleton } from "@/components/ui/skeleton"
+import { useAuth } from "@/hooks/useAuth"
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -52,10 +53,25 @@ export default function Dashboard() {
 
   // Real data from Hooks
   const { scapes: myScapes, loading, deleteScape } = useScapes()
+  const { user } = useAuth()
+
+  const activeTabValidated = ["local", "cloud"].includes(activeTab) ? activeTab : "local"
+
+  // Redirect if trying to access cloud without auth
+  if (activeTabValidated === "cloud" && !user) {
+    navigate("/dashboard/local", { replace: true })
+    return null
+  }
 
   const filteredScapes = myScapes?.filter((scape) => {
+    // 1. Filter by Tab (Source)
+    if (activeTabValidated === "local" && scape.source !== "local") return false
+    if (activeTabValidated === "cloud" && scape.source !== "cloud") return false
+
+    // 2. Filter by Search
     const matchesSearch = scape.name.toLowerCase().includes(searchQuery.toLowerCase())
     if (!matchesSearch) return false
+
     return true
   })
 
@@ -82,8 +98,14 @@ export default function Dashboard() {
         {/* Toolbar */}
         <div className="sticky top-0 z-10 flex flex-col gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">My Scapes</h1>
-            <p className="text-sm text-muted-foreground">Manage your local and cloud projects</p>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {activeTabValidated === "cloud" ? "Cloud Scapes" : "Local Scapes"}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {activeTabValidated === "cloud"
+                ? "Manage your synced projects"
+                : "Manage your local projects"}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative w-full md:w-64">

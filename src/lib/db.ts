@@ -15,6 +15,18 @@ export interface Scape {
   updatedAt: Date
   dependencies?: string[]
   is_public?: boolean
+  description?: string
+  parentId?: string // For forks
+  author?: {
+    name: string
+    avatar?: string
+    username?: string
+  }
+  stats?: {
+    views: number
+    likes: number
+    forks: number
+  }
 }
 
 export interface File {

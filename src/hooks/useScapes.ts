@@ -47,7 +47,22 @@ export function useScapes() {
 
   // 3. Merge & Sort (Deduplicate)
   const combinedScapes = useMemo(() => {
-    const local = localScapes || []
+    const rawLocal = localScapes || []
+
+    // If not logged in, ONLY show strictly local scapes (ignore cached cloud ones)
+    if (!user) {
+      return rawLocal
+        .filter((s) => s.source === "local")
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    }
+
+    // Filter local cache: Remove cloud scapes that don't belong to current user
+    const local = rawLocal.filter((s) => {
+      if (s.source === "local") return true
+      // If it's a cached cloud scape, it MUST belong to the current user
+      return s.authorId === user.id
+    })
+
     const cloud = cloudScapes || []
 
     const cloudIds = new Set(cloud.map((s) => s.id))
@@ -57,7 +72,7 @@ export function useScapes() {
     return [...uniqueLocal, ...cloud].sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     )
-  }, [localScapes, cloudScapes])
+  }, [localScapes, cloudScapes, user])
 
   const deleteScape = async (scape: Scape) => {
     try {

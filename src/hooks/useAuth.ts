@@ -7,6 +7,10 @@ interface AuthState {
   user: User | null
   loading: boolean
   signIn: () => Promise<void>
+  signInWithGithub: () => Promise<void>
+  signInWithGoogle: () => Promise<void>
+  signInWithEmail: (email: string, password: string) => Promise<void>
+  signUpWithEmail: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   setSession: (session: Session | null) => void
 }
@@ -17,13 +21,38 @@ export const useAuth = create<AuthState>((set) => ({
   loading: true,
   setSession: (session) => set({ session, user: session?.user ?? null, loading: false }),
   signIn: async () => {
-    // For now, trigger Github OAuth. In future, we can be flexible.
-    // Redirects to current URL.
+    // Legacy support: defaults to Github
+    await useAuth.getState().signInWithGithub()
+  },
+  signInWithGithub: async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "github",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
       },
+    })
+    if (error) throw error
+  },
+  signInWithGoogle: async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+    if (error) throw error
+  },
+  signInWithEmail: async (email, password) => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+    if (error) throw error
+  },
+  signUpWithEmail: async (email, password) => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
     })
     if (error) throw error
   },

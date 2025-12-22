@@ -179,12 +179,9 @@ export function useScapeLoading(id: string, options?: { skipLocal?: boolean }) {
   const scape = localScape ?? cloudScape
 
   // Loading state logic:
-  // We are loading if:
-  // 1. We don't have a local scape (localScape === undefined)
-  // 2. AND we are still checking the cloud (isCloudLoading === true)
-  //
-  // Even if localScape is missing, if cloud check finished and found nothing, we are done (Not Found).
-  const isLoading = localScape === undefined && isCloudLoading
+  // We are loading if we don't have a scape yet AND we are still fetching cloud.
+  // Note: localScape being undefined is ambiguous (Loading vs Not Found), so we don't block on it if cloud is done.
+  const isLoading = !scape && isCloudLoading
 
   return {
     scape,
