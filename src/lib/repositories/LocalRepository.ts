@@ -103,7 +103,8 @@ export class LocalRepository implements IScapeRepository {
   async toggleLike(): Promise<boolean> {
     return false
   }
-  async getComments(): Promise<unknown[]> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async getComments(_scapeId: string): Promise<unknown[]> {
     return []
   }
   async addComment(): Promise<void> {}
