@@ -14,7 +14,8 @@ import {
 import { Github, Loader2, Mail } from "lucide-react"
 
 export default function AuthPage() {
-  const { signInWithGithub, signInWithGoogle, signInWithEmail, signUpWithEmail, loading } = useAuth()
+  const { signInWithGithub, signInWithGoogle, signInWithEmail, signUpWithEmail, loading } =
+    useAuth()
   const [isGithubLoading, setIsGithubLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const [isEmailLoading, setIsEmailLoading] = useState(false)
@@ -166,7 +167,7 @@ export default function AuthPage() {
         <CardFooter className="flex flex-col space-y-2 text-center text-sm text-muted-foreground">
           <button
             onClick={() => setIsSignUp(!isSignUp)}
-            className="text-primary hover:underline hover:text-primary/80"
+            className="text-primary hover:text-primary/80 hover:underline"
           >
             {isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
           </button>

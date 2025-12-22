@@ -74,11 +74,12 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
       setCollaborators((prev) => [collab, ...prev])
       setEmail("")
       toast({ title: `Added ${email} as collaborator` })
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error"
       toast({
         variant: "destructive",
         title: "Failed to add collaborator",
-        description: error.message,
+        description: message,
       })
     } finally {
       setAdding(false)
@@ -90,7 +91,7 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
       await collaboratorsService.removeCollaborator(collab.id)
       setCollaborators((prev) => prev.filter((c) => c.id !== collab.id))
       toast({ title: "Collaborator removed" })
-    } catch (error) {
+    } catch {
       toast({ variant: "destructive", title: "Failed to remove" })
     }
   }
@@ -181,11 +182,17 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
             {/* Copy Link */}
             <div className="flex items-center space-x-2">
               <div className="grid flex-1 gap-2">
-                <Label htmlFor="link" className="sr-only">Link</Label>
+                <Label htmlFor="link" className="sr-only">
+                  Link
+                </Label>
                 <Input id="link" value={shareUrl} readOnly className="h-9 font-mono text-xs" />
               </div>
               <Button type="submit" size="sm" onClick={handleCopy} className="px-3">
-                {copied ? <span className="text-green-500">Copied</span> : <Copy className="h-4 w-4" />}
+                {copied ? (
+                  <span className="text-green-500">Copied</span>
+                ) : (
+                  <Copy className="h-4 w-4" />
+                )}
               </Button>
             </div>
 
@@ -205,7 +212,7 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
                       await repo.updateScape(scape.id, { is_public: checked })
                       toast({ title: checked ? "Project is now Public" : "Project is now Private" })
                       if (onSyncComplete) onSyncComplete({ ...scape, is_public: checked })
-                    } catch (err) {
+                    } catch {
                       setIsPublic(!checked)
                       toast({ title: "Failed to update visibility", variant: "destructive" })
                     }
@@ -236,8 +243,16 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
                     onKeyDown={(e) => e.key === "Enter" && handleAddCollaborator()}
                     className="h-8 flex-1 text-xs"
                   />
-                  <Button size="sm" onClick={handleAddCollaborator} disabled={adding || !email.trim()}>
-                    {adding ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus className="h-3 w-3" />}
+                  <Button
+                    size="sm"
+                    onClick={handleAddCollaborator}
+                    disabled={adding || !email.trim()}
+                  >
+                    {adding ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <UserPlus className="h-3 w-3" />
+                    )}
                   </Button>
                 </div>
 
@@ -257,7 +272,9 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
                         key={collab.id}
                         className="flex items-center justify-between rounded border px-2 py-1"
                       >
-                        <span className="text-xs">{collab.email || collab.user_id.slice(0, 8)}</span>
+                        <span className="text-xs">
+                          {collab.email || collab.user_id.slice(0, 8)}
+                        </span>
                         <Button
                           variant="ghost"
                           size="icon"

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { useParams, Navigate } from "react-router-dom"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
@@ -23,7 +25,6 @@ import { CodeScapeLogo } from "@/components/brand/Logo"
 import { useFlowStore, initAutosave } from "@/stores/flowStore"
 import { SpritePane } from "@/components/editor/SpritePane"
 
-
 const StopIcon = ({ className }: { className?: string }) => (
   <div
     className={`rounded-sm bg-current ${className}`}
@@ -43,7 +44,13 @@ export default function FlowEditor() {
   const { scape, source, isLoading } = useScapeLoading(id)
 
   // 2. FILESYSTEM
-  const { files, isInitialized: isFsInitialized, updateFile, createFile, updateScape } = useFileSystem(id, source)
+  const {
+    files,
+    isInitialized: isFsInitialized,
+    updateFile,
+    createFile,
+    updateScape,
+  } = useFileSystem(id, source)
 
   // 3. FLOW STORE (Global State)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,21 +75,23 @@ export default function FlowEditor() {
     if (!id || !isFsInitialized) return
 
     // Find project.json if exists
-    const projectFile = files.find(f => f.name === "project.json")
+    const projectFile = files.find((f) => f.name === "project.json")
     console.log("[FlowEditor] Project File Found?", !!projectFile)
 
     let initialProject = null
     if (projectFile && projectFile.content) {
       try {
         initialProject = JSON.parse(String(projectFile.content))
-      } catch (e) { console.error("Bad project.json", e) }
+      } catch (e) {
+        console.error("Bad project.json", e)
+      }
     }
 
     console.log("[FlowEditor] Calling store.hydrate...")
-    store.hydrate(id, initialProject)
+    store
+      .hydrate(id, initialProject)
       .then(() => console.log("[FlowEditor] Hydration Complete"))
       .catch((err: any) => console.error("[FlowEditor] Hydration Failed:", err))
-
   }, [id, isFsInitialized]) // Run once when FS is ready
 
   // Initialize Autosave Subscription (IndexedDB - Immediate)
@@ -102,7 +111,7 @@ export default function FlowEditor() {
       // Use latest store state
       const currentProject = useFlowStore.getState().project
       const projectJson = JSON.stringify(currentProject, null, 2)
-      const file = files.find(f => f.name === "project.json")
+      const file = files.find((f) => f.name === "project.json")
       if (file) {
         updateFile("project.json", projectJson)
       } else {
@@ -111,7 +120,6 @@ export default function FlowEditor() {
       console.log("[FlowEditor] Persisted project.json")
     }, 1000)
   }, [files, updateFile, createFile])
-
 
   // 7. WORKSPACE SWITCHING & INITIAL LOAD
   // Initialize as null to force first load
@@ -135,7 +143,6 @@ export default function FlowEditor() {
       prevTargetIdRef.current = store.activeTargetId
     }
   }, [store.activeTargetId, isEditorReady, store.project.targets])
-
 
   // 8. HANDLERS (With Save)
 
@@ -225,7 +232,6 @@ export default function FlowEditor() {
     return () => window.removeEventListener("message", handleMessage)
   }, [store.syncTargets])
 
-
   // 9. COMPUTED UI
   // File Tree Construction
   const fileTree = useMemo(() => {
@@ -242,7 +248,9 @@ export default function FlowEditor() {
 
   const filteredFiles = useMemo(() => {
     if (!files) return []
-    return files.filter((f) => f.name !== "script.js" && f.name !== "blocks.json" && f.name !== "project.json")
+    return files.filter(
+      (f) => f.name !== "script.js" && f.name !== "blocks.json" && f.name !== "project.json"
+    )
   }, [files])
 
   const topTools: ActivityTool[] = [
@@ -273,7 +281,8 @@ export default function FlowEditor() {
         <LoadingOverlay message={isLoading ? "Loading Scape..." : "Restoring Session..."} />
       </div>
     )
-  if (!scape) return <div className="flex h-screen items-center justify-center">Scape not found</div>
+  if (!scape)
+    return <div className="flex h-screen items-center justify-center">Scape not found</div>
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -398,7 +407,13 @@ export default function FlowEditor() {
                 autoSaveId="flow-editor-inner-layout"
               >
                 {/* CENTER: BlockEditor */}
-                <ResizablePanel id="block-canvas" order={1} defaultSize={55} minSize={30} className="relative">
+                <ResizablePanel
+                  id="block-canvas"
+                  order={1}
+                  defaultSize={55}
+                  minSize={30}
+                  className="relative"
+                >
                   <BlockEditor
                     ref={blockEditorRef}
                     onChange={handleCodeChange}
@@ -406,9 +421,11 @@ export default function FlowEditor() {
                     theme={resolvedTheme === "light" ? "light" : "dark"}
                   />
                   {/* Overlay current target name */}
-                  <div className="absolute left-4 top-4 z-10 rounded-md bg-background/50 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur border border-border/50 shadow-sm">
-                    Editing: <span className="text-foreground font-bold">
-                      {store.project.targets.find((t: any) => t.id === store.activeTargetId)?.name || "?"}
+                  <div className="absolute left-4 top-4 z-10 rounded-md border border-border/50 bg-background/50 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur">
+                    Editing:{" "}
+                    <span className="font-bold text-foreground">
+                      {store.project.targets.find((t: any) => t.id === store.activeTargetId)
+                        ?.name || "?"}
                     </span>
                   </div>
                 </ResizablePanel>
@@ -417,11 +434,7 @@ export default function FlowEditor() {
 
                 {/* RIGHT: Stack (Preview + Sprites) */}
                 <ResizablePanel id="preview-stack" order={2} defaultSize={45} minSize={20}>
-                  <ResizablePanelGroup
-                    direction="vertical"
-                    autoSaveId="flow-editor-preview-stack"
-                  >
-
+                  <ResizablePanelGroup direction="vertical" autoSaveId="flow-editor-preview-stack">
                     {/* Top: Preview */}
                     <ResizablePanel id="preview-pane" order={1} defaultSize={50} minSize={20}>
                       <PreviewPane
@@ -451,7 +464,6 @@ export default function FlowEditor() {
                         onDeleteBackdrop={handleDeleteBackdrop}
                       />
                     </ResizablePanel>
-
                   </ResizablePanelGroup>
                 </ResizablePanel>
               </ResizablePanelGroup>

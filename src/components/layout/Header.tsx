@@ -22,7 +22,13 @@ interface HeaderProps {
   startContent?: React.ReactNode
 }
 
-export function Header({ actions, customTitle, endActions, showFullLogo = false, startContent }: HeaderProps) {
+export function Header({
+  actions,
+  customTitle,
+  endActions,
+  showFullLogo = false,
+  startContent,
+}: HeaderProps) {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-2">

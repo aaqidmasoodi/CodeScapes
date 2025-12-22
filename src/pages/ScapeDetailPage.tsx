@@ -1,21 +1,15 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import {
-    Heart,
-    GitFork,
-    ArrowLeft,
-    Share2,
-    Play,
-} from "lucide-react"
+import { Heart, GitFork, Share2, Play, Eye, Maximize2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/hooks/useAuth"
 
-import { Header } from "@/components/layout/Header"
-
+import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import { type Scape } from "@/lib/db"
 
@@ -26,185 +20,309 @@ import { CodeViewer } from "@/components/community/CodeViewer"
 const repo = new CloudRepository()
 
 export default function ScapeDetailPage() {
-    const { scapeId } = useParams<{ scapeId: string }>()
-    const navigate = useNavigate()
-    const { user } = useAuth()
+  const { scapeId } = useParams<{ scapeId: string }>()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { toast } = useToast()
 
-    const [scape, setScape] = useState<Scape | null>(null)
-    const [loading, setLoading] = useState(true)
-    const [isLiked, setIsLiked] = useState(false)
-    const [isForking, setIsForking] = useState(false)
-    const [showPreview, setShowPreview] = useState(true)
+  const [scape, setScape] = useState<Scape | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [isLiked, setIsLiked] = useState(false)
+  const [isForking, setIsForking] = useState(false)
+  const [showPreview, setShowPreview] = useState(true)
 
-    // Load Scape
-    useEffect(() => {
-        if (!scapeId) return
-        async function load() {
-            try {
-                const data = await repo.getScape(scapeId!) // This uses existing getScape, returns Scape
-                if (data) {
-                    setScape(data)
-                    // Check if liked if user exists
-                    if (user) {
-                        // We need a helper for checking 'isLiked' separately or toggle returns state
-                        // For now assume false or fetch separately
-                    }
-                }
-            } catch (e) {
-                console.error("Failed to load scape", e)
-            } finally {
-                setLoading(false)
-            }
-        }
-        load()
-    }, [scapeId, user])
+  const viewIncrementedRef = useRef(false)
 
-    const handleLike = async () => {
-        if (!user || !scapeId) return
-        const newStatus = await repo.toggleLike(scapeId, user.id)
-        setIsLiked(newStatus)
-        // Optimistic update of stats?
+  // Load Scape & Update Views
+  useEffect(() => {
+    if (!scapeId) return
+
+    // Increment view count (once per session/mount)
+    if (!viewIncrementedRef.current) {
+      repo.incrementView(scapeId).catch(console.error)
+      viewIncrementedRef.current = true
     }
 
-    const handleFork = async () => {
-        if (!user || !scapeId) return
-        try {
-            setIsForking(true)
-            const newId = await repo.forkScape(scapeId, user.id)
-            navigate(`/scape/${newId}`) // Go to editor with new fork
-        } catch (e) {
-            console.error("Fork failed", e)
-        } finally {
-            setIsForking(false)
+    async function load() {
+      try {
+        // Pass user ID to check like status
+        const data = await repo.getScape(scapeId!, user?.id)
+        if (data) {
+          setScape(data)
+          setIsLiked(!!data.stats?.isLiked)
         }
+      } catch {
+        toast({ variant: "destructive", title: "Failed to load scape details" })
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [scapeId, user, toast])
+
+  const handleLike = async () => {
+    if (!scapeId) return
+
+    if (!user) {
+      toast({
+        title: "Sign in required",
+        description: "You must be logged in to like a project.",
+        variant: "destructive",
+      })
+      return
     }
 
-    if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>
-    if (!scape) return <div className="flex h-screen items-center justify-center">Scape not found</div>
+    // Optimistic UI Update
+    const previousLiked = isLiked
+    const previousCount = scape?.stats?.likes || 0
 
+    setIsLiked(!previousLiked)
+    if (scape) {
+      setScape({
+        ...scape,
+        stats: {
+          ...scape.stats!,
+          likes: previousLiked ? previousCount - 1 : previousCount + 1,
+        },
+      })
+    }
+
+    try {
+      await repo.toggleLike(scapeId, user.id)
+    } catch {
+      // Revert on failure
+      setIsLiked(previousLiked)
+      if (scape) {
+        setScape({
+          ...scape,
+          stats: {
+            ...scape.stats!,
+            likes: previousCount,
+          },
+        })
+      }
+      toast({ variant: "destructive", title: "Failed to update like" })
+    }
+  }
+
+  const handleFork = async () => {
+    if (!scapeId) return
+
+    if (!user) {
+      toast({
+        title: "Sign in required",
+        description: "You must be logged in to fork a project.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setIsForking(true)
+      const newId = await repo.forkScape(scapeId, user.id)
+      toast({ title: "Fork created successfully!" })
+      navigate(`/scape/${newId}`)
+    } catch (e) {
+      console.error("Fork failed", e)
+      toast({ variant: "destructive", title: "Failed to fork project" })
+    } finally {
+      setIsForking(false)
+    }
+  }
+
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      toast({
+        title: "Link copied!",
+        description: "Shareable link copied to clipboard.",
+      })
+    } catch {
+      toast({ variant: "destructive", title: "Failed to copy link" })
+    }
+  }
+
+  if (loading)
     return (
-        <div className="flex h-screen flex-col bg-background">
-            {/* Header */}
-            {/* Header */}
-            <Header
-                showFullLogo={true}
-                startContent={
-                    <Button variant="ghost" size="icon" onClick={() => navigate("/community")}>
-                        <ArrowLeft className="h-5 w-5" />
-                    </Button>
-                }
-            />
-
-            {/* Main Content */}
-            <div className="flex flex-1 overflow-hidden">
-                {/* Left: Preview */}
-                <div className="flex flex-1 flex-col border-r bg-muted/10 p-6">
-                    <div className="flex h-full flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
-                        {/* Runnable Preview Area */}
-                        <div className="flex flex-1 items-center justify-center bg-secondary/5 relative overflow-hidden">
-                            {showPreview ? (
-                                <iframe
-                                    src={`/view/${scape.id}`}
-                                    className="h-full w-full border-0 bg-white overflow-hidden"
-                                    title="Preview"
-                                    scrolling="no"
-                                    style={{ overflow: "hidden" }}
-                                />
-                            ) : (
-                                <div className="text-center">
-                                    <Button
-                                        size="lg"
-                                        className="rounded-full h-16 w-16"
-                                        variant="outline"
-                                        onClick={() => setShowPreview(true)}
-                                    >
-                                        <Play className="ml-1 h-8 w-8" />
-                                    </Button>
-                                    <p className="mt-4 text-muted-foreground">Run Preview</p>
-                                </div>
-                            )}
-                        </div>
-                        {/* Code Viewer */}
-                        <div className="h-1/3 border-t">
-                            <CodeViewer scapeId={scape.id} />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Right: Sidebar Info */}
-                <div className="w-80 overflow-y-auto border-l bg-background p-6">
-                    <div className="space-y-6">
-                        {/* Author Info - Moved Here */}
-                        <div className="flex items-center gap-3">
-                            <Avatar className="h-10 w-10">
-                                <AvatarFallback>U</AvatarFallback>
-                            </Avatar>
-                            <div>
-                                <div className="font-semibold">{scape.name}</div>
-                                <div className="text-xs text-muted-foreground">
-                                    by {scape.author?.name || "Unknown"}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="grid grid-cols-2 gap-2">
-                            <Button className="w-full" variant="outline" onClick={handleLike}>
-                                <Heart className={`mr-2 h-4 w-4 ${isLiked ? "fill-red-500 text-red-500" : ""}`} />
-                                {isLiked ? "Liked" : "Like"}
-                            </Button>
-                            <Button className="w-full" variant="outline" onClick={handleFork} disabled={isForking}>
-                                <GitFork className="mr-2 h-4 w-4" />
-                                {isForking ? "Forking..." : "Fork"}
-                            </Button>
-                            <Button className="w-full" variant="outline" onClick={() => window.open(`/view/${scape.id}`, '_blank')}>
-                                <Play className="mr-2 h-4 w-4" />
-                                Open App
-                            </Button>
-                            <Button className="w-full" variant="outline">
-                                <Share2 className="mr-2 h-4 w-4" />
-                                Share
-                            </Button>
-                        </div>
-
-                        <Separator />
-
-                        <div>
-                            <h3 className="font-semibold">About</h3>
-                            <p className="mt-2 text-sm text-muted-foreground">
-                                {scape.description || "No description provided."}
-                            </p>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                                <Badge variant="secondary">{scape.environment}</Badge>
-                            </div>
-                        </div>
-
-                        <Separator />
-
-                        <div className="grid grid-cols-3 gap-4 text-center">
-                            <div>
-                                <div className="font-bold">{scape.stats?.views || 0}</div>
-                                <div className="text-xs text-muted-foreground">Views</div>
-                            </div>
-                            <div>
-                                <div className="font-bold">{scape.stats?.likes || 0}</div>
-                                <div className="text-xs text-muted-foreground">Likes</div>
-                            </div>
-                            <div>
-                                <div className="font-bold">{scape.stats?.forks || 0}</div>
-                                <div className="text-xs text-muted-foreground">Forks</div>
-                            </div>
-                        </div>
-
-                        <Separator />
-
-                        <div>
-                            <h3 className="mb-4 font-semibold">Comments</h3>
-                            <CommentsSection scapeId={scape.id} />
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+      <DashboardLayout>
+        <div className="flex h-full items-center justify-center">Loading...</div>
+      </DashboardLayout>
     )
+  if (!scape)
+    return (
+      <DashboardLayout>
+        <div className="flex h-full items-center justify-center">Scape not found</div>
+      </DashboardLayout>
+    )
+
+  const isOwner = user?.id === scape.authorId
+
+  return (
+    <DashboardLayout activeTab="community">
+      <div className="h-full w-full overflow-y-auto bg-background p-6">
+        <div className="mx-auto flex max-w-[1800px] flex-col gap-8">
+          {/* Top Section: Preview & Metadata */}
+          <div className="grid min-h-[500px] grid-cols-1 gap-6 lg:h-[750px] lg:grid-cols-4">
+            {/* Visual Preview (3/4) */}
+            <div className="flex h-[60vh] flex-col overflow-hidden rounded-xl border bg-secondary/5 shadow-sm lg:col-span-3 lg:h-full">
+              <div className="flex items-center justify-between border-b px-4 py-2">
+                <span className="text-sm font-medium text-muted-foreground">Preview Output</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 gap-2 text-xs"
+                  onClick={() => window.open(`/view/${scape.id}`, "_blank")}
+                >
+                  <Maximize2 className="h-3 w-3" /> Launch Full Screen
+                </Button>
+              </div>
+              <div className="relative flex-1 overflow-hidden bg-white dark:bg-zinc-950">
+                {showPreview ? (
+                  <iframe
+                    src={`/view/${scape.id}`}
+                    className="h-full w-full border-0"
+                    title="Preview"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <div className="text-center">
+                      <Button
+                        size="lg"
+                        className="h-20 w-20 rounded-full"
+                        variant="outline"
+                        onClick={() => setShowPreview(true)}
+                      >
+                        <Play className="ml-1 h-10 w-10" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Metadata Card (1/3) */}
+            <div className="flex flex-col rounded-xl border bg-card p-6 shadow-sm">
+              {/* Header */}
+              <div className="mb-6 flex items-start gap-4">
+                <Avatar className="h-12 w-12">
+                  <AvatarImage src={scape.author?.avatar} />
+                  <AvatarFallback>{scape.author?.name?.charAt(0) || "U"}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 overflow-hidden">
+                  <h1 className="truncate text-xl font-bold">{scape.name}</h1>
+                  <p className="truncate text-sm text-muted-foreground">
+                    by <span className="text-foreground">{scape.author?.name || "Unknown"}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="mb-6 grid grid-cols-3 gap-4 rounded-lg bg-muted/50 p-4 text-center">
+                <div>
+                  <div className="text-2xl font-bold">{scape.stats?.views || 0}</div>
+                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                    <Eye className="h-3 w-3" /> Views
+                  </div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{scape.stats?.likes || 0}</div>
+                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                    <Heart className="h-3 w-3" /> Likes
+                  </div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{scape.stats?.forks || 0}</div>
+                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                    <GitFork className="h-3 w-3" /> Forks
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  className="w-full"
+                  variant={isLiked ? "secondary" : "default"}
+                  onClick={handleLike}
+                >
+                  <Heart className={`mr-2 h-4 w-4 ${isLiked ? "fill-current text-red-500" : ""}`} />
+                  {isLiked ? "Liked" : "Like"}
+                </Button>
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={handleFork}
+                  disabled={isForking}
+                >
+                  <GitFork className="mr-2 h-4 w-4" />
+                  {isForking ? "Forking..." : "Fork"}
+                </Button>
+                <Button className="col-span-2 w-full" variant="outline" onClick={handleShare}>
+                  <Share2 className="mr-2 h-4 w-4" />
+                  Share Project
+                </Button>
+
+                {isOwner && (
+                  <Button
+                    className="col-span-2 w-full"
+                    variant="secondary"
+                    onClick={() => navigate(`/scape/${scape.id}`)}
+                  >
+                    <Play className="mr-2 h-4 w-4" />
+                    Open in Editor
+                  </Button>
+                )}
+              </div>
+
+              <Separator className="my-6" />
+
+              {/* About */}
+              <div className="flex-1 overflow-y-auto">
+                <h3 className="mb-2 font-semibold">About</h3>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                  {scape.description || "No description provided."}
+                </p>
+                <div className="mt-4">
+                  <Badge variant="secondary" className="capitalize">
+                    {scape.environment}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Section: Code & Comments */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Source Code */}
+            <div className="flex h-[700px] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+              <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">Source Code</span>
+                  <Badge variant="outline" className="text-xs font-normal">
+                    Read-only
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <CodeViewer scapeId={scape.id} />
+              </div>
+            </div>
+
+            {/* Comments */}
+            <div className="flex h-[700px] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+              <div className="border-b bg-muted/20 px-4 py-3">
+                <h3 className="font-semibold">Comments & Discussion</h3>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <CommentsSection scapeId={scape.id} />
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Spacer */}
+          <div className="h-12" />
+        </div>
+      </div>
+    </DashboardLayout>
+  )
 }

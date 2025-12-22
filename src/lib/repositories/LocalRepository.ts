@@ -92,11 +92,17 @@ export class LocalRepository implements IScapeRepository {
     )
   }
   // --- Community Stubs (Local repo doesn't support them fully yet) ---
-  async getPublicScapes(): Promise<Scape[]> { return [] }
-  async toggleLike(): Promise<boolean> { return false }
-  async getComments(): Promise<any[]> { return [] }
-  async addComment(): Promise<void> { }
-  async forkScape(scapeId: string, userId: string): Promise<string> {
+  async getPublicScapes(): Promise<Scape[]> {
+    return []
+  }
+  async toggleLike(): Promise<boolean> {
+    return false
+  }
+  async getComments(): Promise<any[]> {
+    return []
+  }
+  async addComment(): Promise<void> {}
+  async forkScape(_scapeId: string, _userId: string): Promise<string> {
     // Basic local fork? Maybe later. For now throw or no-op.
     throw new Error("Local fork not implemented")
   }

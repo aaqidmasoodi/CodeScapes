@@ -32,7 +32,7 @@ export function Sidebar({
     { id: "community", icon: Globe, label: "Community", path: "/community" },
   ]
 
-  const tabs = user ? allTabs : allTabs.filter(t => t.id !== "cloud")
+  const tabs = user ? allTabs : allTabs.filter((t) => t.id !== "cloud")
 
   const handleTabClick = (tabId: string, path: string | null) => {
     if (onTabChange) {

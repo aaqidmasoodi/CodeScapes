@@ -26,6 +26,7 @@ export interface Scape {
     views: number
     likes: number
     forks: number
+    isLiked?: boolean
   }
 }
 
@@ -39,7 +40,7 @@ export interface File {
 
 export interface Autosave {
   id: string // scapeId
-  data: any // Project JSON
+  data: Record<string, unknown> // Project JSON
   timestamp: number
 }
 
@@ -68,7 +69,7 @@ db.on("blocked", () => {
 db.version(2).stores({
   scapes: "id, name, environment, source, createdAt, updatedAt, *dependencies",
   files: "id, scapeId, name, [scapeId+name]",
-  autosaves: "id, timestamp"
+  autosaves: "id, timestamp",
 })
 
 // Helper to delete a scape and its files transactionally

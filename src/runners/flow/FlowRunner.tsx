@@ -513,12 +513,12 @@ export const FlowRunner = memo(
       useEffect(() => {
         const handleMsg = (e: MessageEvent) => {
           if (e.data?.type === "FlowScape:StateUpdate" && e.data?.meta?.threads !== undefined) {
-            setThreadCount(e.data.meta.threads);
+            setThreadCount(e.data.meta.threads)
           }
-        };
-        window.addEventListener("message", handleMsg);
-        return () => window.removeEventListener("message", handleMsg);
-      }, []);
+        }
+        window.addEventListener("message", handleMsg)
+        return () => window.removeEventListener("message", handleMsg)
+      }, [])
 
       // 1. INJECTION: Mix user files with Harness
       const runtimeFiles = useMemo(
@@ -556,7 +556,10 @@ export const FlowRunner = memo(
             }
 
             window.addEventListener("message", handler)
-            iframeRef.current?.contentWindow?.postMessage({ type: "FlowScape:CaptureThumbnail" }, "*")
+            iframeRef.current?.contentWindow?.postMessage(
+              { type: "FlowScape:CaptureThumbnail" },
+              "*"
+            )
           })
         },
         restart: async () => {
@@ -580,37 +583,39 @@ export const FlowRunner = memo(
 
       // Init Project on Load (Fast Path)
       useEffect(() => {
-        if (!bridge.ready) return;
+        if (!bridge.ready) return
 
         // PRIORITIZE: liveProject (Store) -> project.json (File) -> Default
-        let project = liveProject;
+        let project = liveProject
 
         if (!project) {
-          const projectFile = rawFiles.find(f => f.name === "project.json");
+          const projectFile = rawFiles.find((f) => f.name === "project.json")
           if (projectFile && projectFile.content) {
             try {
-              project = JSON.parse(projectFile.content as string);
-              console.log("[FlowRunner] Found project.json in files", project);
+              project = JSON.parse(projectFile.content as string)
+              console.log("[FlowRunner] Found project.json in files", project)
             } catch (e) {
-              console.error("[FlowRunner] Failed to parse project.json", e);
+              console.error("[FlowRunner] Failed to parse project.json", e)
             }
           }
         }
 
         // Fallback
         if (!project) {
-          console.warn("[FlowRunner] No project found, using fallback.");
-          project = { targets: [] }; // Empty
+          console.warn("[FlowRunner] No project found, using fallback.")
+          project = { targets: [] } // Empty
         }
 
         // Send to Engine
         // No debounce for Zero-Latency updates
-        iframeRef.current?.contentWindow?.postMessage({
-          type: "FlowScape:Init",
-          payload: project
-        }, "*");
-
-      }, [bridge.ready, rawFiles, liveProject]);
+        iframeRef.current?.contentWindow?.postMessage(
+          {
+            type: "FlowScape:Init",
+            payload: project,
+          },
+          "*"
+        )
+      }, [bridge.ready, rawFiles, liveProject])
 
       return (
         <div className="flex h-full flex-col border-l border-border bg-background dark:border-zinc-800">

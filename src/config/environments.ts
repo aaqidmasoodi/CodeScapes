@@ -136,7 +136,7 @@ animate();
 function init() {
   // 1. Scene with Mustard Background
   scene = new THREE.Scene();
-  scene.background = new THREE.Color('#FFC857'); // Nice warm mustard
+  scene.background = new THREE.Color('rgba(210, 152, 35, 1)'); // Nice warm mustard
 
   // 2. Camera
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -151,7 +151,7 @@ function init() {
   // 4. Object: Cube with Material that reacts to light
   const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
   const material = new THREE.MeshStandardMaterial({ 
-    color: '#2E4057', // Deep Indigo contrasting color
+    color: 'rgba(77, 157, 85, 1)', // Deep Indigo contrasting color
     roughness: 0.3,   // Slightly shiny
     metalness: 0.1
   });

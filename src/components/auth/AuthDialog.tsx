@@ -14,7 +14,8 @@ import {
 import { Github, Loader2, Mail } from "lucide-react"
 
 export function AuthDialog({ children }: { children: React.ReactNode }) {
-  const { signInWithGithub, signInWithGoogle, signInWithEmail, signUpWithEmail, loading } = useAuth()
+  const { signInWithGithub, signInWithGoogle, signInWithEmail, signUpWithEmail, loading } =
+    useAuth()
   const [isGithubLoading, setIsGithubLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const [isEmailLoading, setIsEmailLoading] = useState(false)
@@ -59,9 +60,10 @@ export function AuthDialog({ children }: { children: React.ReactNode }) {
       } else {
         await signInWithEmail(email, password)
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as Error
       console.error(err)
-      setError(err.message || "Authentication failed")
+      setError(error.message || "Authentication failed")
     } finally {
       setIsEmailLoading(false)
     }
@@ -158,10 +160,7 @@ export function AuthDialog({ children }: { children: React.ReactNode }) {
           </form>
 
           <div className="text-center text-sm text-muted-foreground">
-            <button
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-primary hover:underline"
-            >
+            <button onClick={() => setIsSignUp(!isSignUp)} className="text-primary hover:underline">
               {isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
             </button>
           </div>

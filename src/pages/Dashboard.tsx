@@ -172,7 +172,7 @@ export default function Dashboard() {
                 return (
                   <Card
                     key={scape.id}
-                    className="group relative mb-4 flex break-inside-avoid cursor-pointer flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
+                    className="group relative mb-4 flex cursor-pointer break-inside-avoid flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
                     onClick={() => navigate(`/scape/${scape.id}`)}
                   >
                     {/* Thumbnail (only if valid) */}

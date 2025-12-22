@@ -1,7 +1,6 @@
 import { useState, useRef, forwardRef, useImperativeHandle, memo, useEffect } from "react"
 import { MonitorPlay, PanelRightClose } from "lucide-react"
 
-
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"

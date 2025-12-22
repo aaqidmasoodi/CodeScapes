@@ -9,6 +9,15 @@ interface PreviewBridge {
   url: string
 }
 
+// Helper for simple deterministic hash
+const computeHash = (str: string) => {
+  let h = 0
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(31, h) + str.charCodeAt(i) | 0
+  }
+  return h.toString(36)
+}
+
 export function usePreviewBridge(
   files: ScapeFile[],
   scapeId: string,
@@ -16,15 +25,12 @@ export function usePreviewBridge(
   env?: Record<string, string>,
   versionKey?: number
 ): PreviewBridge {
-
-  // Helper to compute stable file hash
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const filesHash = useMemo(() => {
     return files
-      .map(f => {
+      .map((f) => {
         let size = 0
         let preview = ""
-        if (typeof f.content === 'string') {
+        if (typeof f.content === "string") {
           size = f.content.length
           preview = f.content.slice(0, 20)
         } else if (f.content instanceof Blob) {
@@ -40,11 +46,9 @@ export function usePreviewBridge(
       .join("|")
   }, [files])
 
-  // State for tracking reset
   const [prevVersionKey, setPrevVersionKey] = useState(versionKey)
   const [prevFilesHash, setPrevFilesHash] = useState(filesHash)
 
-  // Initialize state with correct URL
   const [bridgeState, setBridgeState] = useState<PreviewBridge>(() => {
     let bootloaderOrigin = ""
     const currentHost = window.location.hostname
@@ -54,18 +58,18 @@ export function usePreviewBridge(
       bootloaderOrigin = window.location.origin
     }
     const version = versionKey || Date.now()
+    const hash = computeHash(filesHash)
     return {
       ready: false,
-      url: `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}`,
+      url: `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${hash}`,
     }
   })
 
-  // Render-time state derivation (Correct Pattern for Prop Driven Resets)
+  // Render-time state derivation
   if (versionKey !== prevVersionKey) {
     setPrevVersionKey(versionKey)
     setPrevFilesHash(filesHash)
 
-    // Determine URL immediately for the new version
     let bootloaderOrigin = ""
     const currentHost = window.location.hostname
     if (currentHost === "localhost" || currentHost === "127.0.0.1") {
@@ -73,36 +77,14 @@ export function usePreviewBridge(
     } else {
       bootloaderOrigin = window.location.origin
     }
-    // Use a stable random value for this render cycle context if needed
-    // But since we are resetting state, we want a new value.
-    // The issue is that calling Date.now() inside render is impure.
-    // We can't side-effect (set ref) during render safe either.
-    // However, since we are setting state (setBridgeState), we are triggering a re-render anyway.
 
-    // Hack: Just use a fixed value + versionKey if present. If versionKey is missing, we need a trigger.
-    // If the user wants a reset, they pass a new versionKey.
-    // If they don't pass versionKey, we shouldn't be here (resetting).
+    const version = versionKey ?? 0
+    const hash = computeHash(filesHash)
+    const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${hash}`
 
-    // BUT this block is `if (versionKey !== prevVersionKey)`.
-    // So `versionKey` MUST be defined and different.
-    // So `version` will be `versionKey`.
-    // The `|| Date.now()` is a fallback if versionKey is falsy? 
-    // If versionKey is passed as 0?
-
-    const version = versionKey ?? 0;
-
-    // File hash needs to be unique to force iframe reload?
-    // Let's use the fileHash itself.
-    const uniqueHash = filesHash.length + "-" + Math.random().toString(36).slice(2);
-
-    const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${uniqueHash}`
-
-    // Reset state immediately
     setBridgeState({ ready: false, url: bootloaderUrl })
   } else if (filesHash !== prevFilesHash && env?.hotUpdate && bridgeState.ready) {
-    // HOT UPDATE PATH: Update State refs but DO NOT Reset Bridge
     setPrevFilesHash(filesHash)
-    // We will trigger the message update in a useEffect
   }
 
   // useLayoutEffect ensures the listener is attached BEFORE the iframe has a chance
