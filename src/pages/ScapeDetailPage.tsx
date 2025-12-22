@@ -37,9 +37,15 @@ export default function ScapeDetailPage() {
   useEffect(() => {
     if (!scapeId) return
 
-    // Increment view count (once per session/mount)
+    // Increment view count (Unique per session)
     if (!viewIncrementedRef.current) {
-      repo.incrementView(scapeId).catch(console.error)
+      const storageKey = `viewed_scape_${scapeId}`
+      const hasViewed = sessionStorage.getItem(storageKey)
+
+      if (!hasViewed) {
+        repo.incrementView(scapeId).catch(console.error)
+        sessionStorage.setItem(storageKey, "true")
+      }
       viewIncrementedRef.current = true
     }
 
