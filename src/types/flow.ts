@@ -13,17 +13,15 @@ export interface Target {
   id: string
   name: string
   isStage: boolean
-
-  // State
-  x: number
-  y: number
-  direction: number
-  visible: boolean
-  size: number
-  rotationStyle: "all around" | "left-right" | "don't rotate"
-
-  // Storage
+  x?: number
+  y?: number
+  direction?: number
+  size?: number
+  visible?: boolean
+  rotationStyle?: "all around" | "left-right" | "don't rotate"
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   variables: Record<string, any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   blocks: Record<string, any> // Serialized Blockly JSON/XML
   code?: string // Compiled Generator Function Body
 

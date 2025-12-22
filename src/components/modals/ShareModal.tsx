@@ -59,11 +59,12 @@ export function ShareModal({ scapeId, scapeName, isOwner }: ShareModalProps) {
       setCollaborators((prev) => [collab, ...prev])
       setEmail("")
       toast({ title: `Added ${email} as collaborator` })
-    } catch (error: any) {
+      toast({ title: `Added ${email} as collaborator` })
+    } catch (error) {
       toast({
         variant: "destructive",
         title: "Failed to add collaborator",
-        description: error.message,
+        description: error instanceof Error ? error.message : "Unknown error",
       })
     } finally {
       setAdding(false)
@@ -75,7 +76,7 @@ export function ShareModal({ scapeId, scapeName, isOwner }: ShareModalProps) {
       await collaboratorsService.removeCollaborator(collab.id)
       setCollaborators((prev) => prev.filter((c) => c.id !== collab.id))
       toast({ title: "Collaborator removed" })
-    } catch (error) {
+    } catch {
       toast({ variant: "destructive", title: "Failed to remove" })
     }
   }

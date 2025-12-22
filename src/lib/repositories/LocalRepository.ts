@@ -15,6 +15,11 @@ export class LocalRepository implements IScapeRepository {
     await db.scapes.put(scape)
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async _update(_scapeId: string, _content: Partial<Scape>, _userId?: string): Promise<Scape> {
+    throw new Error("Method not implemented.")
+  }
+
   async updateScape(id: string, updates: Partial<Scape>): Promise<void> {
     await db.scapes.update(id, updates)
   }
@@ -98,10 +103,11 @@ export class LocalRepository implements IScapeRepository {
   async toggleLike(): Promise<boolean> {
     return false
   }
-  async getComments(): Promise<any[]> {
+  async getComments(): Promise<unknown[]> {
     return []
   }
   async addComment(): Promise<void> {}
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async forkScape(_scapeId: string, _userId: string): Promise<string> {
     // Basic local fork? Maybe later. For now throw or no-op.
     throw new Error("Local fork not implemented")

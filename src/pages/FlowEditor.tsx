@@ -53,7 +53,7 @@ export default function FlowEditor() {
   } = useFileSystem(id, source)
 
   // 3. FLOW STORE (Global State)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const store = useFlowStore() as any
 
   // 4. STATE & REFS
@@ -352,7 +352,7 @@ export default function FlowEditor() {
         <EditorActivityBar
           activeTool={activeTool}
           onToolSelect={setActiveTool}
-          onSettingsClick={() => { }}
+          onSettingsClick={() => {}}
           topTools={topTools}
           bottomTools={bottomTools}
         />
@@ -376,14 +376,14 @@ export default function FlowEditor() {
                 {activeTool === "explorer" ? (
                   <FileExplorer
                     files={fileTree}
-                    onFileSelect={() => { }}
+                    onFileSelect={() => {}}
                     onToggleFolder={handleToggleFolder}
                     onCreateFile={(name, type, content) =>
                       createFile(name, type as FileType, content)
                     }
                     onCreateFolder={(name) => createFile(name, "folder")}
                     onDelete={(path) => console.log("Delete TODO", path)} // Implement if needed
-                    onMove={() => { }} // Implement if needed
+                    onMove={() => {}} // Implement if needed
                   />
                 ) : (
                   // It must be a category (Motion, Events, Control)
@@ -444,7 +444,7 @@ export default function FlowEditor() {
                         environment="flowscape"
                         isRunning={isRunning}
                         showStoppedOverlay={false}
-                        onCollapse={() => { }}
+                        onCollapse={() => {}}
                         project={store.project} // ZERO-LATENCY SYNC
                       />
                     </ResizablePanel>

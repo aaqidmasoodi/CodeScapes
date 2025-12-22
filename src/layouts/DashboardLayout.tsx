@@ -13,7 +13,26 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ children, activeTab = "community" }: DashboardLayoutProps) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <Header showFullLogo />
+      <Sheet>
+        <Header
+          showFullLogo
+          startContent={
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="md:hidden">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+          }
+        />
+        <SheetContent side="left" className="w-64 p-0">
+          <Sidebar
+            activeTab={activeTab}
+            isMobile={true}
+            className="w-full border-none bg-transparent"
+          />
+        </SheetContent>
+      </Sheet>
+
       <div className="flex flex-1 overflow-hidden">
         {/* Desktop Sidebar (Hidden on Mobile) */}
         <div className="relative hidden md:block">
@@ -21,25 +40,6 @@ export function DashboardLayout({ children, activeTab = "community" }: Dashboard
           <div className="absolute inset-y-0 left-0 z-50">
             <Sidebar activeTab={activeTab} />
           </div>
-        </div>
-
-        {/* Mobile Sidebar (Sheet) */}
-        <div className="sticky top-0 z-20 flex w-full items-center gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur md:hidden">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="-ml-2">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
-              <Sidebar
-                activeTab={activeTab}
-                isMobile={true}
-                className="w-full border-none bg-transparent"
-              />
-            </SheetContent>
-          </Sheet>
-          <span className="font-semibold">CodeScapes</span>
         </div>
 
         {/* Main Content */}

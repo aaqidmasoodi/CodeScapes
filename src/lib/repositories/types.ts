@@ -24,7 +24,8 @@ export interface IScapeRepository {
   // Community Features
   getPublicScapes(filter?: "web" | "python" | "flow"): Promise<Scape[]>
   toggleLike(scapeId: string, userId: string): Promise<boolean> // returns true if liked
-  getComments(scapeId: string): Promise<any[]>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getComments(): Promise<any[]>
   addComment(scapeId: string, userId: string, content: string): Promise<void>
   forkScape(scapeId: string, userId: string): Promise<string> // returns new scapeId
 
