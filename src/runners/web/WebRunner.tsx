@@ -41,7 +41,7 @@ export const WebRunner = memo(
       const [refreshKey, setRefreshKey] = useState(0)
 
       // 0. Socket Bridge
-      const { emit: socketEmit } = useSocketBridge(scapeId, (event, data) => {
+      const { emit: socketEmit, socketId } = useSocketBridge(scapeId, (event, data) => {
         // Forward incoming socket events to Iframe
         iframeRef.current?.contentWindow?.postMessage(
           {
@@ -83,6 +83,7 @@ export const WebRunner = memo(
         };
         // Global Fallback
         window.CodeScapes = window.CodeScapes || {};
+        socket.id = "${socketId}";
         window.CodeScapes.socket = socket;
       `
 
@@ -127,6 +128,7 @@ export const WebRunner = memo(
       const bridge = usePreviewBridge(
         filesWithSocket,
         scapeId,
+        socketId,
         iframeRef,
         stablePayload?.env ?? {},
         refreshKey,

@@ -9,6 +9,7 @@ export function useSocketBridge(
   const [isConnected, setIsConnected] = useState(false)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const onEventRef = useRef(onEvent)
+  const [socketId] = useState(() => crypto.randomUUID()) // Persistent ID for this session
 
   // Keep callback fresh
   useEffect(() => {
@@ -23,31 +24,55 @@ export function useSocketBridge(
     // 'broadcast' type ensures it's ephemeral and fast.
     const channel = supabase.channel(`room:${scapeId}`, {
       config: {
-        broadcast: { self: false }, // Don't receive own messages
+        broadcast: { self: false },
+        presence: {
+          key: socketId,
+        },
       },
     })
 
     channel
       .on("broadcast", { event: "*" }, (payload) => {
-        // Payload structure form Supabase: { event: 'event_name', payload: { ... }, type: 'broadcast' }
-        // We expect our emit to send: { event: 'custom_event', data: ... } inside the payload
-        // Wait, supabase broadcast sends:
-        // channel.send({ type: 'broadcast', event: 'test', payload: { ... } })
-        // The listener receives: { event: 'test', payload: { ... }, ... }
-
-        // We will normalize this.
         if (payload.event && payload.payload) {
           onEventRef.current(payload.event, payload.payload)
         }
       })
+      // Standard Presence Events (Synthesized as 'join', 'leave', 'presence')
       .on("presence", { event: "sync" }, () => {
-        // Handle presence sync if we add it later
+        const state = channel.presenceState()
+        // Convert to simple list of objects
+        const presenceList = Object.values(state).flat()
+        onEventRef.current("presence", presenceList)
       })
-      .subscribe((status) => {
+      .on("presence", { event: "join" }, ({ newPresences }) => {
+        newPresences.forEach((p) => {
+          onEventRef.current("join", p)
+          onEventRef.current("user-joined", p) // Alias for user request
+        })
+      })
+      .on("presence", { event: "leave" }, ({ leftPresences }) => {
+        leftPresences.forEach((p) => {
+          onEventRef.current("leave", p)
+          onEventRef.current("user-left", p) // Alias for user request
+        })
+      })
+      .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
           setIsConnected(true)
+
+          // 1. Send 'connect' event to the runner
+          onEventRef.current("connect", { id: socketId })
+
+          // 2. Track Presence
+          await channel.track({
+            id: socketId,
+            online_at: new Date().toISOString(),
+          })
         } else {
           setIsConnected(false)
+          if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+            onEventRef.current("disconnect", { reason: status })
+          }
         }
       })
 
@@ -58,7 +83,7 @@ export function useSocketBridge(
       channelRef.current = null
       setIsConnected(false)
     }
-  }, [scapeId])
+  }, [scapeId, socketId])
 
   const emit = useCallback((event: string, data: unknown) => {
     if (!channelRef.current) return
@@ -69,5 +94,5 @@ export function useSocketBridge(
     })
   }, [])
 
-  return { emit, isConnected }
+  return { emit, isConnected, socketId }
 }

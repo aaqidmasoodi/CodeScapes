@@ -22,6 +22,7 @@ const computeHash = (str: string) => {
 export function usePreviewBridge(
   files: ScapeFile[],
   scapeId: string,
+  socketId: string,
   iframeRef?: React.RefObject<HTMLIFrameElement | null>,
   env?: Record<string, string>,
   versionKey?: number,
@@ -167,7 +168,7 @@ export function usePreviewBridge(
         iframeRef.current?.contentWindow?.postMessage(
           {
             type: "COMPILE_FILES",
-            payload: { scapeId, files: filesRef.current, env: envRef.current },
+            payload: { scapeId, socketId, files: filesRef.current, env: envRef.current },
           },
           bootloaderOrigin
         )
@@ -219,13 +220,13 @@ export function usePreviewBridge(
         iframeRef.current.contentWindow?.postMessage(
           {
             type: "COMPILE_FILES",
-            payload: { scapeId, files: filesRef.current, env: envRef.current },
+            payload: { scapeId, socketId, files: filesRef.current, env: envRef.current },
           },
           bootloaderOrigin
         )
       }
     }
-  }, [filesHash, versionKey, bridgeState.ready, scapeId, iframeRef])
+  }, [filesHash, versionKey, bridgeState.ready, scapeId, socketId, iframeRef])
 
   return bridgeState
 }
