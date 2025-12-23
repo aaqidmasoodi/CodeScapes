@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useNavigate, useParams } from "react-router-dom"
+import { useNavigate, useParams, useLocation } from "react-router-dom"
 import {
   Search,
   Clock,
@@ -38,6 +38,7 @@ import { useAuth } from "@/hooks/useAuth"
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const location = useLocation()
   // URL-based State
   const { tab } = useParams<{ tab: string }>()
   const activeTab = tab || "scapes"
@@ -169,7 +170,9 @@ export default function Dashboard() {
                   <Card
                     key={scape.id}
                     className="group relative mb-4 flex cursor-pointer break-inside-avoid flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
-                    onClick={() => navigate(`/scape/${scape.id}`)}
+                    onClick={() =>
+                      navigate(`/scape/${scape.id}`, { state: { from: location.pathname } })
+                    }
                   >
                     {/* Thumbnail (only if valid) */}
                     {thumbnailSrc && (
