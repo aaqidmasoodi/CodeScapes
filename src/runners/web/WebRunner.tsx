@@ -40,22 +40,28 @@ export const WebRunner = memo(
       // Manual Refresh Key (for restart button)
       const [refreshKey, setRefreshKey] = useState(0)
 
-      // 0. Socket Bridge
+      // Lazy Socket State (Default: Off to save costs)
+      const [socketEnabled, setSocketEnabled] = useState(false)
+
       const {
         emit: socketEmit,
         joinRoom,
         leaveRoom,
         socketId,
-      } = useSocketBridge(scapeId, (event, data) => {
-        // Forward incoming socket events to Iframe
-        iframeRef.current?.contentWindow?.postMessage(
-          {
-            type: "SOCKET_EVENT",
-            payload: { event, data },
-          },
-          "*"
-        )
-      })
+      } = useSocketBridge(
+        scapeId,
+        (event, data) => {
+          // Forward incoming socket events to Iframe
+          iframeRef.current?.contentWindow?.postMessage(
+            {
+              type: "SOCKET_EVENT",
+              payload: { event, data },
+            },
+            "*"
+          )
+        },
+        socketEnabled // Pass the flag
+      )
 
       // Listen for socket emits from Iframe
       useEffect(() => {
@@ -70,6 +76,10 @@ export const WebRunner = memo(
           if (e.data?.type === "SOCKET_LEAVE") {
             leaveRoom(e.data.payload.room)
           }
+          if (e.data?.type === "SOCKET_ENABLE") {
+            console.log("[WebRunner] Received SOCKET_ENABLE signal")
+            setSocketEnabled(true)
+          }
         }
         window.addEventListener("message", handler)
         return () => window.removeEventListener("message", handler)
@@ -77,6 +87,9 @@ export const WebRunner = memo(
 
       // Inject Virtual Socket Client (ES Module)
       const socketClientCode = `
+        // Signal Parent to Connect (Lazy Load)
+        window.parent.postMessage({ type: 'SOCKET_ENABLE' }, '*');
+        
         const socketInstance = {
           on: (event, callback) => {
             window.addEventListener('message', (e) => {

@@ -4,7 +4,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js"
 
 export function useSocketBridge(
   scapeId: string | undefined,
-  onEvent: (event: string, data: unknown) => void
+  onEvent: (event: string, data: unknown) => void,
+  enabled: boolean = true
 ) {
   const [isConnected, setIsConnected] = useState(false)
 
@@ -23,7 +24,7 @@ export function useSocketBridge(
   // Helper to setup a channel
   const setupChannel = useCallback(
     (name: string, isGlobal = false) => {
-      if (!scapeId) return
+      if (!scapeId || !enabled) return
       if (channelsRef.current.has(name)) return // Already joined
 
       // Channel Name Config
@@ -92,7 +93,7 @@ export function useSocketBridge(
 
       channelsRef.current.set(name, channel)
     },
-    [scapeId, socketId]
+    [scapeId, socketId, enabled]
   )
 
   // Helper to destroy
@@ -106,7 +107,7 @@ export function useSocketBridge(
 
   // Init Global Channel
   useEffect(() => {
-    if (!scapeId) return
+    if (!scapeId || !enabled) return
     setupChannel("global", true)
 
     return () => {
@@ -115,7 +116,7 @@ export function useSocketBridge(
       channelsRef.current.clear()
       setIsConnected(false)
     }
-  }, [scapeId, setupChannel])
+  }, [scapeId, setupChannel, enabled])
 
   const emit = useCallback((event: string, data: unknown, room?: string) => {
     // Default to global if no room specified
