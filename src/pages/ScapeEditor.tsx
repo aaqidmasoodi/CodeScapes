@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
-import { useParams, Navigate } from "react-router-dom"
+import { useParams, Navigate, useLocation, useNavigate } from "react-router-dom"
 import * as ResizablePrimitive from "react-resizable-panels"
 
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
@@ -109,6 +109,8 @@ export default function ScapeEditor() {
   // STRICT UUID LOGIC (Clean Slate)
   const id = scapeId || ""
   const { user } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
 
   // Load Scape and Files
   const { scape, source, emitUpdate, isLoading } = useScapeLoading(id)
@@ -990,7 +992,13 @@ export default function ScapeEditor() {
             variant="destructive"
             size="sm"
             onClick={() => {
-              window.location.href = "/dashboard"
+              // Smart Exit: Return to where we came from, or default to dashboard
+              const from = location.state?.from
+              if (from) {
+                navigate(from)
+              } else {
+                navigate("/dashboard")
+              }
             }}
             title="Exit to Dashboard"
           >
@@ -1053,7 +1061,7 @@ export default function ScapeEditor() {
                     scapeId={id}
                     isOpen={true}
                     ref={secretsPanelRef}
-                  // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
                   />
                 )}
               </ResizablePanel>

@@ -27,6 +27,7 @@ export function CreateScapeDialog() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
+  const [error, setError] = useState("")
 
   const [selectedEnv, setSelectedEnv] = useState<EnvironmentId>("web")
   const [selectedTemplate, setSelectedTemplate] = useState<string>("blank")
@@ -49,6 +50,10 @@ export function CreateScapeDialog() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
+    if (!/^[a-zA-Z0-9]+$/.test(name)) {
+      setError("Invalid name format")
+      return
+    }
 
     setLoading(true)
     try {
@@ -90,6 +95,7 @@ export function CreateScapeDialog() {
 
       setOpen(false)
       setName("")
+      setError("")
       // Redirect using the new ID (string)
       navigate(`/scape/${newId}`)
 
@@ -135,11 +141,21 @@ export function CreateScapeDialog() {
               <Label htmlFor="name">Scape Name</Label>
               <Input
                 id="name"
-                placeholder="My Awesome Project"
+                placeholder="MyProject"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setName(val)
+                  if (val && !/^[a-zA-Z0-9]+$/.test(val)) {
+                    setError("Only alphanumeric characters (a-z, A-Z, 0-9) allowed. No spaces.")
+                  } else {
+                    setError("")
+                  }
+                }}
+                className={error ? "border-destructive focus-visible:ring-destructive" : ""}
                 required
               />
+              {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
 
             {/* Environment Selector */}
@@ -264,7 +280,7 @@ export function CreateScapeDialog() {
               Cancel
             </Button>
 
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || !!error || !name}>
               {loading ? (
                 <>
                   <Spinner size="sm" className="mr-2" />

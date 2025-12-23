@@ -6,7 +6,7 @@ test("Delete File UI Workflow", async ({ page }) => {
   await page.goto("/dashboard/local")
   await page.getByRole("button", { name: "New Scape" }).first().click()
   await page.getByRole("textbox", { name: "Scape Name" }).click()
-  await page.getByRole("textbox", { name: "Scape Name" }).fill("delete file test")
+  await page.getByRole("textbox", { name: "Scape Name" }).fill("DeleteFileTest")
   await page.getByRole("button", { name: "Create Scape" }).click()
 
   // 2. Initial State Verification
