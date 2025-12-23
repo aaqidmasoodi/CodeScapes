@@ -530,10 +530,13 @@ export const FlowRunner = memo(
         [rawFiles]
       )
 
+      const [socketId] = useState(() => crypto.randomUUID())
+
       // 2. BRIDGE: Use the standard hook
       const bridge = usePreviewBridge(
         runtimeFiles,
         scapeId,
+        socketId,
         iframeRef,
         { hotUpdate: "true" },
         refreshKey

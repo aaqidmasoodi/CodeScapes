@@ -110,7 +110,7 @@ self.onmessage = async (e: MessageEvent) => {
 
       // Define blocking input function in JS
       // Using self explicitly to attach to global scope for Pyodide access
-      ; (self as any).wait_for_input = (prompt: string) => {
+      ;(self as any).wait_for_input = (prompt: string) => {
         const id = Math.random().toString(36).substring(7)
 
         // Notify Main Thread (React) to show input UI
@@ -289,7 +289,7 @@ self.onmessage = async (e: MessageEvent) => {
         // Ignore errors during dispatch (e.g. module not loaded yet)
       }
     }
-    // We fire and forget, don't await on readyPromise main chain? 
+    // We fire and forget, don't await on readyPromise main chain?
     // Actually, we must ensure pyodide is loaded.
     readyPromise.then(runDispatch)
   }
@@ -298,7 +298,7 @@ self.onmessage = async (e: MessageEvent) => {
     let py: PyodideInterface | null = null
     try {
       await readyPromise
-      const { files, entryPoint } = payload
+      const { files, entryPoint, socketId } = payload
       py = await loadPyodide()
 
       if (!files || !Array.isArray(files)) {
@@ -382,7 +382,8 @@ self.onmessage = async (e: MessageEvent) => {
         import types
         
         class CodeScapesSocket:
-            def __init__(self):
+            def __init__(self, id=None):
+                self.id = id
                 self._handlers = {}
                 
             def on(self, event, handler):
@@ -416,7 +417,7 @@ self.onmessage = async (e: MessageEvent) => {
 
         # Create module
         mod = types.ModuleType("codescapes")
-        mod.socket = CodeScapesSocket()
+        mod.socket = CodeScapesSocket('${socketId || ""}')
         sys.modules["codescapes"] = mod
       `)
 
@@ -637,4 +638,4 @@ except ImportError:
   }
 }
 
-export { }
+export {}
