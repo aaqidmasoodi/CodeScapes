@@ -41,7 +41,12 @@ export const WebRunner = memo(
       const [refreshKey, setRefreshKey] = useState(0)
 
       // 0. Socket Bridge
-      const { emit: socketEmit, socketId } = useSocketBridge(scapeId, (event, data) => {
+      const {
+        emit: socketEmit,
+        joinRoom,
+        leaveRoom,
+        socketId,
+      } = useSocketBridge(scapeId, (event, data) => {
         // Forward incoming socket events to Iframe
         iframeRef.current?.contentWindow?.postMessage(
           {
@@ -56,17 +61,23 @@ export const WebRunner = memo(
       useEffect(() => {
         const handler = (e: MessageEvent) => {
           if (e.data?.type === "SOCKET_EMIT") {
-            const { event, data } = e.data.payload
-            socketEmit(event, data)
+            const { event, data, room } = e.data.payload
+            socketEmit(event, data, room)
+          }
+          if (e.data?.type === "SOCKET_JOIN") {
+            joinRoom(e.data.payload.room)
+          }
+          if (e.data?.type === "SOCKET_LEAVE") {
+            leaveRoom(e.data.payload.room)
           }
         }
         window.addEventListener("message", handler)
         return () => window.removeEventListener("message", handler)
-      }, [socketEmit])
+      }, [socketEmit, joinRoom, leaveRoom])
 
-      // Inject Virtual Socket Client
+      // Inject Virtual Socket Client (ES Module)
       const socketClientCode = `
-        export const socket = {
+        const socketInstance = {
           on: (event, callback) => {
             window.addEventListener('message', (e) => {
               if (e.data?.type === 'SOCKET_EVENT' && e.data?.payload?.event === event) {
@@ -74,17 +85,35 @@ export const WebRunner = memo(
               }
             });
           },
+          // Standard emit (Global)
           emit: (event, data) => {
             window.parent.postMessage({
               type: 'SOCKET_EMIT',
               payload: { event, data }
             }, '*');
-          }
+          },
+          // Native Rooms API
+          join: (room) => {
+            window.parent.postMessage({ type: 'SOCKET_JOIN', payload: { room } }, '*');
+          },
+          leave: (room) => {
+            window.parent.postMessage({ type: 'SOCKET_LEAVE', payload: { room } }, '*');
+          },
+          to: (room) => ({
+            emit: (event, data) => {
+              window.parent.postMessage({
+                type: 'SOCKET_EMIT',
+                payload: { event, data, room }
+              }, '*');
+            }
+          })
         };
-        // Global Fallback
-        window.CodeScapes = window.CodeScapes || {};
-        socket.id = "${socketId}";
-        window.CodeScapes.socket = socket;
+        
+        socketInstance.id = "${socketId}";
+        
+        export const socket = socketInstance;
+        // Also attach to window for debugging if needed, but primary usage is import
+        window.socket = socketInstance; 
       `
 
       // 1. Log Handler (stable callback)
