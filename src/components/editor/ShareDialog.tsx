@@ -278,7 +278,7 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                          className="h-5 w-5 text-muted-foreground hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
                           onClick={() => handleRemoveCollaborator(collab)}
                         >
                           <X className="h-3 w-3" />

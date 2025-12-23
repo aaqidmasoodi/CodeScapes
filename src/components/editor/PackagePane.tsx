@@ -41,7 +41,7 @@ export function PackagePane({ dependencies, onDeletePackage }: PackagePaneProps)
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                  className="h-6 w-6 opacity-0 transition-opacity hover:bg-red-100 hover:text-red-600 group-hover:opacity-100 dark:hover:bg-red-900/30 dark:hover:text-red-400"
                   onClick={() => onDeletePackage(pkg)}
                   title={`Uninstall ${pkg}`}
                 >

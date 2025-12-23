@@ -116,7 +116,7 @@ export function useFileSystem(scapeId: string, source: "local" | "cloud" = "loca
           console.error("Failed to auto-save:", e)
           setSaveState("error")
         }
-      }, 1000) // 1s Debounce
+      }, 3000) // 3s Debounce for Cloud Optimization
     },
     [repo, scapeId]
   )

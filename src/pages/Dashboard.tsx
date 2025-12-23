@@ -216,7 +216,7 @@ export default function Dashboard() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              className="text-destructive focus:text-destructive"
+                              className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
                               onClick={(e) => handleDeleteClick(e, scape)}
                             >
                               <Trash2 className="mr-2 h-4 w-4" />

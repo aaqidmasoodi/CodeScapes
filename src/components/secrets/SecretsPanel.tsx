@@ -187,7 +187,7 @@ export const SecretsPanel = forwardRef<SecretsPanelHandle, SecretsPanelProps>(
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-5 w-5 text-muted-foreground opacity-0 hover:text-destructive group-hover:opacity-100"
+                    className="h-5 w-5 text-muted-foreground opacity-0 hover:bg-red-100 hover:text-red-600 group-hover:opacity-100 dark:hover:bg-red-900/30 dark:hover:text-red-400"
                     onClick={() => handleDelete(secret.id, secret.key)}
                   >
                     <Trash2 className="h-3 w-3" />
