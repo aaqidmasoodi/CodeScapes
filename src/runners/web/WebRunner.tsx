@@ -1,12 +1,22 @@
-import { useState, useRef, forwardRef, useImperativeHandle, memo, useEffect } from "react"
-import { MonitorPlay, PanelRightClose } from "lucide-react"
+import {
+  useState,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+  memo,
+  useEffect,
+  useCallback,
+} from "react"
+import { MonitorPlay, PanelRightClose, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"
+import type { LogEntry } from "@/types/log"
 
 import { usePreviewBridge } from "@/hooks/usePreviewBridge"
-import { secretsService } from "@/services/secrets"
+import { useSocketBridge } from "@/hooks/useSocketBridge"
+import { useStablePreviewPayload } from "@/hooks/useStablePreviewPayload"
 
 interface WebRunnerProps {
   files: ScapeFile[]
@@ -14,44 +24,114 @@ interface WebRunnerProps {
   onCollapse?: () => void
   onBusyChange?: (isBusy: boolean) => void
   isLive?: boolean
+  onOutput?: (log: LogEntry) => void
 }
 
 // WebRunner doesn't need to report busy state currently, but we accept the prop
 // to match the interface.
 export const WebRunner = memo(
   forwardRef<ScapeRunnerHandle, WebRunnerProps>(
-    ({ files, scapeId, onCollapse, isLive = false }, ref) => {
+    ({ files, scapeId, onCollapse, isLive = false, onOutput }, ref) => {
       const iframeRef = useRef<HTMLIFrameElement>(null)
-      const [envVars, setEnvVars] = useState<Record<string, string>>({})
 
-      // Fetch Secrets
+      // Stable Payload: Batches files + secrets, returns null until ready
+      const stablePayload = useStablePreviewPayload(scapeId, files)
+
+      // Manual Refresh Key (for restart button)
       const [refreshKey, setRefreshKey] = useState(0)
 
-      useEffect(() => {
-        if (!scapeId) return
-        secretsService.getSecrets(scapeId).then((secrets) => {
-          const map: Record<string, string> = {}
-          secrets.forEach((s) => (map[s.key] = s.value))
-          setEnvVars(map)
-          // Force refresh to inject secrets
-          setRefreshKey((k) => k + 1)
-        })
-      }, [scapeId])
+      // 0. Socket Bridge
+      const { emit: socketEmit } = useSocketBridge(scapeId, (event, data) => {
+        // Forward incoming socket events to Iframe
+        iframeRef.current?.contentWindow?.postMessage(
+          {
+            type: "SOCKET_EVENT",
+            payload: { event, data },
+          },
+          "*"
+        )
+      })
 
-      // Auto-Refresh Logic: Force full reload on file changes
-      // This ensures HTML/Text updates are reflected immediately, bypassing potentially flaky HMR.
+      // Listen for socket emits from Iframe
       useEffect(() => {
-        // We rely on the parent's debounce (750ms) to avoid rapid reloading.
-        // When debounced files arrive, we trigger a refresh.
-        // eslint-disable-next-line
-        setRefreshKey((k) => k + 1)
-      }, [files])
+        const handler = (e: MessageEvent) => {
+          if (e.data?.type === "SOCKET_EMIT") {
+            const { event, data } = e.data.payload
+            socketEmit(event, data)
+          }
+        }
+        window.addEventListener("message", handler)
+        return () => window.removeEventListener("message", handler)
+      }, [socketEmit])
 
-      // Bridge to the Runtime
-      // Phase 4: Activated Cross-Origin Mode (Dedicated)
-      // We disable hotUpdate to favor the more reliable full-reload approach implemented above.
-      const bridgeEnv = { ...envVars, hotUpdate: "false" }
-      const bridge = usePreviewBridge(files, scapeId, iframeRef, bridgeEnv, refreshKey)
+      // Inject Virtual Socket Client
+      const socketClientCode = `
+        export const socket = {
+          on: (event, callback) => {
+            window.addEventListener('message', (e) => {
+              if (e.data?.type === 'SOCKET_EVENT' && e.data?.payload?.event === event) {
+                callback(e.data.payload.data);
+              }
+            });
+          },
+          emit: (event, data) => {
+            window.parent.postMessage({
+              type: 'SOCKET_EMIT',
+              payload: { event, data }
+            }, '*');
+          }
+        };
+        // Global Fallback
+        window.CodeScapes = window.CodeScapes || {};
+        window.CodeScapes.socket = socket;
+      `
+
+      // 1. Log Handler (stable callback)
+      const handleLog = useCallback(
+        (level: string, args: unknown[]) => {
+          if (!onOutput) return
+
+          // Format args to string (similar to console.log behavior)
+          const content = args
+            .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
+            .join(" ")
+
+          onOutput({
+            id: crypto.randomUUID(),
+            type: level === "error" ? "stderr" : "stdout",
+            content,
+            timestamp: Date.now(),
+          })
+        },
+        [onOutput]
+      )
+
+      // --- EARLY RETURN: Wait for stable payload ---
+      // This is critical: usePreviewBridge should NOT be called until payload is ready.
+      // But hooks must be called unconditionally. So we call it, but with empty files.
+      // Actually, we need to restructure. Let's use a conditional render approach.
+
+      // Build files with socket injection (only if payload ready)
+      const filesWithSocket = stablePayload
+        ? [
+            ...stablePayload.files,
+            {
+              name: "socket.js",
+              content: socketClientCode,
+              language: "javascript",
+            } as ScapeFile,
+          ]
+        : []
+
+      // Bridge to the Runtime (only active when payload is ready)
+      const bridge = usePreviewBridge(
+        filesWithSocket,
+        scapeId,
+        iframeRef,
+        stablePayload?.env ?? {},
+        refreshKey,
+        handleLog
+      )
 
       useImperativeHandle(ref, () => ({
         captureThumbnail: async () => {
@@ -87,11 +167,21 @@ export const WebRunner = memo(
         }),
       }))
 
-      // If no files, empty
-      if (!files.length) {
+      // --- EARLY RETURN: Wait for stable payload ---
+      // Critical: Do NOT render the iframe until payload is ready.
+      // This prevents the bridge from sending COMPILE_FILES with 0 files.
+      if (!stablePayload || !files.length) {
         return (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            No files
+          <div className="flex h-full flex-col border-l border-border bg-background dark:border-zinc-800">
+            <div className="flex h-10 items-center justify-between border-b border-border bg-muted/20 px-2 dark:border-zinc-800">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <MonitorPlay className="h-3.5 w-3.5" />
+                <span>Preview (Web)</span>
+              </div>
+            </div>
+            <div className="flex flex-1 items-center justify-center text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
           </div>
         )
       }
@@ -101,9 +191,9 @@ export const WebRunner = memo(
         return (
           <div className="relative h-full w-full bg-white">
             {/* Loading Overlay */}
-            {!bridge.ready && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white text-sm text-zinc-400">
-                Initializing Environment...
+            {(!bridge.ready || !bridge.contentReady) && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-background text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin" />
               </div>
             )}
             <iframe
@@ -144,9 +234,9 @@ export const WebRunner = memo(
           </div>
           <div className="relative flex-1 bg-white">
             {/* Loading Overlay */}
-            {!bridge.ready && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white text-sm text-zinc-400">
-                <p>Initializing Environment...</p>
+            {(!bridge.ready || !bridge.contentReady) && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin" />
               </div>
             )}
 

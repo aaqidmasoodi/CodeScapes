@@ -64,9 +64,10 @@ export default function AuthPage() {
       } else {
         await signInWithEmail(email, password)
       }
-    } catch (err: any) {
-      console.error(err)
-      setError(err.message || "Authentication failed")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      console.error(error)
+      setError(error.message || "Authentication failed")
     } finally {
       setIsEmailLoading(false)
     }

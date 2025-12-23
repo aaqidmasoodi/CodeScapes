@@ -58,6 +58,7 @@ export function SpritePane({
     setPickerOpen(true)
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleAssetSelect = (asset: any) => {
     if (pickerType === "sprite") {
       onAdd(asset)
@@ -172,7 +173,11 @@ export function SpritePane({
             <div className="mt-1 flex items-center gap-2">
               <div
                 className="h-6 w-8 rounded border border-border"
-                style={{ backgroundColor: stage.costumes[stage.currentCostume].assetId || "white" }}
+                style={{
+                  backgroundColor:
+                    (stage.costumes[stage.currentCostume] as { assetId?: string }).assetId ||
+                    "white",
+                }}
               />
               <div className="flex flex-col">
                 <span className="text-[10px] text-muted-foreground">Backdrop</span>

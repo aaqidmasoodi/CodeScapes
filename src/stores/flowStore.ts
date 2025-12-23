@@ -90,14 +90,14 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         blocks: {},
         costumes: asset?.color
           ? [
-            {
-              id: uuidv4(),
-              name: "Costume 1",
-              assetId: asset.color, // Using color as assetId for V1
-              dataFormat: "svg",
-              md5ext: "color",
-            },
-          ]
+              {
+                id: uuidv4(),
+                name: "Costume 1",
+                assetId: asset.color, // Using color as assetId for V1
+                dataFormat: "svg",
+                md5ext: "color",
+              },
+            ]
           : [],
         currentCostume: 0,
       }
@@ -153,10 +153,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           targets: state.project.targets.map((t) =>
             t.id === stage.id
               ? {
-                ...stage,
-                costumes: updatedCostumes,
-                currentCostume: newIndex,
-              }
+                  ...stage,
+                  costumes: updatedCostumes,
+                  currentCostume: newIndex,
+                }
               : t
           ),
         },

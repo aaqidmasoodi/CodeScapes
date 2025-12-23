@@ -26,12 +26,14 @@ export function DeployButton({ scapeId, isOwner, isCloud, onDeploy }: DeployButt
         description: "Your scape has been published to the community.",
       })
       if (onDeploy) onDeploy(deploymentId)
-    } catch (error: any) {
-      console.error(error)
+    } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = error as any
+      console.error(e)
       toast({
         variant: "destructive",
         title: "Deployment Failed",
-        description: error.message || "Could not publish scape.",
+        description: e.message || "Could not publish scape.",
       })
     } finally {
       setIsDeploying(false)

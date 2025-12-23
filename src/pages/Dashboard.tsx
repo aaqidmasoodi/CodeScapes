@@ -7,13 +7,11 @@ import {
   MoreVertical,
   Layout,
   AlertTriangle,
-  Menu,
   Database,
   Cloud,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
@@ -31,8 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { CreateScapeDialog } from "@/components/dashboard/CreateScapeDialog"
-import { Header } from "@/components/layout/Header"
-import { Sidebar } from "@/components/layout/Sidebar"
+import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { type Scape } from "@/lib/db"
 import { useScapes } from "@/hooks/useScapes"
 
@@ -91,9 +88,8 @@ export default function Dashboard() {
 
   const isDeleteValid = scapeToDelete && deleteConfirmation === `delete ${scapeToDelete.name}`
 
-  const renderContent = () => {
-    // Default: My Scapes (Dashboard) - Unified View
-    return (
+  return (
+    <DashboardLayout activeTab={activeTab}>
       <div className="flex h-full flex-col bg-background">
         {/* Toolbar */}
         <div className="sticky top-0 z-10 flex flex-col gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
@@ -122,9 +118,9 @@ export default function Dashboard() {
         </div>
 
         {/* content */}
-        <div className="flex-1 overflow-auto p-6 [scrollbar-gutter:stable]">
+        <div className="flex-1 overflow-auto p-4 [scrollbar-gutter:stable] md:p-6">
           {loading ? (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {[...Array(8)].map((_, i) => (
                 <div key={i} className="flex flex-col space-y-3">
                   <Skeleton className="h-36 w-full rounded-xl" />
@@ -136,9 +132,9 @@ export default function Dashboard() {
               ))}
             </div>
           ) : !filteredScapes || filteredScapes.length === 0 ? (
-            <div className="mx-auto flex h-[60vh] max-w-2xl flex-col items-center justify-center rounded-xl border-2 border-dashed bg-muted/5 text-center">
+            <div className="mx-auto flex h-[50vh] max-w-2xl flex-col items-center justify-center rounded-xl border-2 border-dashed bg-muted/5 text-center md:h-[60vh]">
               <div className="mb-4 rounded-full bg-muted p-4">
-                <Layout className="h-8 w-8 text-muted-foreground" />
+                <Layout className="h-6 w-6 text-muted-foreground md:h-8 md:w-8" />
               </div>
               <h3 className="text-lg font-semibold">No scapes found</h3>
               <p className="mx-auto mb-6 mt-1 max-w-xs text-sm text-muted-foreground">
@@ -287,44 +283,6 @@ export default function Dashboard() {
           </DialogContent>
         </Dialog>
       </div>
-    )
-  }
-
-  return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      <Header showFullLogo />
-      <div className="flex flex-1 overflow-hidden">
-        {/* Desktop Sidebar (Hidden on Mobile) */}
-        {/* Desktop Sidebar (Spacer + Overlay) */}
-        <div className="relative hidden md:block">
-          <div className="h-full w-16" /> {/* Spacer */}
-          <div className="absolute inset-y-0 left-0 z-50">
-            {/* Sidebar Active Tab from URL */}
-            <Sidebar activeTab={activeTab} />
-          </div>
-        </div>
-
-        {/* Mobile Sidebar (Sheet) */}
-        <div className="sticky top-0 z-20 flex w-full items-center gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur md:hidden">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="-ml-2">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
-              <Sidebar
-                activeTab={activeTab}
-                isMobile={true}
-                className="w-full border-none bg-transparent"
-              />
-            </SheetContent>
-          </Sheet>
-          <span className="font-semibold">Dashboard</span>
-        </div>
-
-        <main className="relative z-0 h-full flex-1 overflow-hidden">{renderContent()}</main>
-      </div>
-    </div>
+    </DashboardLayout>
   )
 }

@@ -125,9 +125,9 @@ export default function CommunityPage() {
 
           {/* Grid */}
           {loading ? (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-64 w-full rounded-xl" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+                <Skeleton key={i} className="h-52 w-full rounded-xl" />
               ))}
             </div>
           ) : filteredScapes.length === 0 ? (
@@ -137,7 +137,7 @@ export default function CommunityPage() {
               <p className="text-muted-foreground">Try creating one or adjust your filters.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {filteredScapes.map((scape) => (
                 <Card
                   key={scape.id}
@@ -160,33 +160,35 @@ export default function CommunityPage() {
                     <div className="absolute inset-0 bg-black/0 transition-all group-hover:bg-black/10" />
                   </div>
 
-                  <CardHeader className="p-4 pb-2">
-                    <div className="flex items-start justify-between">
-                      <CardTitle className="line-clamp-1 text-base">{scape.name}</CardTitle>
-                      <Badge variant="outline" className="text-xs">
+                  <CardHeader className="p-3 pb-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="line-clamp-1 text-sm font-medium leading-none">
+                        {scape.name}
+                      </CardTitle>
+                      <Badge variant="outline" className="h-5 px-1 text-[10px]">
                         {getEnvLabel(scape.environment)}
                       </Badge>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-4 pt-0">
-                    <p className="line-clamp-2 text-sm text-muted-foreground">
+                  <CardContent className="p-3 pt-0">
+                    <p className="line-clamp-2 text-xs text-muted-foreground">
                       {scape.description || "No description provided."}
                     </p>
                   </CardContent>
-                  <CardFooter className="flex items-center justify-between border-t p-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
+                  <CardFooter className="flex items-center justify-between border-t p-3 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-1.5 overflow-hidden">
                       {scape.author?.avatar ? (
                         <img
                           src={scape.author.avatar}
                           alt="Author"
-                          className="h-4 w-4 rounded-full"
+                          className="h-3.5 w-3.5 rounded-full"
                         />
                       ) : (
                         <User className="h-3 w-3" />
                       )}
-                      <span>{scape.author?.name || "Unknown"}</span>
+                      <span className="truncate">{scape.author?.name || "Unknown"}</span>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 items-center gap-2">
                       <div className="flex items-center gap-1">
                         <Heart className="h-3 w-3" />
                         <span>{scape.stats?.likes || 0}</span>

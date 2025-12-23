@@ -32,7 +32,8 @@
   }
 
   .dark {
-    --background: 0 0% 9%; /* #171717 */
+    --background: 0 0% 9%;
+    /* #171717 */
     --foreground: 0 0% 98%;
     --card: 0 0% 11%;
     --card-foreground: 0 0% 98%;
@@ -59,11 +60,39 @@
   }
 }
 
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Global Sleek Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-muted-foreground/30 transition-colors hover:bg-muted-foreground/50;
+  }
+
+  /* Specific handling for Firefox if needed, but standard is mostly webkit for sleek look on modern browsers */
 }

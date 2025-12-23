@@ -27,17 +27,10 @@ export function CodeScapeLogo({ className, size = 32 }: LogoProps) {
           <stop offset="50%" stopColor="#34d399" />
           <stop offset="100%" stopColor="#10b981" />
         </linearGradient>
-        <linearGradient id={`${id}-g2`} x1="100%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#10b981" />
-          <stop offset="100%" stopColor="#047857" />
-        </linearGradient>
       </defs>
 
       {/* Rounded square base */}
       <rect x="3" y="3" width="26" height="26" rx="6" fill={`url(#${id}-g1)`} />
-
-      {/* Depth accent */}
-      <path d="M29 14L29 29L14 29L29 14Z" fill={`url(#${id}-g2)`} opacity="0.4" />
 
       {/* Code brackets */}
       <path

@@ -2,10 +2,12 @@ import { useState, useEffect } from "react"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import Editor from "@monaco-editor/react"
 import { type ScapeFile } from "@/types/file"
+import { useTheme } from "@/components/theme-provider"
 
 const repo = new CloudRepository()
 
 export function CodeViewer({ scapeId }: { scapeId: string }) {
+  const { resolvedTheme } = useTheme()
   const [files, setFiles] = useState<ScapeFile[]>([])
   const [activeFile, setActiveFile] = useState<ScapeFile | null>(null)
 
@@ -32,7 +34,7 @@ export function CodeViewer({ scapeId }: { scapeId: string }) {
   return (
     <div className="flex h-full flex-col bg-background">
       {/* Tabs */}
-      <div className="flex min-h-[35px] w-full overflow-x-auto border-b bg-muted/40">
+      <div className="no-scrollbar flex min-h-[35px] w-full overflow-x-auto border-b bg-muted/40">
         {files.map((f) => (
           <button
             key={f.id}
@@ -58,7 +60,7 @@ export function CodeViewer({ scapeId }: { scapeId: string }) {
             height="100%"
             language={activeFile.language}
             value={typeof activeFile.content === "string" ? activeFile.content : "Binary Content"}
-            theme="vs-dark"
+            theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
             options={{
               readOnly: true,
               minimap: { enabled: false },

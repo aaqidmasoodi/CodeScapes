@@ -165,7 +165,7 @@ export default function ScapeDetailPage() {
 
   return (
     <DashboardLayout activeTab="community">
-      <div className="h-full w-full overflow-y-auto bg-background p-6">
+      <div className="h-full w-full overflow-y-auto bg-background p-4 md:p-6">
         <div className="mx-auto flex max-w-[1800px] flex-col gap-8">
           {/* Top Section: Preview & Metadata */}
           <div className="grid min-h-[500px] grid-cols-1 gap-6 lg:h-[750px] lg:grid-cols-4">

@@ -24,6 +24,7 @@ interface DeploymentDialogProps {
 export function DeploymentDialog({ scapeId, isOwner, isCloud, onDeploy }: DeploymentDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [isDeploying, setIsDeploying] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [deployments, setDeployments] = useState<any[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
 
@@ -59,6 +60,7 @@ export function DeploymentDialog({ scapeId, isOwner, isCloud, onDeploy }: Deploy
       })
       if (onDeploy) onDeploy(deploymentId)
       loadHistory() // Refresh list
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       console.error(error)
       toast({
