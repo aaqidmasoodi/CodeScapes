@@ -177,48 +177,54 @@ self.addEventListener("fetch", (event) => {
         typeof content === "string" &&
         (content.startsWith("http://") || content.startsWith("https://"))
       ) {
-        console.log(`[SW] Proxying ${path} to ${content}`)
-        event.respondWith(
-          fetch(content)
-            .then((response) => {
-              // Recreate response with enforced CORP headers and No-Cache
-              const newHeaders = new Headers(response.headers)
-              newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin")
-              newHeaders.set("Access-Control-Allow-Origin", "*")
-              newHeaders.set("Cache-Control", "no-store, no-cache") // Force no-cache on proxy too
-
-              return new Response(response.body, {
-                status: response.status,
-                statusText: response.statusText,
-                headers: newHeaders,
-              })
-            })
-            .catch((e) => {
-              console.error("[SW] Proxy fetch failed:", e)
-              return new Response("Proxy error", { status: 502 })
-            })
-        )
-        return
+        // ... (Proxy Logic kept same, just shortened for replacement matching if needed, but I can target the Block)
+        // Actually, better to target the HTML serving block specifically.
       }
 
-      console.log(`[SW] Serving ${path} from memory (Namespace: ${scapeId})`)
-      // Blob response
-      const response = new Response(content, {
-        status: 200,
-        headers: {
-          "Content-Type": content.type,
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-          "Cross-Origin-Embedder-Policy": "require-corp",
-          "Cross-Origin-Opener-Policy": "same-origin",
-          "Cross-Origin-Resource-Policy": "cross-origin",
-          "Access-Control-Allow-Origin": "*",
-        },
-      })
-      event.respondWith(response)
-      return
+      // ...
     }
+    console.log(`[SW] Proxying ${path} to ${content}`)
+    event.respondWith(
+      fetch(content)
+        .then((response) => {
+          // Recreate response with enforced CORP headers and No-Cache
+          const newHeaders = new Headers(response.headers)
+          newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin")
+          newHeaders.set("Access-Control-Allow-Origin", "*")
+          newHeaders.set("Cache-Control", "no-store, no-cache") // Force no-cache on proxy too
+
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: newHeaders,
+          })
+        })
+        .catch((e) => {
+          console.error("[SW] Proxy fetch failed:", e)
+          return new Response("Proxy error", { status: 502 })
+        })
+    )
+    return
+  }
+
+  console.log(`[SW] Serving ${path} from memory (Namespace: ${scapeId})`)
+  // Blob response
+  const response = new Response(content, {
+    status: 200,
+    headers: {
+      "Content-Type": content.type,
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "cross-origin",
+      "Access-Control-Allow-Origin": "*",
+    },
+  })
+  event.respondWith(response)
+  return
+}
 
     console.warn(`[SW] File not found in ${scapeId}: ${path}`)
     event.respondWith(new Response("File not found", { status: 404 }))

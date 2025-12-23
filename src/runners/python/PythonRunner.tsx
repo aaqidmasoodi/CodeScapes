@@ -13,6 +13,7 @@ import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"
 import type { LogEntry } from "@/types/log"
 import { secretsService } from "@/services/secrets"
+import { useSocketBridge } from "@/hooks/useSocketBridge"
 
 interface PythonRunnerProps {
   files: ScapeFile[]
@@ -68,6 +69,15 @@ export const PythonRunner = memo(
         >
       >(new Map())
 
+      // 0. Socket Bridge
+      const { emit: socketEmit } = useSocketBridge(scapeId, (event, data) => {
+        // Forward incoming socket events to Worker
+        workerRef.current?.postMessage({
+          type: "SOCKET_EVENT",
+          payload: { event, data },
+        })
+      })
+
       // --- Stable Refs for Props ---
       // We use refs to hold the latest prop values so our callbacks (runPython, initWorker)
       // don't need to be re-created when props change. This breaks the infinite loop cycles.
@@ -78,6 +88,7 @@ export const PythonRunner = memo(
         onFileSystemUpdate,
         dependencies,
         files,
+        socketEmit,
       })
 
       useEffect(() => {
@@ -97,11 +108,12 @@ export const PythonRunner = memo(
           onFileSystemUpdate,
           dependencies,
           files,
+          socketEmit,
         }
-      }, [onOutput, onBusyChange, onInputRequest, onFileSystemUpdate, dependencies, files])
+      }, [onOutput, onBusyChange, onInputRequest, onFileSystemUpdate, dependencies, files, socketEmit])
 
       // Forward declaration for initWorker to use
-      const runPythonRef = useRef<() => Promise<void>>(async () => {})
+      const runPythonRef = useRef<() => Promise<void>>(async () => { })
 
       // --- Stable Helpers ---
 
@@ -149,6 +161,9 @@ export const PythonRunner = memo(
           const { type, payload } = e.data
 
           switch (type) {
+            case "SOCKET_EMIT":
+              propsRef.current.socketEmit(payload.event, payload.data)
+              break
             case "STATUS":
               // Route to pending installs if active (for pip progress in terminal)
               if (pendingInstalls.current.size > 0) {
@@ -255,7 +270,8 @@ export const PythonRunner = memo(
 
       // --- Stable Run Logic ---
       const runPython = useCallback(async () => {
-        const currentFiles = propsRef.current.files
+        // Use `files` prop directly (it will be updated by parent setDebouncedFiles)
+        const currentFiles = files
         if (!currentFiles.length) return
 
         // 1. Check if busy -> Restart if so to clear input blocks
@@ -319,21 +335,17 @@ export const PythonRunner = memo(
             env: envVars, // Inject Secrets
           },
         })
-      }, [initWorker, log, setBusy, envVars])
+      }, [initWorker, log, setBusy, envVars, files])
 
       // Keep ref updated
       useEffect(() => {
         runPythonRef.current = runPython
       }, [runPython])
 
-      // --- Effects ---
-
       // 0. Service Worker Watchdog
       useEffect(() => {
         if (!navigator.serviceWorker.controller) {
           console.warn("[Runner] No Service Worker controlling this page! Input may fail.")
-          // Attempt to claim if possible? (SW does this on activate)
-          // We can't force it from here easily, but we can detect it.
         } else {
           console.log("[Runner] Service Worker active and controlling.")
         }
@@ -349,7 +361,6 @@ export const PythonRunner = memo(
       // 1. Initialize on mount or when dependencies change (deeply)
       const depsString = JSON.stringify(dependencies)
       useEffect(() => {
-        // Defer init to avoid synchronous state update warning during render
         const timer = setTimeout(() => {
           initWorker()
         }, 0)
@@ -359,31 +370,16 @@ export const PythonRunner = memo(
         }
       }, [depsString, initWorker])
 
+      const pendingInputIdRef = useRef<string | null>(null)
+
       // 2. Run whenever files change (and secrets are ready, if needed)
       useEffect(() => {
-        // Simple debounce/check? For now, just run.
-        // If secrets update later, we might want to re-run?
-        // Actually, re-running on every secret change might be annoying (typing in panel).
-        // But for the initial load, we MUST wait for secrets if we want them injected.
-
-        // Race condition fix: If secrets are still loading (envVars is empty),
-        // we might run with empty env.
-        // However, blocking run until secrets load might delay regular usage.
-        // Compromise: We let it run, but we also re-run if envVars change from empty->filled?
-        // Or just include envVars in dependency?
-
-        // Including envVars in dependency means typing a new secret re-runs the code.
-        // That is acceptable behavior for "Auto Run" mode (which this effect essentially simulates for deps).
-        // Actually, this effect is technically "Auto Run on File Change".
-
         // Defer execution to avoid synchronous state update during render
         const t = setTimeout(() => {
           runPython()
         }, 0)
         return () => clearTimeout(t)
-      }, [files, runPython, envVars]) // Added envVars dependency
-
-      const pendingInputIdRef = useRef<string | null>(null)
+      }, [files, runPython, envVars])
 
       // --- Handle ---
       useImperativeHandle(ref, () => ({
@@ -393,8 +389,10 @@ export const PythonRunner = memo(
           initWorker()
         },
         restart: async () => {
-          // Soft Restart (Re-run current code in existing worker)
-          runPython()
+          // Soft Restart: We rely on the parent updating props (files),
+          // which triggers the useEffect above (calling runPython).
+          // We don't need to do anything here except maybe log.
+          console.log("[PythonRunner] Soft restart initiated via prop update")
         },
         installPackage: async (pkg, onProgress) => {
           return new Promise((resolve) => {

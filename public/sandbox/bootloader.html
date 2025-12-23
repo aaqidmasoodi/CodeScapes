@@ -49,12 +49,21 @@
 
       const PARENT_ORIGIN = "*"
 
-      // Proxy Console to Parent
-      function proxyConsole() {
-        const original = { log: console.log, warn: console.warn, error: console.error }
+      const nativeConsole = {
+        log: console.log.bind(console),
+        warn: console.warn.bind(console),
+        error: console.error.bind(console)
+      }
 
+      const sys = {
+        log: (...args) => nativeConsole.log(...args),
+        warn: (...args) => nativeConsole.warn(...args),
+        error: (...args) => nativeConsole.error(...args)
+      }
+
+      // Proxy User Console to Parent
+      function proxyUserConsole() {
         function send(level, args) {
-          // Convert args to strings (cant pass objects easily in postMessage if they have circular refs)
           const payload = args.map((a) => {
             try {
               return typeof a === "object" ? JSON.stringify(a) : String(a)
@@ -63,38 +72,57 @@
             }
           })
           window.parent.postMessage({ type: "SANDBOX_LOG", level, payload }, PARENT_ORIGIN)
-          original[level].apply(console, args)
+          // Also log to native for debugging
+          nativeConsole[level](...args)
         }
 
         console.log = (...args) => send("log", args)
         console.warn = (...args) => send("warn", args)
         console.error = (...args) => send("error", args)
       }
-      proxyConsole()
+      proxyUserConsole()
 
-      console.log(`[Bootloader ${ID}] Starting...`)
+      // Capture Global Errors
+      window.onerror = function (msg, url, lineNo, columnNo, error) {
+        const errorInfo = [
+          msg,
+          `@ ${url?.split("/").pop() || "unknown"}:${lineNo}:${columnNo}`
+        ]
+        // Send directly via console.error proxy logic? 
+        // No, console.error is already proxied.
+        // We can just call console.error(msg, error) effectively.
+        console.error("Uncaught Error:", ...errorInfo)
+        return false // Don't suppress default browser error
+      }
+
+      // Capture Unhandled Promise Rejections
+      window.addEventListener("unhandledrejection", function (event) {
+        console.error("Unhandled Rejection:", event.reason)
+      })
+
+      sys.log(`[Bootloader ${ID}] Starting...`)
 
       if (!("serviceWorker" in navigator)) {
-        console.error(`[Bootloader ${ID}] No Service Worker Support`)
+        sys.error(`[Bootloader ${ID}] No Service Worker Support`)
         return
       }
 
       try {
-        console.log(`[Bootloader ${ID}] Registering SW...`)
+        sys.log(`[Bootloader ${ID}] Registering SW...`)
         // Explicitly requesting sw.js
         const reg = await navigator.serviceWorker.register("./sw.js", { scope: "./" })
 
-        console.log(`[Bootloader ${ID}] Waiting for Ready...`)
+        sys.log(`[Bootloader ${ID}] Waiting for Ready...`)
         await navigator.serviceWorker.ready
 
         // Ensure we are controlled before proceeding
         if (!navigator.serviceWorker.controller) {
-          console.warn(`[Bootloader ${ID}] No controller found. Reloading to acquire...`)
+          sys.warn(`[Bootloader ${ID}] No controller found. Reloading to acquire...`)
           window.location.reload()
           return
         }
 
-        console.log(`[Bootloader ${ID}] SW Ready! Broadcasting SANDBOX_READY...`)
+        sys.log(`[Bootloader ${ID}] SW Ready! Broadcasting SANDBOX_READY...`)
         window.parent.postMessage({ type: "SANDBOX_READY" }, PARENT_ORIGIN)
 
         window.addEventListener("message", async (event) => {
@@ -102,16 +130,16 @@
 
           if (event.data.type === "COMPILE_FILES") {
             const { scapeId, files, env } = event.data.payload
-            console.log(`[Bootloader ${ID}] Compiling ${scapeId}...`)
-            console.log(
+            sys.log(`[Bootloader ${ID}] Compiling ${scapeId}...`)
+            sys.log(
               `[Bootloader ${ID}] Files received:`,
               files.map((f) => f.name)
             )
-            console.log(`[Bootloader ${ID}] Env received:`, env ? Object.keys(env) : "NONE")
+            sys.log(`[Bootloader ${ID}] Env received:`, env ? Object.keys(env) : "NONE")
 
             const sw = navigator.serviceWorker.controller
             if (!sw) {
-              console.error(`[Bootloader ${ID}] No SW Controller. Forcing reload...`)
+              sys.error(`[Bootloader ${ID}] No SW Controller. Forcing reload...`)
               window.location.reload()
               return
             }
@@ -119,7 +147,7 @@
             const channel = new MessageChannel()
             channel.port1.onmessage = (e) => {
               if (e.data.type === "ACK") {
-                console.log(`[Bootloader ${ID}] Redirecting...`)
+                sys.log(`[Bootloader ${ID}] Redirecting...`)
                 window.location.replace(`./run/${scapeId}/index.html`)
               }
             }
@@ -134,7 +162,7 @@
           }
         })
       } catch (e) {
-        console.error(`[Bootloader ${ID}] Critical Error:`, e)
+        sys.error(`[Bootloader ${ID}] Critical Error:`, e)
         document.body.innerHTML = "<h1>Sandbox Error</h1><pre>" + e.message + "</pre>"
       }
     })()

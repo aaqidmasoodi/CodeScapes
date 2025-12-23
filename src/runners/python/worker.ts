@@ -110,7 +110,7 @@ self.onmessage = async (e: MessageEvent) => {
 
       // Define blocking input function in JS
       // Using self explicitly to attach to global scope for Pyodide access
-      ;(self as any).wait_for_input = (prompt: string) => {
+      ; (self as any).wait_for_input = (prompt: string) => {
         const id = Math.random().toString(36).substring(7)
 
         // Notify Main Thread (React) to show input UI
@@ -262,6 +262,38 @@ self.onmessage = async (e: MessageEvent) => {
     await readyPromise
   }
 
+  if (type === "SOCKET_EVENT") {
+    // Dispatch event to Python codescapes module
+    // We assume the user has run code (RUN) which initialized the 'codescapes' module.
+    // If not, we just ignore it.
+    const runDispatch = async () => {
+      const py = await loadPyodide()
+      try {
+        const { event, data } = payload
+        const dataJson = JSON.stringify(data)
+        // We use triple quotes for safety, but dataJson is JSON escaped so safe.
+        // But what if data contains triple quotes? JSON.stringify handles escaping quotes.
+        // Wait, passing as string literal in python code?
+        // Better: inject variable first? No, simple injection:
+        // codescapes.socket._dispatch('event', json.loads('...'))
+
+        await py.runPythonAsync(`
+          try:
+            import codescapes
+            import json
+            codescapes.socket._dispatch('${event}', json.loads('''${dataJson}'''))
+          except Exception:
+            pass
+        `)
+      } catch {
+        // Ignore errors during dispatch (e.g. module not loaded yet)
+      }
+    }
+    // We fire and forget, don't await on readyPromise main chain? 
+    // Actually, we must ensure pyodide is loaded.
+    readyPromise.then(runDispatch)
+  }
+
   if (type === "RUN") {
     let py: PyodideInterface | null = null
     try {
@@ -334,17 +366,58 @@ self.onmessage = async (e: MessageEvent) => {
         sys.argv = ['']
       `)
 
-      // 0.5 Patch Input
+      // 0.5 Patch Input & Inject CodeScapes Socket
       await py.runPythonAsync(`
         import builtins
         import js
+        import sys
+        import json
         
+        # --- Patch Input ---
         def _input(prompt=""):
-            # Do NOT print prompt here to avoid buffering issues.
-            # We send it to JS (which includes the ID generation)
             return js.wait_for_input(prompt)
-            
         builtins.input = _input
+        
+        # --- Inject CodeScapes Module ---
+        import types
+        
+        class CodeScapesSocket:
+            def __init__(self):
+                self._handlers = {}
+                
+            def on(self, event, handler):
+                if event not in self._handlers:
+                    self._handlers[event] = []
+                self._handlers[event].append(handler)
+                
+            def emit(self, event, data=None):
+                # Serialize aggressively to JSON string for passing to JS
+                # This avoids DataCloneError (PyProxy not cloneable)
+                try:
+                    payload = json.dumps({
+                        'type': 'SOCKET_EMIT',
+                        'payload': {
+                            'event': event,
+                            'data': data
+                        }
+                    })
+                    js.postMessage(js.JSON.parse(payload))
+                except Exception as e:
+                    print(f"Socket Emit Error: {e}")
+
+            def _dispatch(self, event, data):
+                if event in self._handlers:
+                    for handler in self._handlers[event]:
+                        try:
+                            # 2-arg check? No, just pass data.
+                            handler(data)
+                        except Exception as e:
+                            print(f"Error in socket handler for '{event}': {e}")
+
+        # Create module
+        mod = types.ModuleType("codescapes")
+        mod.socket = CodeScapesSocket()
+        sys.modules["codescapes"] = mod
       `)
 
       // 0.6 Inject Secrets (Environment Variables)
@@ -564,4 +637,4 @@ except ImportError:
   }
 }
 
-export {}
+export { }

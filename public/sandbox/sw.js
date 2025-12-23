@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = "codescape-sandbox-v2"
+const CACHE_NAME = "codescape-sandbox-v3"
 // Map<ScapeId, Map<FilePath, Blob>>
 const fileSystem = new Map()
 
@@ -42,7 +42,46 @@ self.addEventListener("message", async (event) => {
       const injectionScript = `<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
       <script>
         (function() {
-          console.log("[Sandbox Preamble] Setting process.env", ${JSON.stringify(Object.keys(envSafe))});
+          if (window.__cs_preamble) return;
+          window.__cs_preamble = true;
+
+          // --- Console Proxy & Error Capture ---
+          const PARENT_ORIGIN = "*";
+          const nativeConsole = {
+            log: console.log.bind(console),
+            warn: console.warn.bind(console),
+            error: console.error.bind(console)
+          };
+
+          function proxyUserConsole() {
+            function send(level, args) {
+              const payload = args.map((a) => {
+                try {
+                  return typeof a === "object" ? JSON.stringify(a) : String(a);
+                } catch (e) {
+                  return String(a);
+                }
+              });
+              window.parent.postMessage({ type: "SANDBOX_LOG", level, payload }, PARENT_ORIGIN);
+              nativeConsole[level].apply(console, args);
+            }
+            console.log = function() { send("log", Array.from(arguments)); };
+            console.warn = function() { send("warn", Array.from(arguments)); };
+            console.error = function() { send("error", Array.from(arguments)); };
+          }
+          proxyUserConsole();
+          
+          window.onerror = function(msg, url, line, col, error) {
+             const payload = [msg, "@ " + (url ? url.split('/').pop() : 'unknown') + ":" + line + ":" + col];
+             window.parent.postMessage({ type: "SANDBOX_LOG", level: "error", payload }, PARENT_ORIGIN);
+             return false;
+          };
+          window.addEventListener("unhandledrejection", function(e) {
+             window.parent.postMessage({ type: "SANDBOX_LOG", level: "error", payload: ["Unhandled Rejection:", e.reason] }, PARENT_ORIGIN);
+          });
+          // -------------------------------------
+
+          nativeConsole.log("[Sandbox Preamble] Setting process.env", ${JSON.stringify(Object.keys(envSafe))});
           var env = ${JSON.stringify(envSafe)};
           window.process = window.process || {};
           window.process.env = env;
@@ -78,7 +117,7 @@ self.addEventListener("message", async (event) => {
                   window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: data }, "*");
                   return;
                 } catch(err) {
-                  console.warn("[Sandbox] Canvas capture failed, trying html2canvas");
+                  nativeConsole.warn("[Sandbox] Canvas capture failed, trying html2canvas");
                 }
               }
               
@@ -104,15 +143,38 @@ self.addEventListener("message", async (event) => {
                     var data = cvs.toDataURL("image/jpeg", 0.7);
                     window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: data }, "*");
                   }).catch(function(err) {
-                    console.error("[Sandbox] html2canvas failed:", err);
+                    nativeConsole.error("[Sandbox] html2canvas failed:", err);
                     window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: null }, "*");
                   });
                 }, 200);
               } else {
-                console.warn("[Sandbox] html2canvas not loaded");
+                nativeConsole.warn("[Sandbox] html2canvas not loaded");
                 window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: null }, "*");
               }
             }
+          });
+          // Handle Hot Reload / Soft Compile
+          window.addEventListener("message", function(event) {
+             if (event.data && event.data.type === "COMPILE_FILES") {
+                nativeConsole.log("[Preamble] Received COMPILE_FILES signal");
+                if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+                    window.location.reload();
+                    return;
+                }
+                
+                const { scapeId, files, env } = event.data.payload;
+                const channel = new MessageChannel();
+                channel.port1.onmessage = function(e) {
+                   if (e.data.type === "ACK") {
+                      window.location.reload();
+                   }
+                };
+                
+                navigator.serviceWorker.controller.postMessage({
+                   type: "HYDRATE",
+                   payload: { scapeId, files, env }
+                }, [channel.port2]);
+             }
           });
         })();
       </script>`
