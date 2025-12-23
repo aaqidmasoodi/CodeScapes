@@ -124,8 +124,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
   if (!scape && loading) {
     return (
       <div className="flex h-screen w-full flex-col items-center justify-center bg-background text-foreground">
-        <Loader2 className="mb-4 h-10 w-10 animate-spin text-primary" />
-        <p className="font-mono text-sm text-muted-foreground">Booting Scape System...</p>
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
       </div>
     )
   }

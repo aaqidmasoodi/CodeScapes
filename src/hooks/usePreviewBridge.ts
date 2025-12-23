@@ -1,4 +1,4 @@
-import { useState, useLayoutEffect, useMemo, useRef } from "react"
+import { useState, useLayoutEffect, useMemo, useRef, useEffect } from "react"
 import type { ScapeFile } from "@/types/file"
 
 // We are now fully committed to the Cross-Origin Bootloader architecture.
@@ -6,6 +6,7 @@ import type { ScapeFile } from "@/types/file"
 
 interface PreviewBridge {
   ready: boolean
+  contentReady: boolean
   url: string
 }
 
@@ -23,7 +24,8 @@ export function usePreviewBridge(
   scapeId: string,
   iframeRef?: React.RefObject<HTMLIFrameElement | null>,
   env?: Record<string, string>,
-  versionKey?: number
+  versionKey?: number,
+  onLog?: (level: string, args: unknown[]) => void
 ): PreviewBridge {
   const filesHash = useMemo(() => {
     return files
@@ -61,34 +63,57 @@ export function usePreviewBridge(
     const hash = computeHash(filesHash)
     return {
       ready: false,
+      contentReady: false,
       url: `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${hash}`,
     }
   })
 
   // Render-time state derivation
   if (versionKey !== prevVersionKey) {
-    setPrevVersionKey(versionKey)
-    setPrevFilesHash(filesHash)
-
-    let bootloaderOrigin = ""
-    const currentHost = window.location.hostname
-    if (currentHost === "localhost" || currentHost === "127.0.0.1") {
-      bootloaderOrigin = `${window.location.protocol}//localhost:3002`
+    // Check for Soft Reload
+    if (env?.hotUpdate === "true" && bridgeState.ready) {
+      setPrevVersionKey(versionKey)
+      // DO NOT show spinner for soft reload - keep content visible for instant experience
     } else {
-      bootloaderOrigin = window.location.origin
+      // Hard Reload
+      setPrevVersionKey(versionKey)
+      setPrevFilesHash(filesHash)
+
+      let bootloaderOrigin = ""
+      const currentHost = window.location.hostname
+      if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+        bootloaderOrigin = `${window.location.protocol}//localhost:3002`
+      } else {
+        bootloaderOrigin = window.location.origin
+      }
+
+      const version = versionKey ?? 0
+      const hash = computeHash(filesHash)
+      const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${hash}`
+
+      setBridgeState({ ready: false, contentReady: false, url: bootloaderUrl })
     }
-
-    const version = versionKey ?? 0
-    const hash = computeHash(filesHash)
-    const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${hash}`
-
-    setBridgeState({ ready: false, url: bootloaderUrl })
-  } else if (filesHash !== prevFilesHash && env?.hotUpdate && bridgeState.ready) {
+  } else if (filesHash !== prevFilesHash && env?.hotUpdate === "true" && bridgeState.ready) {
     setPrevFilesHash(filesHash)
+    // DO NOT show spinner for hot swap - keep content visible for instant experience
   }
+
+  // --- REFS for Stable Callbacks ---
+  // These allow the effect to access the latest values without re-running.
+  const filesRef = useRef(files)
+  const envRef = useRef(env)
+  const onLogRef = useRef(onLog)
+
+  // Keep refs updated (in effect to comply with React rules)
+  useEffect(() => {
+    filesRef.current = files
+    envRef.current = env
+    onLogRef.current = onLog
+  })
 
   // useLayoutEffect ensures the listener is attached BEFORE the iframe has a chance
   // to load and fire its message, guarding against race conditions.
+  // CRITICAL: This effect ONLY runs once per scapeId to prevent listener thrashing.
   useLayoutEffect(() => {
     if (!iframeRef) {
       console.error("Frame ref required for Bridge")
@@ -98,7 +123,6 @@ export function usePreviewBridge(
     // 1. Determine Bootloader Origin
     let bootloaderOrigin = ""
     const currentHost = window.location.hostname
-
     if (currentHost === "localhost" || currentHost === "127.0.0.1") {
       bootloaderOrigin = `${window.location.protocol}//localhost:3002`
     } else {
@@ -110,6 +134,10 @@ export function usePreviewBridge(
       // Filter irrelevant logs
       if (event.data?.type === "SANDBOX_LOG") {
         const { level, payload } = event.data
+
+        // Notify Parent (Runner) - using ref for latest callback
+        onLogRef.current?.(level, payload)
+
         const prefix = `%c[Sandbox]`
         const style = "background: #222; color: #bada55"
         if (level === "log") console.log(prefix, style, ...payload)
@@ -118,15 +146,28 @@ export function usePreviewBridge(
         return
       }
 
+      // Handle Content Ready Signal (from App/Iframe)
+      if (event.data?.type === "SANDBOX_CONTENT_READY") {
+        setBridgeState((prev) => ({ ...prev, contentReady: true }))
+        return
+      }
+
       if (event.origin !== bootloaderOrigin) return
 
       if (event.data.type === "SANDBOX_READY") {
+        // Only send compile if we actually have files
+        if (filesRef.current.length === 0) {
+          console.log("[Bridge] Handshake received, but no files yet. Skipping compile.")
+          return
+        }
+
         console.log("[Bridge] Handshake Received! Sending Compile Payload...")
 
+        // Use refs for latest files/env
         iframeRef.current?.contentWindow?.postMessage(
           {
             type: "COMPILE_FILES",
-            payload: { scapeId, files, env },
+            payload: { scapeId, files: filesRef.current, env: envRef.current },
           },
           bootloaderOrigin
         )
@@ -137,20 +178,35 @@ export function usePreviewBridge(
 
     window.addEventListener("message", handleMessage)
 
+    // Safety Timeout: Force ready if signal missed (e.g. fatal error in user code prevents load)
+    // This prevents the "Loading..." spinner from getting stuck forever.
+    const safetyTimeout = setTimeout(() => {
+      setBridgeState((prev) => {
+        if (!prev.contentReady && prev.ready) {
+          console.warn("[Bridge] Content Ready Signal missing, forcing ready.")
+          return { ...prev, contentReady: true }
+        }
+        return prev
+      })
+    }, 2000)
+
     return () => {
       window.removeEventListener("message", handleMessage)
+      clearTimeout(safetyTimeout)
     }
-  }, [scapeId, files, iframeRef, env, versionKey])
+  }, [scapeId, iframeRef]) // MINIMAL DEPS - Only scapeId and iframeRef
 
   // Revised Hot Update Effect using Ref for stability check
   const lastSentHash = useRef<string>(filesHash)
+  const lastSentVersion = useRef<number | undefined>(versionKey)
 
   useLayoutEffect(() => {
-    if (env?.hotUpdate && bridgeState.ready && iframeRef?.current) {
-      if (lastSentHash.current !== filesHash) {
+    if (envRef.current?.hotUpdate === "true" && bridgeState.ready && iframeRef?.current) {
+      if (lastSentHash.current !== filesHash || lastSentVersion.current !== versionKey) {
         lastSentHash.current = filesHash
+        lastSentVersion.current = versionKey
 
-        // Determine Origin (Re-used logic, maybe should extract)
+        // Determine Origin
         let bootloaderOrigin = ""
         const currentHost = window.location.hostname
         if (currentHost === "localhost" || currentHost === "127.0.0.1") {
@@ -163,13 +219,13 @@ export function usePreviewBridge(
         iframeRef.current.contentWindow?.postMessage(
           {
             type: "COMPILE_FILES",
-            payload: { scapeId, files, env },
+            payload: { scapeId, files: filesRef.current, env: envRef.current },
           },
           bootloaderOrigin
         )
       }
     }
-  }, [filesHash, files, bridgeState.ready, env, iframeRef, scapeId])
+  }, [filesHash, versionKey, bridgeState.ready, scapeId, iframeRef])
 
   return bridgeState
 }
