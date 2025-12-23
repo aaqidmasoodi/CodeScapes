@@ -102,8 +102,8 @@ export function useFileSystem(scapeId: string, source: "local" | "cloud" = "loca
         try {
           await repo.updateFileContent(fileId, content)
 
-          // Update Timestamp on Scape (if supported)
-          await repo.updateScape(scapeId, { updatedAt: new Date() })
+          // Update Timestamp on Scape (Removed for optimization - rely on explicit saves)
+          // await repo.updateScape(scapeId, { updatedAt: new Date() })
 
           delete saveTimeoutRef.current[fileId]
 
