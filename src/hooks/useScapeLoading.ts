@@ -83,7 +83,23 @@ export function useScapeLoading(id: string, options?: { skipLocal?: boolean }) {
     // But this fires even during initial load.
 
     // Let's just fire it. Supabase is fast.
-    checkCloud()
+    // Optimized Loading Strategy:
+    // 1. Check Local DB explicitly (awaitable).
+    // 2. Only check Cloud if Local returns nothing.
+    const runStrategy = async () => {
+      if (!options?.skipLocal) {
+        const localEntry = await db.scapes.get(id)
+        if (localEntry) {
+          // It exists locally! Do not touch the cloud.
+          if (isMounted) setIsCloudLoading(false)
+          return
+        }
+      }
+      // Not found locally? Go to cloud.
+      if (isMounted) checkCloud()
+    }
+
+    runStrategy()
 
     // --- Real-Time Subscription ---
     const channel = supabase
