@@ -63,7 +63,54 @@
 
       // Proxy User Console to Parent
       function proxyUserConsole() {
+        let logCount = 0
+        let lastReset = Date.now()
+        const LOG_LIMIT = 50 // max logs per sec
+
+        // Duplicate Suppression
+        const DUP_WINDOW = 60 // ms (Optimized for 60fps loops)
+        const lastLogs = new Map() // content -> timestamp
+
         function send(level, args) {
+          const now = Date.now()
+
+          // 1. Rate Limit Reset
+          if (now - lastReset > 1000) {
+            logCount = 0
+            lastReset = now
+          }
+
+          // 2. Rate Limit Enforcement
+          if (logCount > LOG_LIMIT) {
+            if (logCount === LOG_LIMIT + 1) {
+              // Send one warning
+              window.parent.postMessage({
+                type: "SANDBOX_LOG",
+                level: "warn",
+                payload: ["[Sandbox] Log limit exceeded (50/s). Suppression active."]
+              }, PARENT_ORIGIN)
+            }
+            // Still log to native for devtools
+            nativeConsole[level](...args)
+            return
+          }
+
+          // 3. Duplicate Suppression
+          // Dedupe ALL levels (log/warn/error) within 60ms.
+          // This catches machine loops (p5 spam) but allows human clicks (>100ms interval).
+          const contentKey = args.map(String).join(' ')
+          if (lastLogs.has(contentKey)) {
+            if (now - lastLogs.get(contentKey) < DUP_WINDOW) {
+              // Skip duplicate
+              lastLogs.set(contentKey, now)
+              return
+            }
+          }
+          lastLogs.set(contentKey, now)
+
+          // Garbage collect map occasionally
+          if (lastLogs.size > 1000) lastLogs.clear()
+
           const payload = args.map((a) => {
             try {
               return typeof a === "object" ? JSON.stringify(a) : String(a)
@@ -71,7 +118,10 @@
               return String(a)
             }
           })
+
+          logCount++
           window.parent.postMessage({ type: "SANDBOX_LOG", level, payload }, PARENT_ORIGIN)
+
           // Also log to native for debugging
           nativeConsole[level](...args)
         }
