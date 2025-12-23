@@ -274,7 +274,7 @@ export function FileExplorer({
             </ContextMenuTrigger>
             <ContextMenuContent>
               <ContextMenuItem
-                className="text-destructive focus:text-destructive"
+                className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
                 onClick={() => onDelete(node.path)}
               >
                 <Trash2 className="mr-2 h-3.5 w-3.5" />

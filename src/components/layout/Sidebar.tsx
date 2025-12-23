@@ -108,7 +108,7 @@ export function Sidebar({
         {user && (
           <Button
             variant="ghost"
-            className="relative flex w-full items-center justify-start overflow-hidden p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="relative flex w-full items-center justify-start overflow-hidden p-0 text-red-600 hover:bg-red-100 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
             onClick={() => signOut()}
           >
             <div className="flex h-10 w-16 shrink-0 items-center justify-center">

@@ -404,7 +404,9 @@ export function TerminalPane({
                     <AlertCircle
                       className={cn(
                         "mt-0.5 h-3.5 w-3.5 flex-shrink-0",
-                        problem.severity === "error" ? "text-destructive" : "text-yellow-500"
+                        problem.severity === "error"
+                          ? "text-red-600 dark:text-red-400"
+                          : "text-yellow-600 dark:text-yellow-400"
                       )}
                     />
                     <div className="flex flex-col gap-0.5">
