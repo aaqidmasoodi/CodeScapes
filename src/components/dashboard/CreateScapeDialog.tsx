@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { ENVIRONMENTS } from "@/config/environments"
 import type { EnvironmentId } from "@/types/environment"
@@ -172,22 +173,42 @@ export function CreateScapeDialog() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {Object.values(ENVIRONMENTS).map((env) => {
                   const Icon = env.icon
+                  const isFlowScape = env.id === "flowscape"
+                  const isLocked = isFlowScape && !isAuthenticated
                   return (
                     <Card
                       key={env.id}
+                      title={isLocked ? "Sign in to access FlowScape" : undefined}
                       className={cn(
-                        "flex cursor-pointer flex-col gap-2 p-3 transition-all hover:border-primary",
+                        "relative flex flex-col gap-2 p-3 transition-all",
                         selectedEnv === env.id
                           ? "border-primary bg-primary/5 ring-1 ring-primary"
-                          : "hover:bg-muted/50"
+                          : "hover:bg-muted/50",
+                        isLocked
+                          ? "cursor-not-allowed opacity-70"
+                          : "cursor-pointer hover:border-primary"
                       )}
-                      onClick={() => setSelectedEnv(env.id)}
+                      onClick={() => {
+                        if (!isLocked) setSelectedEnv(env.id)
+                      }}
                     >
+                      {isLocked && (
+                        <div className="absolute right-2 top-2">
+                          <Lock className="h-3 w-3 text-muted-foreground" />
+                        </div>
+                      )}
                       <div className="w-fit rounded-md bg-background p-2 shadow-sm">
                         <Icon className="h-5 w-5" />
                       </div>
                       <div>
-                        <div className="text-sm font-semibold">{env.name}</div>
+                        <div className="flex items-center gap-1.5 text-sm font-semibold">
+                          {env.name}
+                          {isFlowScape && (
+                            <Badge variant="secondary" className="h-4 px-1 py-0 text-[9px]">
+                              Beta
+                            </Badge>
+                          )}
+                        </div>
                         <div className="line-clamp-2 text-[10px] text-muted-foreground">
                           {env.description}
                         </div>
@@ -254,6 +275,7 @@ export function CreateScapeDialog() {
                 </Card>
 
                 <Card
+                  title={!isAuthenticated ? "Sign in to use Cloud Storage" : undefined}
                   className={cn(
                     "relative p-3 transition-all",
                     source === "cloud"
