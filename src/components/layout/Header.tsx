@@ -17,6 +17,7 @@ import { CodeScapeLogo, CodeScapeFullLogo } from "@/components/brand/Logo"
 interface HeaderProps {
   actions?: React.ReactNode
   customTitle?: React.ReactNode
+  centerContent?: React.ReactNode
   endActions?: React.ReactNode
   showFullLogo?: boolean
   startContent?: React.ReactNode
@@ -25,12 +26,13 @@ interface HeaderProps {
 export function Header({
   actions,
   customTitle,
+  centerContent,
   endActions,
   showFullLogo = false,
   startContent,
 }: HeaderProps) {
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
+    <header className="relative flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-2">
         {startContent}
         {customTitle ? (
@@ -41,6 +43,12 @@ export function Header({
           <CodeScapeLogo size={32} />
         )}
       </div>
+
+      {centerContent && (
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+          {centerContent}
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         {actions}
