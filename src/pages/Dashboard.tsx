@@ -6,6 +6,8 @@ import {
   Trash2,
   MoreVertical,
   Layout,
+  LayoutGrid,
+  List,
   AlertTriangle,
   Database,
   Cloud,
@@ -44,6 +46,11 @@ export default function Dashboard() {
   const activeTab = tab || "scapes"
 
   const [searchQuery, setSearchQuery] = useState("")
+
+  // View Mode State (Grid vs List)
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    return (localStorage.getItem("dashboard-view-mode") as "grid" | "list") || "grid"
+  })
 
   // Delete Modal State
   const [scapeToDelete, setScapeToDelete] = useState<Scape | null>(null)
@@ -114,6 +121,33 @@ export default function Dashboard() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+            {/* View Toggle */}
+            <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
+              <Button
+                variant={viewMode === "grid" ? "secondary" : "ghost"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  setViewMode("grid")
+                  localStorage.setItem("dashboard-view-mode", "grid")
+                }}
+                title="Grid view"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === "list" ? "secondary" : "ghost"}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  setViewMode("list")
+                  localStorage.setItem("dashboard-view-mode", "list")
+                }}
+                title="List view"
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
             <CreateScapeDialog />
           </div>
         </div>
@@ -145,7 +179,79 @@ export default function Dashboard() {
               </p>
               {!searchQuery && <CreateScapeDialog />}
             </div>
+          ) : viewMode === "list" ? (
+            /* List View - Compact */
+            <div className="space-y-1">
+              {filteredScapes.map((scape) => {
+                const envLabel =
+                  {
+                    web: "Web",
+                    python: "Python",
+                    flowscape: "FlowScape",
+                    node: "Node",
+                  }[scape.environment] || scape.environment
+
+                return (
+                  <div
+                    key={scape.id}
+                    className="group flex cursor-pointer items-center gap-4 rounded-lg border border-transparent bg-card px-4 py-3 transition-all hover:border-primary/30 hover:bg-muted/50"
+                    onClick={() =>
+                      navigate(`/scape/${scape.id}`, { state: { from: location.pathname } })
+                    }
+                  >
+                    {/* Source Icon */}
+                    <div className="flex-shrink-0">
+                      {scape.source === "cloud" ? (
+                        <Cloud className="h-4 w-4 text-blue-500" />
+                      ) : (
+                        <Database className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+
+                    {/* Name */}
+                    <span className="min-w-0 flex-1 truncate font-medium transition-colors group-hover:text-primary">
+                      {scape.name}
+                    </span>
+
+                    {/* Environment Badge */}
+                    <span className="flex-shrink-0 rounded bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                      {envLabel}
+                    </span>
+
+                    {/* Date */}
+                    <span className="hidden flex-shrink-0 text-xs text-muted-foreground sm:flex sm:items-center sm:gap-1">
+                      <Clock className="h-3 w-3" />
+                      {new Date(scape.updatedAt).toLocaleDateString()}
+                    </span>
+
+                    {/* Actions */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 flex-shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
+                          onClick={(e) => handleDeleteClick(e, scape)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                )
+              })}
+            </div>
           ) : (
+            /* Grid View - Masonry */
             <div className="columns-1 gap-4 space-y-4 md:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5">
               {filteredScapes.map((scape) => {
                 // Determine Environment Label
