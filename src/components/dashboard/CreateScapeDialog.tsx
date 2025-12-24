@@ -50,8 +50,12 @@ export function CreateScapeDialog() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    if (!/^[a-zA-Z0-9]+$/.test(name)) {
+    if (!/^[a-zA-Z0-9 ]+$/.test(name)) {
       setError("Invalid name format")
+      return
+    }
+    if (name.length > 25) {
+      setError("Name must be 25 characters or less")
       return
     }
 
@@ -141,13 +145,16 @@ export function CreateScapeDialog() {
               <Label htmlFor="name">Scape Name</Label>
               <Input
                 id="name"
-                placeholder="MyProject"
+                placeholder="My Project"
                 value={name}
+                maxLength={25}
                 onChange={(e) => {
                   const val = e.target.value
                   setName(val)
-                  if (val && !/^[a-zA-Z0-9]+$/.test(val)) {
-                    setError("Only alphanumeric characters (a-z, A-Z, 0-9) allowed. No spaces.")
+                  if (val && !/^[a-zA-Z0-9 ]+$/.test(val)) {
+                    setError("Only letters, numbers, and spaces allowed.")
+                  } else if (val.length > 25) {
+                    setError("Name must be 25 characters or less")
                   } else {
                     setError("")
                   }
@@ -155,6 +162,7 @@ export function CreateScapeDialog() {
                 className={error ? "border-destructive focus-visible:ring-destructive" : ""}
                 required
               />
+              <p className="text-xs text-muted-foreground">{name.length}/25</p>
               {error && <p className="text-xs text-destructive">{error}</p>}
             </div>
 
