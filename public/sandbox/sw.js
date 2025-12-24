@@ -5,6 +5,11 @@ const DEBUG = true
 const log = (...args) => DEBUG && console.log(...args)
 const warn = (...args) => DEBUG && console.warn(...args)
 
+// Detect environment for path prefix
+// Localhost uses /sandbox/run/, subdomain uses /run/
+const isLocalhost = self.location.hostname === "localhost" || self.location.hostname === "127.0.0.1"
+const RUN_PATH_PREFIX = isLocalhost ? "/sandbox/run" : "/run"
+
 const CACHE_NAME = "codescape-sandbox-v3"
 const FILES_CACHE = "codescape-files-v1"
 
@@ -248,11 +253,10 @@ self.addEventListener("message", async (event) => {
             if (blob.type !== type) blob = new Blob([blob], { type })
           }
 
-          // Construct Cache Key: /sandbox/run/<scapeId>/<filename>
+          // Construct Cache Key using environment-aware prefix
           // Note: file.name might contain subdirectories e.g. "css/style.css"
           // We must ensure it matches the fetch request URL exactly.
-          // The fetch handler sees: /sandbox/run/<scapeId>/<normalizedPath>
-          const cacheUrl = new URL(`/sandbox/run/${scapeId}/${file.name}`, self.location.origin)
+          const cacheUrl = new URL(`${RUN_PATH_PREFIX}/${scapeId}/${file.name}`, self.location.origin)
 
           await cache.put(
             cacheUrl,
