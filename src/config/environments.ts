@@ -207,6 +207,7 @@ function animate() {
   margin: 0;
   overflow: hidden;
   font-family: sans-serif;
+  background-color: #ffffff;
 }
 
 canvas {
@@ -244,6 +245,7 @@ canvas {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  background-color: #ffffff;
 }
 canvas {
   display: block;
