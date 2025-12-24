@@ -59,7 +59,7 @@ export function usePreviewBridge(
     if (currentHost === "localhost" || currentHost === "127.0.0.1") {
       bootloaderOrigin = `${window.location.protocol}//localhost:3002`
     } else {
-      bootloaderOrigin = window.location.origin
+      bootloaderOrigin = `https://sandbox.codescapes.io`
     }
     const version = versionKey || Date.now()
     const hash = computeHash(filesHash)
@@ -86,7 +86,7 @@ export function usePreviewBridge(
       if (currentHost === "localhost" || currentHost === "127.0.0.1") {
         bootloaderOrigin = `${window.location.protocol}//localhost:3002`
       } else {
-        bootloaderOrigin = window.location.origin
+        bootloaderOrigin = `https://sandbox.codescapes.io`
       }
 
       const version = versionKey ?? 0
@@ -128,7 +128,7 @@ export function usePreviewBridge(
     if (currentHost === "localhost" || currentHost === "127.0.0.1") {
       bootloaderOrigin = `${window.location.protocol}//localhost:3002`
     } else {
-      bootloaderOrigin = window.location.origin
+      bootloaderOrigin = `https://sandbox.codescapes.io`
     }
 
     // 2. Setup Handshake Listener
@@ -214,7 +214,7 @@ export function usePreviewBridge(
         if (currentHost === "localhost" || currentHost === "127.0.0.1") {
           bootloaderOrigin = `${window.location.protocol}//localhost:3002`
         } else {
-          bootloaderOrigin = window.location.origin
+          bootloaderOrigin = `https://sandbox.codescapes.io`
         }
 
         debug.log("[Bridge] Hot Swapping Files...")
