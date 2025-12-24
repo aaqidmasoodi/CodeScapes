@@ -45,10 +45,12 @@ export default function CommunityPage() {
 
   const getIcon = (env: string) => {
     switch (env) {
-      case "python-script":
+      case "python":
         return <Code2 className="h-4 w-4 text-yellow-500" />
-      case "html-css-js":
+      case "web":
         return <div className="h-4 w-4 rounded-full bg-blue-500" />
+      case "flowscape":
+        return <div className="h-4 w-4 rounded-full bg-purple-500" />
       default:
         return <div className="h-4 w-4 rounded-full bg-gray-500" />
     }
@@ -56,12 +58,14 @@ export default function CommunityPage() {
 
   const getEnvLabel = (env: string) => {
     switch (env) {
-      case "python-script":
+      case "python":
         return "Python"
-      case "html-css-js":
+      case "web":
         return "Web"
+      case "flowscape":
+        return "FlowScape"
       default:
-        return "Unknown"
+        return env || "Unknown"
     }
   }
 
