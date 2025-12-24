@@ -144,7 +144,7 @@ function init() {
   camera.position.set(2, 2, 5); // Offset slightly so we see 3D immediately
 
   // 3. Renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true }); // Smooth edges
+  renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); // Smooth edges, allow thumbnail capture
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true; // Enable shadows for extra pop
   document.body.appendChild(renderer.domElement);

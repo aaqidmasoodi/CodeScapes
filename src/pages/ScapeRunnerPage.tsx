@@ -87,9 +87,9 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
         }
 
         // 3. Dev Mode (Local -> Cloud Draft Fallback)
-        // Try Local First
+        // Try Local First - but only use if it's actually a local scape
         const localScape = await localRepo.getScape(scapeId)
-        if (localScape) {
+        if (localScape && localScape.source === "local") {
           setScape(localScape)
           setFiles(await localRepo.getFiles(scapeId))
           setLoading(false)

@@ -198,7 +198,7 @@
             channel.port1.onmessage = (e) => {
               if (e.data.type === "ACK") {
                 sys.log(`[Bootloader ${ID}] Redirecting...`)
-                window.location.replace(`./run/${scapeId}/index.html`)
+                window.location.replace(`./run/${scapeId}/index.html?_t=${Date.now()}`)
               }
             }
 

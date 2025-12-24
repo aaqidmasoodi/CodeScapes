@@ -192,6 +192,15 @@ self.addEventListener("message", async (event) => {
       try {
         const cache = await caches.open(FILES_CACHE)
 
+        // Clear existing cache entries for this scapeId to ensure fresh files
+        const existingRequests = await cache.keys()
+        for (const request of existingRequests) {
+          if (request.url.includes(`/run/${scapeId}/`)) {
+            await cache.delete(request)
+          }
+        }
+        log(`[Sandbox SW] Cleared old cache entries for ${scapeId}`)
+
         // Process and Store files
         const putPromises = files.map(async (file) => {
           let blob = file.content
