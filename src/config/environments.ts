@@ -75,9 +75,10 @@ export const ENVIRONMENTS: Record<
             name: "style.css",
             language: "css",
             content: `body {
-  font-family: system-ui, sans-serif;
+  font-family: sans-serif;
   padding: 2rem;
   color: #333;
+  background-color: #ffffff;
 }
 h1 {
   color: #2563eb;
@@ -143,7 +144,7 @@ function init() {
   camera.position.set(2, 2, 5); // Offset slightly so we see 3D immediately
 
   // 3. Renderer
-  renderer = new THREE.WebGLRenderer({ antialias: true }); // Smooth edges
+  renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); // Smooth edges, allow thumbnail capture
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true; // Enable shadows for extra pop
   document.body.appendChild(renderer.domElement);
@@ -206,6 +207,7 @@ function animate() {
   margin: 0;
   overflow: hidden;
   font-family: sans-serif;
+  background-color: #ffffff;
 }
 
 canvas {
@@ -243,6 +245,7 @@ canvas {
   margin: 0;
   padding: 0;
   overflow: hidden;
+  background-color: #ffffff;
 }
 canvas {
   display: block;

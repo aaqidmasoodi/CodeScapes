@@ -2,6 +2,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"
 import App from "./App.tsx"
+import { debug } from "@/lib/debug"
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -13,7 +14,7 @@ createRoot(document.getElementById("root")!).render(
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(
     (registration) => {
-      console.log("Main SW registered: ", registration.scope)
+      debug.log("Main SW registered: ", registration.scope)
       registration.update() // Force update check
     },
     (err) => {

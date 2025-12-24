@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useLiveQuery } from "dexie-react-hooks"
 import { db, type Scape } from "@/lib/db"
 import { supabase } from "@/lib/supabase"
+import { debug } from "@/lib/debug"
 
 export type ScapeSource = "local" | "cloud"
 
@@ -116,7 +117,7 @@ export function useScapeLoading(id: string, options?: { skipLocal?: boolean }) {
           const newData = payload.new
           // Client-Side Filter
           if (newData && newData.id === id) {
-            console.log("Realtime Scape Update:", newData)
+            debug.log("Realtime Scape Update:", newData)
             setCloudScape((prev) => {
               // If we have no previous state, we can't merge reliably unless payload is full.
               // With REPLICA IDENTITY FULL, newData is full.
@@ -158,7 +159,7 @@ export function useScapeLoading(id: string, options?: { skipLocal?: boolean }) {
         const data = newData as Partial<Scape>
 
         if (data) {
-          console.log("Broadcast Scape Update:", data)
+          debug.log("Broadcast Scape Update:", data)
           setCloudScape((prev) => {
             const base = prev || ({} as Scape)
             return {

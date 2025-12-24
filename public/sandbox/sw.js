@@ -1,5 +1,10 @@
 /// <reference lib="webworker" />
 
+// DEBUG: Set to false for production builds (Vercel)
+const DEBUG = true
+const log = (...args) => DEBUG && console.log(...args)
+const warn = (...args) => DEBUG && console.warn(...args)
+
 const CACHE_NAME = "codescape-sandbox-v3"
 const FILES_CACHE = "codescape-files-v1"
 
@@ -9,7 +14,7 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim())
-  console.log("[Sandbox SW] Activated v3 (Persistent)")
+  log("[Sandbox SW] Activated v3 (Persistent)")
 })
 
 const MIME_TYPES = {
@@ -33,7 +38,7 @@ self.addEventListener("message", async (event) => {
     case "HYDRATE": {
       // Load files into Persistent Cache
       const { scapeId, files, env } = event.data.payload
-      console.log(`[Sandbox SW] Hydrating ${scapeId} (${files.length} files)`)
+      log(`[Sandbox SW] Hydrating ${scapeId} (${files.length} files)`)
 
       // Prepare Injection Script
       const envSafe = env || {}
@@ -112,11 +117,40 @@ self.addEventListener("message", async (event) => {
                     scale: 1,
                     backgroundColor: window.getComputedStyle(document.body).backgroundColor || "#ffffff",
                     onclone: function(clonedDoc) {
-                      var elements = clonedDoc.querySelectorAll("*");
-                      elements.forEach(function(el) {
-                        var computed = window.getComputedStyle(document.body.querySelector(el.tagName) || document.body);
-                        el.style.cssText = el.style.cssText || "";
-                      });
+                      // Extract all CSS rules from the original document's stylesheets
+                      // and inject them as inline <style> tags in the cloned document
+                      try {
+                        var cssText = "";
+                        var sheets = document.styleSheets;
+                        for (var i = 0; i < sheets.length; i++) {
+                          try {
+                            var rules = sheets[i].cssRules || sheets[i].rules;
+                            if (rules) {
+                              for (var j = 0; j < rules.length; j++) {
+                                cssText += rules[j].cssText + "\\n";
+                              }
+                            }
+                          } catch (e) {
+                            // Cross-origin stylesheets will throw SecurityError
+                            // We skip those as they're external CDN styles
+                            nativeConsole.warn("[Sandbox] Skipping cross-origin stylesheet:", sheets[i].href);
+                          }
+                        }
+                        
+                        if (cssText) {
+                          var styleEl = clonedDoc.createElement("style");
+                          styleEl.textContent = cssText;
+                          clonedDoc.head.appendChild(styleEl);
+                        }
+                        
+                        // Remove external stylesheet links to prevent 404s
+                        var links = clonedDoc.querySelectorAll('link[rel="stylesheet"]');
+                        links.forEach(function(link) {
+                          link.remove();
+                        });
+                      } catch (err) {
+                        nativeConsole.error("[Sandbox] CSS extraction failed:", err);
+                      }
                     }
                   }).then(function(cvs) {
                     var data = cvs.toDataURL("image/jpeg", 0.7);
@@ -157,6 +191,15 @@ self.addEventListener("message", async (event) => {
 
       try {
         const cache = await caches.open(FILES_CACHE)
+
+        // Clear existing cache entries for this scapeId to ensure fresh files
+        const existingRequests = await cache.keys()
+        for (const request of existingRequests) {
+          if (request.url.includes(`/run/${scapeId}/`)) {
+            await cache.delete(request)
+          }
+        }
+        log(`[Sandbox SW] Cleared old cache entries for ${scapeId}`)
 
         // Process and Store files
         const putPromises = files.map(async (file) => {
@@ -226,7 +269,7 @@ self.addEventListener("message", async (event) => {
         })
 
         await Promise.all(putPromises)
-        console.log(`[Sandbox SW] Hydration Complete for ${scapeId}`)
+        log(`[Sandbox SW] Hydration Complete for ${scapeId}`)
 
         // Acknowledge
         if (event.ports[0]) event.ports[0].postMessage({ type: "ACK" })

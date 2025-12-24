@@ -1,5 +1,6 @@
 import { useState, useLayoutEffect, useMemo, useRef, useEffect } from "react"
 import type { ScapeFile } from "@/types/file"
+import { debug } from "@/lib/debug"
 
 // We are now fully committed to the Cross-Origin Bootloader architecture.
 // There is no more "Same Origin" mode.
@@ -158,11 +159,11 @@ export function usePreviewBridge(
       if (event.data.type === "SANDBOX_READY") {
         // Only send compile if we actually have files
         if (filesRef.current.length === 0) {
-          console.log("[Bridge] Handshake received, but no files yet. Skipping compile.")
+          debug.log("[Bridge] Handshake received, but no files yet. Skipping compile.")
           return
         }
 
-        console.log("[Bridge] Handshake Received! Sending Compile Payload...")
+        debug.log("[Bridge] Handshake Received! Sending Compile Payload...")
 
         // Use refs for latest files/env
         iframeRef.current?.contentWindow?.postMessage(
@@ -184,7 +185,7 @@ export function usePreviewBridge(
     const safetyTimeout = setTimeout(() => {
       setBridgeState((prev) => {
         if (!prev.contentReady && prev.ready) {
-          console.warn("[Bridge] Content Ready Signal missing, forcing ready.")
+          debug.warn("[Bridge] Content Ready Signal missing, forcing ready.")
           return { ...prev, contentReady: true }
         }
         return prev
@@ -216,7 +217,7 @@ export function usePreviewBridge(
           bootloaderOrigin = window.location.origin
         }
 
-        console.log("[Bridge] Hot Swapping Files...")
+        debug.log("[Bridge] Hot Swapping Files...")
         iframeRef.current.contentWindow?.postMessage(
           {
             type: "COMPILE_FILES",

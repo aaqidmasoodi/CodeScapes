@@ -6,6 +6,7 @@ import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import { getRunner } from "@/runners/registry"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { debug } from "@/lib/debug"
 
 import type { ScapeFile } from "@/types/file"
 import type { Scape } from "@/lib/db"
@@ -58,7 +59,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
       setLoading(true)
       setError(null)
       try {
-        console.log(`[Runner] Booting Scape: ${scapeId} In Mode: ${currentMode}`)
+        debug.log(`[Runner] Booting Scape: ${scapeId} In Mode: ${currentMode}`)
 
         // 1. Published Mode (Community/Public View)
         if (currentMode === "published") {
@@ -86,9 +87,9 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
         }
 
         // 3. Dev Mode (Local -> Cloud Draft Fallback)
-        // Try Local First
+        // Try Local First - but only use if it's actually a local scape
         const localScape = await localRepo.getScape(scapeId)
-        if (localScape) {
+        if (localScape && localScape.source === "local") {
           setScape(localScape)
           setFiles(await localRepo.getFiles(scapeId))
           setLoading(false)
@@ -163,9 +164,8 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
       {/* Console Drawer (Overlay) - Only if enabled */}
       {showConsoleUI && (
         <div
-          className={`absolute bottom-0 left-0 right-0 z-50 flex flex-col border-t border-border bg-background/95 backdrop-blur transition-all duration-300 ease-in-out ${
-            isConsoleOpen ? "h-1/3" : "h-10"
-          }`}
+          className={`absolute bottom-0 left-0 right-0 z-50 flex flex-col border-t border-border bg-background/95 backdrop-blur transition-all duration-300 ease-in-out ${isConsoleOpen ? "h-1/3" : "h-10"
+            }`}
         >
           {/* Drawer Handle / Header */}
           <div

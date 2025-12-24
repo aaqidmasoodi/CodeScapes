@@ -8,10 +8,14 @@
  * 5. Redirects to /run/<id>/index.html
  */
 
+// DEBUG: Set to false for production builds (Vercel)
+const DEBUG = true
+const log = (...args) => DEBUG && console.log(...args)
+
 const PARENT_ORIGIN = "*" // Should be strict in production
 
 async function init() {
-  console.log("[Receiver] Booting...")
+  log("[Receiver] Booting...")
 
   if (!("serviceWorker" in navigator)) {
     console.error("[Receiver] Service Worker not supported")
@@ -26,7 +30,7 @@ async function init() {
     })
 
     await navigator.serviceWorker.ready
-    console.log("[Receiver] SW Ready")
+    log("[Receiver] SW Ready")
 
     // 2. Notify Parent we are alive
     window.parent.postMessage({ type: "SANDBOX_READY" }, PARENT_ORIGIN)
@@ -43,7 +47,7 @@ window.addEventListener("message", async (event) => {
 
   if (event.data.type === "COMPILE_FILES") {
     const { scapeId, files } = event.data.payload
-    console.log(`[Receiver] Compiling ${scapeId}...`)
+    log(`[Receiver] Compiling ${scapeId}...`)
 
     // 4. Send to SW
     const sw = navigator.serviceWorker.controller
@@ -56,7 +60,7 @@ window.addEventListener("message", async (event) => {
     const channel = new MessageChannel()
     channel.port1.onmessage = (e) => {
       if (e.data.type === "ACK") {
-        console.log("[Receiver] Hydration Complete. Redirecting...")
+        log("[Receiver] Hydration Complete. Redirecting...")
         // 5. Redirect to Intercepted URL
         window.location.replace(`./run/${scapeId}/index.html`)
       }

@@ -14,6 +14,7 @@ import type { ScapeRunnerHandle } from "@/runners/types"
 import type { LogEntry } from "@/types/log"
 import { secretsService } from "@/services/secrets"
 import { useSocketBridge } from "@/hooks/useSocketBridge"
+import { debug } from "@/lib/debug"
 
 interface PythonRunnerProps {
   files: ScapeFile[]
@@ -121,7 +122,7 @@ export const PythonRunner = memo(
       ])
 
       // Forward declaration for initWorker to use
-      const runPythonRef = useRef<() => Promise<void>>(async () => {})
+      const runPythonRef = useRef<() => Promise<void>>(async () => { })
 
       // --- Stable Helpers ---
 
@@ -156,7 +157,7 @@ export const PythonRunner = memo(
           sharedArrayRef.current = new Int32Array(sab)
         } catch {
           // Valid fallback exists (Service Worker), so this is not fatal.
-          console.warn("SharedArrayBuffer not available. using Service Worker fallback for input.")
+          debug.warn("SharedArrayBuffer not available. using Service Worker fallback for input.")
           // Don't show error to user
         }
 
@@ -353,13 +354,13 @@ export const PythonRunner = memo(
       // 0. Service Worker Watchdog
       useEffect(() => {
         if (!navigator.serviceWorker.controller) {
-          console.warn("[Runner] No Service Worker controlling this page! Input may fail.")
+          debug.warn("[Runner] No Service Worker controlling this page! Input may fail.")
         } else {
-          console.log("[Runner] Service Worker active and controlling.")
+          debug.log("[Runner] Service Worker active and controlling.")
         }
 
         const onControllerChange = () => {
-          console.log("[Runner] Service Worker controller changed (Code updated?)")
+          debug.log("[Runner] Service Worker controller changed (Code updated?)")
         }
         navigator.serviceWorker.addEventListener("controllerchange", onControllerChange)
         return () =>
@@ -401,7 +402,7 @@ export const PythonRunner = memo(
           // Soft Restart: We rely on the parent updating props (files),
           // which triggers the useEffect above (calling runPython).
           // We don't need to do anything here except maybe log.
-          console.log("[PythonRunner] Soft restart initiated via prop update")
+          debug.log("[PythonRunner] Soft restart initiated via prop update")
         },
         installPackage: async (pkg, onProgress) => {
           return new Promise((resolve) => {
@@ -434,11 +435,11 @@ export const PythonRunner = memo(
         provideInput: async (text: string) => {
           const id = pendingInputIdRef.current
           if (!id) {
-            console.warn("Provide Input called without pending ID")
+            debug.warn("Provide Input called without pending ID")
             return
           }
           try {
-            console.log(`[Runner] Submitting input for ID: ${id}, Value: "${text}"`)
+            debug.log(`[Runner] Submitting input for ID: ${id}, Value: "${text}"`)
             const res = await fetch("/_submit_input", {
               method: "POST",
               headers: {
@@ -456,12 +457,12 @@ export const PythonRunner = memo(
               try {
                 const debugRes = await fetch("/_debug_inputs")
                 const debugKeys = await debugRes.json()
-                console.log("[Runner] Debug: Pending Inputs in SW:", debugKeys)
+                debug.log("[Runner] Debug: Pending Inputs in SW:", debugKeys)
               } catch (d) {
-                console.warn("[Runner] Failed to fetch debug inputs (Is SW active?)", d)
+                debug.warn("[Runner] Failed to fetch debug inputs (Is SW active?)", d)
               }
             } else {
-              console.log("[Runner] Input submitted successfully")
+              debug.log("[Runner] Input submitted successfully")
             }
             pendingInputIdRef.current = null
           } catch (e) {
