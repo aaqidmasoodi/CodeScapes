@@ -12,6 +12,13 @@ import AuthPage from "@/pages/AuthPage"
 import CommunityPage from "@/pages/Community"
 import ScapeDetailPage from "@/pages/ScapeDetailPage"
 import { Toaster } from "@/components/ui/toaster"
+import { DocsLayout } from "@/layouts/DocsLayout"
+import { DocsPage } from "@/pages/docs/DocsPage"
+
+import { AdminLayout } from "@/layouts/AdminLayout"
+import { AdminDashboard } from "@/pages/admin/AdminDashboard"
+import { AdminEditor } from "@/pages/admin/AdminEditor"
+import { AdminOverview } from "@/pages/admin/AdminOverview"
 
 function App() {
   return (
@@ -38,6 +45,25 @@ function App() {
             {/* Community Routes */}
             <Route path="/community" element={<CommunityPage />} />
             <Route path="/community/scape/:scapeId" element={<ScapeDetailPage />} />
+
+            {/* Docs Routes */}
+            <Route path="/docs" element={<Navigate to="/docs/introduction" replace />} />
+            <Route
+              path="/docs/:slug"
+              element={
+                <DocsLayout>
+                  <DocsPage />
+                </DocsLayout>
+              }
+            />
+
+            {/* Admin Routes */}
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<AdminOverview />} />
+              <Route path="docs" element={<AdminDashboard />} />
+              <Route path="docs/new" element={<AdminEditor />} />
+              <Route path="docs/edit/:id" element={<AdminEditor />} />
+            </Route>
           </Routes>
         </BrowserRouter>
       </ErrorBoundary>

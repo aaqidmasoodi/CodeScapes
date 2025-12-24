@@ -20,7 +20,7 @@ export function CodeViewer({ scapeId }: { scapeId: string }) {
           (f) =>
             !f.name.startsWith("assets/") &&
             !f.name.match(/\.(png|jpg|jpeg|gif|webp|ico|svg)$/i) &&
-            f.name.match(/\.(html|css|js|jsx|ts|tsx|json|py)$/i)
+            f.name.match(/\.(html|css|js|jsx|ts|tsx|json|py|csv|txt)$/i)
         )
         setFiles(filtered)
         if (filtered.length > 0) setActiveFile(filtered[0])
