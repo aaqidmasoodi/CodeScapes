@@ -45,6 +45,7 @@ import { SettingsModal } from "@/components/editor/SettingsModal"
 import { checkShortcut } from "@/config/shortcuts"
 import { CodeScapeLogo } from "@/components/brand/Logo"
 import { DeploymentDialog } from "@/components/editor/DeploymentDialog"
+import { debug } from "@/lib/debug"
 
 import {
   AlertDialog,
@@ -302,7 +303,7 @@ export default function ScapeEditor() {
           await new Promise<void>((resolve) => {
             const timeout = setTimeout(() => {
               window.removeEventListener("message", handler)
-              console.log("[Thumbnail] Timeout reached, capturing anyway")
+              debug.log("[Thumbnail] Timeout reached, capturing anyway")
               resolve()
             }, 15000)
 
@@ -310,7 +311,7 @@ export default function ScapeEditor() {
               if (e.data?.type === "SANDBOX_CONTENT_READY") {
                 clearTimeout(timeout)
                 window.removeEventListener("message", handler)
-                console.log("[Thumbnail] Content ready signal received")
+                debug.log("[Thumbnail] Content ready signal received")
                 resolve()
               }
             }
@@ -322,10 +323,10 @@ export default function ScapeEditor() {
           if (thumb) {
             await updateScape({ thumbnail: thumb })
             lastCaptureRef.current = Date.now()
-            console.log("Thumbnail Captured")
+            debug.log("Thumbnail Captured")
           }
         } catch (e) {
-          console.warn(e)
+          debug.warn(e)
         }
       }
     }
@@ -376,7 +377,7 @@ export default function ScapeEditor() {
     // we would need to trigger a "save all" or similar.
     // For now, we just rely on auto-save behavior of the state,
     // but we can add visual feedback.
-    console.log("Global Save Triggered")
+    debug.log("Global Save Triggered")
   }, [])
 
   const handleExecCommand = useCallback(
@@ -813,7 +814,7 @@ export default function ScapeEditor() {
     const isOwner = user && user.id === scape.authorId
     if (!isOwner) {
       const targetUrl = "/live/" + scape.id.trim()
-      console.log("Redirecting non-owner to Live View:", targetUrl)
+      debug.log("Redirecting non-owner to Live View:", targetUrl)
       return <Navigate to={targetUrl} replace />
     }
   }
@@ -1061,7 +1062,7 @@ export default function ScapeEditor() {
                     scapeId={id}
                     isOpen={true}
                     ref={secretsPanelRef}
-                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                  // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
                   />
                 )}
               </ResizablePanel>

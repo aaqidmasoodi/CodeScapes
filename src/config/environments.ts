@@ -75,9 +75,10 @@ export const ENVIRONMENTS: Record<
             name: "style.css",
             language: "css",
             content: `body {
-  font-family: system-ui, sans-serif;
+  font-family: sans-serif;
   padding: 2rem;
   color: #333;
+  background-color: #ffffff;
 }
 h1 {
   color: #2563eb;

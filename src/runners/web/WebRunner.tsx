@@ -17,6 +17,7 @@ import type { LogEntry } from "@/types/log"
 import { usePreviewBridge } from "@/hooks/usePreviewBridge"
 import { useSocketBridge } from "@/hooks/useSocketBridge"
 import { useStablePreviewPayload } from "@/hooks/useStablePreviewPayload"
+import { debug } from "@/lib/debug"
 
 interface WebRunnerProps {
   files: ScapeFile[]
@@ -77,7 +78,7 @@ export const WebRunner = memo(
             leaveRoom(e.data.payload.room)
           }
           if (e.data?.type === "SOCKET_ENABLE") {
-            console.log("[WebRunner] Received SOCKET_ENABLE signal")
+            debug.log("[WebRunner] Received SOCKET_ENABLE signal")
             setSocketEnabled(true)
           }
         }
@@ -157,13 +158,13 @@ export const WebRunner = memo(
       // Build files with socket injection (only if payload ready)
       const filesWithSocket = stablePayload
         ? [
-            ...stablePayload.files,
-            {
-              name: "socket.js",
-              content: socketClientCode,
-              language: "javascript",
-            } as ScapeFile,
-          ]
+          ...stablePayload.files,
+          {
+            name: "socket.js",
+            content: socketClientCode,
+            language: "javascript",
+          } as ScapeFile,
+        ]
         : []
 
       // Bridge to the Runtime (only active when payload is ready)
@@ -185,7 +186,7 @@ export const WebRunner = memo(
           return new Promise((resolve) => {
             const timeout = setTimeout(() => {
               window.removeEventListener("message", handler)
-              console.warn("[WebRunner] Thumbnail capture timeout")
+              debug.warn("[WebRunner] Thumbnail capture timeout")
               resolve(null)
             }, 5000)
 
@@ -193,7 +194,7 @@ export const WebRunner = memo(
               if (e.data?.type === "SANDBOX_THUMBNAIL_DATA") {
                 clearTimeout(timeout)
                 window.removeEventListener("message", handler)
-                console.log("[WebRunner] Thumbnail received")
+                debug.log("[WebRunner] Thumbnail received")
                 resolve(e.data.payload || null)
               }
             }

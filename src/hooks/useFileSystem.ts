@@ -6,6 +6,7 @@ import { LocalRepository } from "@/lib/repositories/LocalRepository"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import type { IScapeRepository } from "@/lib/repositories/types"
 import { toast } from "@/components/ui/use-toast"
+import { debug } from "@/lib/debug"
 
 export function useFileSystem(scapeId: string, source: "local" | "cloud" = "local") {
   const [files, setFiles] = useState<ScapeFile[]>([])
@@ -276,7 +277,7 @@ export function useFileSystem(scapeId: string, source: "local" | "cloud" = "loca
           if (record && record.scape_id && record.scape_id !== scapeId) return
         }
 
-        console.log("Realtime Event:", event, payload)
+        debug.log("Realtime Event:", event, payload)
 
         if (event === "INSERT") {
           const newRecord = p.new
@@ -308,11 +309,11 @@ export function useFileSystem(scapeId: string, source: "local" | "cloud" = "loca
           const id = raw.id || raw.old?.id || (raw.payload && raw.payload.old && raw.payload.old.id)
 
           if (id) {
-            console.log("Processing Realtime Delete for ID:", id)
+            debug.log("Processing Realtime Delete for ID:", id)
             setFiles((prev) => prev.filter((f) => f.id !== id))
             setCloudFiles((prev) => prev?.filter((f) => f.id !== id) || null)
           } else {
-            console.warn("Realtime DELETE received but no ID found:", payload)
+            debug.warn("Realtime DELETE received but no ID found:", payload)
           }
         }
 

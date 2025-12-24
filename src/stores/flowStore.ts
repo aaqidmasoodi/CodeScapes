@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid"
 import type { Project, Target } from "@/types/flow"
 import { DEFAULT_PROJECT } from "@/types/flow"
 import { db } from "@/lib/db"
+import { debug } from "@/lib/debug"
 
 interface FlowState {
   project: Project
@@ -40,10 +41,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     let projectToLoad = initialProject || DEFAULT_PROJECT
 
     if (autosave) {
-      console.log("[FlowStore] Hydrated from Autosave", new Date(autosave.timestamp))
+      debug.log("[FlowStore] Hydrated from Autosave", new Date(autosave.timestamp))
       projectToLoad = autosave.data as unknown as Project
     } else if (initialProject) {
-      console.log("[FlowStore] Hydrated from File")
+      debug.log("[FlowStore] Hydrated from File")
     }
 
     // Validate Project Structure (Defensive)
@@ -90,14 +91,14 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         blocks: {},
         costumes: asset?.color
           ? [
-              {
-                id: uuidv4(),
-                name: "Costume 1",
-                assetId: asset.color, // Using color as assetId for V1
-                dataFormat: "svg",
-                md5ext: "color",
-              },
-            ]
+            {
+              id: uuidv4(),
+              name: "Costume 1",
+              assetId: asset.color, // Using color as assetId for V1
+              dataFormat: "svg",
+              md5ext: "color",
+            },
+          ]
           : [],
         currentCostume: 0,
       }
@@ -153,10 +154,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
           targets: state.project.targets.map((t) =>
             t.id === stage.id
               ? {
-                  ...stage,
-                  costumes: updatedCostumes,
-                  currentCostume: newIndex,
-                }
+                ...stage,
+                costumes: updatedCostumes,
+                currentCostume: newIndex,
+              }
               : t
           ),
         },

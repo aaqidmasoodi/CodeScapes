@@ -1,5 +1,10 @@
 /// <reference lib="webworker" />
 
+// DEBUG: Set to false for production builds (Vercel)
+const DEBUG = true
+const log = (...args) => DEBUG && console.log(...args)
+const warn = (...args) => DEBUG && console.warn(...args)
+
 const CACHE_NAME = "codescape-preview-v3"
 // Structure: Map<ScapeId, Map<FileName, Content>>
 const fileSystem = new Map()
@@ -12,7 +17,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   // Claim clients immediately
   event.waitUntil(self.clients.claim())
-  console.log("[SW] Activated")
+  log("[SW] Activated")
 })
 
 // --- Message Handling ---
@@ -30,7 +35,7 @@ self.addEventListener("message", (event) => {
       return
     }
 
-    console.log(`[SW] Received Update for Scape: ${scapeId} (${files.length} files)`)
+    log(`[SW] Received Update for Scape: ${scapeId} (${files.length} files)`)
 
     // Get or Create Namespace
     let scapeFs = fileSystem.get(scapeId)
@@ -52,7 +57,7 @@ self.addEventListener("message", (event) => {
       else if (file.name.endsWith(".wasm")) contentType = "application/wasm"
 
       const content = file.content
-      console.log(`[SW] Storing ${file.name} in ${scapeId}`)
+      log(`[SW] Storing ${file.name} in ${scapeId}`)
 
       if (typeof content === "string") {
         // Remote URL or Text
@@ -87,8 +92,8 @@ self.addEventListener("fetch", (event) => {
     const id = url.searchParams.get("id")
     if (!id) return event.respondWith(new Response("Missing ID", { status: 400 }))
 
-    console.log(`[SW] Holding connection for Input ID: ${id}`)
-    console.log(`[SW] Current Params:`, [...pendingInputs.keys()])
+    log(`[SW] Holding connection for Input ID: ${id}`)
+    log(`[SW] Current Params:`, [...pendingInputs.keys()])
 
     event.respondWith(
       new Promise((resolve) => {
@@ -114,10 +119,10 @@ self.addEventListener("fetch", (event) => {
           const data = await event.request.json()
           const { id, value } = data
 
-          console.log(`[SW] Attempting to release ID: ${id}. Available:`, [...pendingInputs.keys()])
+          log(`[SW] Attempting to release ID: ${id}. Available:`, [...pendingInputs.keys()])
 
           if (pendingInputs.has(id)) {
-            console.log(`[SW] Releasing Input ID: ${id} with value: "${value}"`)
+            log(`[SW] Releasing Input ID: ${id} with value: "${value}"`)
             const resolve = pendingInputs.get(id)
             resolve(
               new Response(value, {
@@ -159,12 +164,12 @@ self.addEventListener("fetch", (event) => {
       return
     }
 
-    console.log(`[SW] Fetch Request: Scape=${scapeId}, Path=${path}`)
+    log(`[SW] Fetch Request: Scape=${scapeId}, Path=${path}`)
 
     const scapeFs = fileSystem.get(scapeId)
 
     if (!scapeFs) {
-      console.warn(`[SW] No filesystem found for Scape: ${scapeId}`)
+      warn(`[SW] No filesystem found for Scape: ${scapeId}`)
       event.respondWith(new Response("Scape not initialized", { status: 404 }))
       return
     }
@@ -177,7 +182,7 @@ self.addEventListener("fetch", (event) => {
         typeof content === "string" &&
         (content.startsWith("http://") || content.startsWith("https://"))
       ) {
-        console.log(`[SW] Proxying ${path} to ${content}`)
+        log(`[SW] Proxying ${path} to ${content}`)
         event.respondWith(
           fetch(content)
             .then((response) => {
@@ -201,7 +206,7 @@ self.addEventListener("fetch", (event) => {
         return
       }
 
-      console.log(`[SW] Serving ${path} from memory (Namespace: ${scapeId})`)
+      log(`[SW] Serving ${path} from memory (Namespace: ${scapeId})`)
       // Blob response
       const response = new Response(content, {
         status: 200,
