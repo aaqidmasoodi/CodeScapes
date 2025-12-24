@@ -110,10 +110,18 @@ export const PythonRunner = memo(
           files,
           socketEmit,
         }
-      }, [onOutput, onBusyChange, onInputRequest, onFileSystemUpdate, dependencies, files, socketEmit])
+      }, [
+        onOutput,
+        onBusyChange,
+        onInputRequest,
+        onFileSystemUpdate,
+        dependencies,
+        files,
+        socketEmit,
+      ])
 
       // Forward declaration for initWorker to use
-      const runPythonRef = useRef<() => Promise<void>>(async () => { })
+      const runPythonRef = useRef<() => Promise<void>>(async () => {})
 
       // --- Stable Helpers ---
 
@@ -383,7 +391,8 @@ export const PythonRunner = memo(
 
       // --- Handle ---
       useImperativeHandle(ref, () => ({
-        captureThumbnail: async () => lastFigureRef.current,
+        captureThumbnail: async () =>
+          lastFigureRef.current ? `data:image/png;base64,${lastFigureRef.current}` : null,
         stop: async () => {
           // Explicit Force Stop (Kill Worker)
           initWorker()
@@ -517,7 +526,7 @@ export const PythonRunner = memo(
                       />
                     ) : (
                       <div
-                        className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto rounded border border-border bg-card p-4 shadow-sm"
+                        className="prose prose-sm max-w-none overflow-x-auto rounded border border-border bg-card p-4 shadow-sm dark:prose-invert"
                         dangerouslySetInnerHTML={{
                           __html: item.content,
                         }}
