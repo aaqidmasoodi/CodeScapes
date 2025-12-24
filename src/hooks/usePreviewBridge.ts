@@ -54,19 +54,19 @@ export function usePreviewBridge(
   const [prevFilesHash, setPrevFilesHash] = useState(filesHash)
 
   const [bridgeState, setBridgeState] = useState<PreviewBridge>(() => {
-    let bootloaderOrigin = ""
+    let bootloaderUrl = ""
     const currentHost = window.location.hostname
-    if (currentHost === "localhost" || currentHost === "127.0.0.1") {
-      bootloaderOrigin = `${window.location.protocol}//localhost:3002`
-    } else {
-      bootloaderOrigin = window.location.origin
-    }
     const version = versionKey || Date.now()
     const hash = computeHash(filesHash)
+    if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+      bootloaderUrl = `${window.location.protocol}//localhost:3002/sandbox/bootloader.html?v=${version}&h=${hash}`
+    } else {
+      bootloaderUrl = `https://sandbox.codescapes.io/bootloader.html?v=${version}&h=${hash}`
+    }
     return {
       ready: false,
       contentReady: false,
-      url: `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${hash}`,
+      url: bootloaderUrl,
     }
   })
 
@@ -81,17 +81,15 @@ export function usePreviewBridge(
       setPrevVersionKey(versionKey)
       setPrevFilesHash(filesHash)
 
-      let bootloaderOrigin = ""
+      let bootloaderUrl = ""
       const currentHost = window.location.hostname
-      if (currentHost === "localhost" || currentHost === "127.0.0.1") {
-        bootloaderOrigin = `${window.location.protocol}//localhost:3002`
-      } else {
-        bootloaderOrigin = window.location.origin
-      }
-
       const version = versionKey ?? 0
       const hash = computeHash(filesHash)
-      const bootloaderUrl = `${bootloaderOrigin}/sandbox/bootloader.html?v=${version}&h=${hash}`
+      if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+        bootloaderUrl = `${window.location.protocol}//localhost:3002/sandbox/bootloader.html?v=${version}&h=${hash}`
+      } else {
+        bootloaderUrl = `https://sandbox.codescapes.io/bootloader.html?v=${version}&h=${hash}`
+      }
 
       setBridgeState({ ready: false, contentReady: false, url: bootloaderUrl })
     }
@@ -128,7 +126,7 @@ export function usePreviewBridge(
     if (currentHost === "localhost" || currentHost === "127.0.0.1") {
       bootloaderOrigin = `${window.location.protocol}//localhost:3002`
     } else {
-      bootloaderOrigin = window.location.origin
+      bootloaderOrigin = `https://sandbox.codescapes.io`
     }
 
     // 2. Setup Handshake Listener
@@ -214,7 +212,7 @@ export function usePreviewBridge(
         if (currentHost === "localhost" || currentHost === "127.0.0.1") {
           bootloaderOrigin = `${window.location.protocol}//localhost:3002`
         } else {
-          bootloaderOrigin = window.location.origin
+          bootloaderOrigin = `https://sandbox.codescapes.io`
         }
 
         debug.log("[Bridge] Hot Swapping Files...")
