@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils"
 import type { Problem } from "@/types/problem"
 import type { ScapeFile } from "@/types/file"
 import type { LogEntry } from "@/types/log"
+import { runScapper, createEmptyConversation } from "@/lib/ai/agent"
+import type { GroqMessage } from "@/lib/ai/groqClient"
 
 export type TerminalTab = "terminal" | "output" | "problems"
 
@@ -71,6 +73,11 @@ export function TerminalPane({
   const outputInputRef = useRef<HTMLInputElement>(null)
   const [programInput, setProgramInput] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // --- SCAPPER MODE ---
+  const [isScapperMode, setIsScapperMode] = useState(false)
+  const [scapperConversation, setScapperConversation] =
+    useState<GroqMessage[]>(createEmptyConversation())
 
   // --- COMMAND HISTORY ---
   const MAX_COMMAND_HISTORY = 20
@@ -284,7 +291,10 @@ export function TerminalPane({
       const result = await shell.execute(trimmed)
 
       // Handle different output types
-      if (result.type === "clear") {
+      if (result.type === "scapper-enter") {
+        // Enter scapper mode
+        enterScapperMode()
+      } else if (result.type === "clear") {
         // Clear terminal history
         setHistory([])
       } else if (result.type === "success") {
@@ -300,6 +310,124 @@ export function TerminalPane({
     } finally {
       setIsProcessing(false)
       // Re-focus input after processing
+      setTimeout(() => inputRef.current?.focus(), 10)
+    }
+  }
+
+  // --- SCAPPER MODE HANDLERS ---
+
+  const enterScapperMode = () => {
+    setIsScapperMode(true)
+    setScapperConversation(createEmptyConversation())
+    setHistory((prev) => [
+      ...prev,
+      {
+        type: "output",
+        content: (
+          <div className="my-2 rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2">
+            <div className="font-semibold text-blue-400">🤖 Scapper - AI Coding Assistant</div>
+            <div className="text-muted-foreground">Type /quit or /exit to leave</div>
+          </div>
+        ),
+      },
+    ])
+  }
+
+  const exitScapperMode = () => {
+    setIsScapperMode(false)
+    setScapperConversation(createEmptyConversation())
+    setHistory((prev) => [...prev, { type: "output", content: "Exited Scapper." }])
+  }
+
+  const handleScapperInput = async (userInput: string) => {
+    const trimmed = userInput.trim()
+    if (!trimmed) return
+
+    // Check for exit commands
+    if (trimmed === "/quit" || trimmed === "/exit") {
+      exitScapperMode()
+      return
+    }
+
+    setIsProcessing(true)
+
+    try {
+      // Run the agent
+      const { result, updatedHistory } = await runScapper(
+        trimmed,
+        scapperConversation,
+        {
+          files,
+          createFile: async (name, type, content) => {
+            if (onCreateFile) await onCreateFile(name, type, content)
+          },
+          updateFile: async (name, content) => {
+            if (onUpdateFile) await onUpdateFile(name, content)
+          },
+          deleteFile: async (name) => {
+            if (onDeleteFile) await onDeleteFile(name)
+          },
+        },
+        (progress) => {
+          // Show progress in terminal
+          if (progress.type === "thinking") {
+            setHistory((prev) => [
+              ...prev,
+              {
+                type: "output",
+                content: <span className="text-muted-foreground">⠋ {progress.message}</span>,
+              },
+            ])
+          } else if (progress.type === "tool") {
+            setHistory((prev) => [
+              ...prev,
+              {
+                type: "output",
+                content: <span className="text-muted-foreground">⠙ {progress.message}</span>,
+              },
+            ])
+          } else if (progress.type === "result") {
+            setHistory((prev) => [
+              ...prev,
+              {
+                type: "output",
+                content: <span className="text-green-400">{progress.message}</span>,
+              },
+            ])
+          } else if (progress.type === "error") {
+            setHistory((prev) => [
+              ...prev,
+              {
+                type: "output",
+                content: <span className="text-red-400">✗ {progress.message}</span>,
+              },
+            ])
+          }
+        }
+      )
+
+      // Update conversation
+      setScapperConversation(updatedHistory)
+
+      // Show final message
+      if (result.success && result.message) {
+        setHistory((prev) => [
+          ...prev,
+          { type: "output", content: <span className="text-foreground">{result.message}</span> },
+        ])
+      } else if (result.error) {
+        setHistory((prev) => [
+          ...prev,
+          { type: "output", content: <span className="text-red-400">Error: {result.error}</span> },
+        ])
+      }
+    } catch (e) {
+      setHistory((prev) => [
+        ...prev,
+        { type: "output", content: <span className="text-red-400">Error: {String(e)}</span> },
+      ])
+    } finally {
+      setIsProcessing(false)
       setTimeout(() => inputRef.current?.focus(), 10)
     }
   }
@@ -326,7 +454,10 @@ export function TerminalPane({
 
     // Empty input - just add an empty prompt line (like real terminal)
     if (!currentInput) {
-      setHistory((prev) => [...prev, { type: "input", content: "", cwd: promptCwd }])
+      setHistory((prev) => [
+        ...prev,
+        { type: "input", content: "", cwd: isScapperMode ? "[scapper]" : promptCwd },
+      ])
       setInput("")
       return
     }
@@ -353,11 +484,16 @@ export function TerminalPane({
       {
         type: "input",
         content: currentInput,
-        cwd: promptCwd,
+        cwd: isScapperMode ? "[scapper]" : promptCwd,
       },
     ])
 
-    handleCommand(currentInput)
+    // Route to appropriate handler
+    if (isScapperMode) {
+      handleScapperInput(currentInput)
+    } else {
+      handleCommand(currentInput)
+    }
     setInput("")
   }
 
@@ -456,8 +592,14 @@ export function TerminalPane({
 
               {!isProcessing && (
                 <div className="flex items-center gap-2">
-                  <span className="text-green-500">➜</span>
-                  <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
+                  {isScapperMode ? (
+                    <span className="text-blue-400">[scapper]</span>
+                  ) : (
+                    <>
+                      <span className="text-green-500">➜</span>
+                      <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
+                    </>
+                  )}
                   <form onSubmit={handleSubmit} className="min-w-0 flex-1">
                     <input
                       ref={inputRef}

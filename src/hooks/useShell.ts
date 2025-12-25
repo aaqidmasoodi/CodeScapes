@@ -517,9 +517,15 @@ const commands: Record<string, CommandHandler> = {
   rm [-rf] FILE         Remove file or directory
   grep [-ilnv] PATTERN [FILE...]  Search for pattern
   pip install PKG       Install Python package
+  scapper               Start AI coding assistant
   clear                 Clear terminal
   help                  Show this help`
     return { type: "stdout", content: helpText }
+  },
+
+  scapper: async () => {
+    // Special command that signals TerminalPane to enter scapper mode
+    return { type: "scapper-enter", content: "" }
   },
 }
 
