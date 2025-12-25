@@ -480,16 +480,28 @@ export default function ScapeEditor() {
   const handleInputSubmit = useCallback(
     async (text: string) => {
       // 1. Echo to output (Prompt + Input + Newline)
-      setOutputLogs((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          type: "stdout",
-          // Echo the prompt sequence as if it was printed, then the input
-          content: (inputPrompt || "") + text + "\n",
-          timestamp: Date.now(),
-        },
-      ])
+      // 1. Echo to output (Merge with previous line if no newline)
+      setOutputLogs((prev) => {
+        const last = prev[prev.length - 1]
+        const inputContent = (inputPrompt || "") + text + "\n"
+
+        if (last && last.type === "stdout" && !last.content.endsWith("\n")) {
+          // Merge input with the prompt line
+          const newLast = { ...last, content: last.content + inputContent }
+          return [...prev.slice(0, -1), newLast]
+        }
+
+        // Otherwise append as new line
+        return [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            type: "stdout",
+            content: inputContent,
+            timestamp: Date.now(),
+          },
+        ]
+      })
 
       // 2. Clear Prompt
       setInputPrompt(null)
@@ -725,9 +737,17 @@ export default function ScapeEditor() {
   }
 
   const handleOutput = useCallback((log: LogEntry) => {
-    setOutputLogs((prev) => [...prev, log])
-    // Switch to output tab? Maybe.
-    // setActiveTab("output")
+    setOutputLogs((prev) => {
+      const last = prev[prev.length - 1]
+
+      // Try to merge if previous line is incomplete
+      if (last && last.type === log.type && !last.content.endsWith("\n")) {
+        const newLast = { ...last, content: last.content + log.content }
+        return [...prev.slice(0, -1), newLast]
+      }
+
+      return [...prev, log]
+    })
   }, [])
 
   // --- PROBLEMS & VALIDATION ---
@@ -1070,7 +1090,7 @@ export default function ScapeEditor() {
                     scapeId={id}
                     isOpen={true}
                     ref={secretsPanelRef}
-                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                  // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
                   />
                 )}
               </ResizablePanel>

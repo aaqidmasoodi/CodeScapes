@@ -53,7 +53,8 @@ export async function runScapper(
   userMessage: string,
   conversationHistory: GroqMessage[],
   toolContext: ToolContext,
-  onProgress: (progress: ScapperProgress) => void
+  onProgress: (progress: ScapperProgress) => void,
+  signal?: AbortSignal
 ): Promise<{ result: ScapperResult; updatedHistory: GroqMessage[] }> {
   // Build messages array
   const messages: GroqMessage[] = [
@@ -78,7 +79,11 @@ export async function runScapper(
     while (loopCount < MAX_LOOPS) {
       loopCount++
 
-      const response = await chatCompletion(messages, SCAPPER_TOOLS)
+      if (signal?.aborted) {
+        throw new Error("Aborted by user")
+      }
+
+      const response = await chatCompletion(messages, SCAPPER_TOOLS, { signal })
       const choice = response.choices[0]
       const assistantMessage = choice.message
 

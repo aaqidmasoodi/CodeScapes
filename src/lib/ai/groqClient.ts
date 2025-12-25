@@ -72,6 +72,7 @@ export async function chatCompletion(
     model?: string
     maxTokens?: number
     temperature?: number
+    signal?: AbortSignal
   }
 ): Promise<GroqResponse> {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY
@@ -118,6 +119,7 @@ export async function chatCompletion(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
+        signal: options?.signal,
       })
 
       if (!response.ok) {
