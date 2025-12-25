@@ -59,16 +59,64 @@ export function FileExplorer({
   // Temporary input state
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Controlled Input State
+  const [inputValue, setInputValue] = useState("")
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
-    if (creationStart) inputRef.current?.focus()
+    if (creationStart) {
+      setTimeout(() => inputRef.current?.focus(), 10)
+    }
   }, [creationStart])
 
+  // Validation
+  const validateInput = (val: string) => {
+    if (!val.trim()) {
+      setError(null)
+      return false
+    }
+
+    const findNode = (nodes: FileNode[], path: string): FileNode | null => {
+      for (const node of nodes) {
+        if (node.path === path) return node
+        if (node.children) {
+          const found = findNode(node.children, path)
+          if (found) return found
+        }
+      }
+      return null
+    }
+
+    let siblings: FileNode[] = []
+    if (!creationStart?.parentPath) {
+      siblings = files
+    } else {
+      const parentNode = findNode(files, creationStart.parentPath)
+      siblings = parentNode?.children || []
+    }
+
+    if (siblings.some((s) => s.name === val.trim())) {
+      setError("File already exists")
+      return false
+    }
+
+    setError(null)
+    return true
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setInputValue(val)
+    validateInput(val)
+  }
+
   const handleCommitCreation = () => {
-    if (!creationStart || !inputRef.current) return
-    const rawName = inputRef.current.value.trim()
+    if (!creationStart) return
+    const rawName = inputValue.trim()
 
     if (rawName) {
-      // Construct full path if nested
+      if (error) return
+
       const fullName = creationStart.parentPath ? `${creationStart.parentPath}/${rawName}` : rawName
 
       if (creationStart.type === "file") {
@@ -85,6 +133,39 @@ export function FileExplorer({
     else if (e.key === "Escape") setCreationStart(null)
   }
 
+  // Handle root creation vs nested creation
+  const handleStartCreation = (type: "file" | "folder") => {
+    setInputValue("")
+    setError(null)
+    setCreationStart({
+      type,
+      parentPath: selectedFolderId || undefined,
+    })
+  }
+
+  const renderInput = () => (
+    <div className="relative w-full">
+      <Input
+        ref={inputRef}
+        className={cn(
+          "h-6 px-1 py-0 text-sm",
+          error && "border-red-500 focus-visible:ring-red-500"
+        )}
+        value={inputValue}
+        onChange={handleInputChange}
+        onBlur={handleCommitCreation}
+        onKeyDown={handleKeyDown}
+        placeholder={creationStart?.type === "file" ? "filename.ext" : "foldername"}
+        autoFocus
+      />
+      {error && (
+        <div className="absolute left-0 top-full z-50 mt-1 rounded bg-red-500 px-1.5 py-0.5 text-[10px] text-white shadow-md">
+          {error}
+        </div>
+      )}
+    </div>
+  )
+
   // --- HTML5 DnD Handlers ---
   const handleDragStart = (e: React.DragEvent, node: FileNode) => {
     e.dataTransfer.setData("text/plain", node.path)
@@ -93,21 +174,18 @@ export function FileExplorer({
 
   const handleDragOver = (e: React.DragEvent, node: FileNode | null) => {
     e.preventDefault()
-    e.stopPropagation() // Prevent bubbling to container if handling node
+    e.stopPropagation()
 
-    // If node is null, we are over the root container
     if (!node) {
       setDragOverNodeId("root")
       e.dataTransfer.dropEffect = "move"
       return
     }
 
-    // If over a folder, target that folder
     if (node.type === "folder") {
       setDragOverNodeId(node.path)
       e.dataTransfer.dropEffect = "move"
     } else {
-      // If over a file, target its parent folder
       const parentPath = node.path.includes("/")
         ? node.path.substring(0, node.path.lastIndexOf("/"))
         : "root"
@@ -126,31 +204,26 @@ export function FileExplorer({
     e.stopPropagation()
     setDragOverNodeId(null)
 
-    // Determine Target Path
     let targetPath = ""
     if (targetNode) {
       if (targetNode.type === "folder") {
         targetPath = targetNode.path
       } else {
-        // Dropped on a file -> Goes to same folder
         targetPath = targetNode.path.includes("/")
           ? targetNode.path.substring(0, targetNode.path.lastIndexOf("/"))
           : ""
       }
     }
 
-    // Check for Native Files first
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const filesList = Array.from(e.dataTransfer.files)
 
       for (const file of filesList) {
-        // 1. Size Check (10MB)
         if (file.size > 10 * 1024 * 1024) {
           alert(`File ${file.name} is too large (Max 10MB).`)
           continue
         }
 
-        // 2. Determine Type & Read Strategy
         const isText =
           file.type.startsWith("text/") ||
           file.name.endsWith(".json") ||
@@ -164,45 +237,32 @@ export function FileExplorer({
 
         if (isText) {
           content = await file.text()
-          // Infer simpler type for code editor support
           if (file.name.endsWith(".html")) fileType = "html"
           else if (file.name.endsWith(".css")) fileType = "css"
           else if (file.name.endsWith(".json")) fileType = "json"
           else if (file.name.endsWith(".md")) fileType = "markdown"
           else if (file.name.endsWith(".py")) fileType = "python"
           else if (file.name.endsWith(".js") || file.name.endsWith(".ts")) fileType = "javascript"
-          else fileType = "binary" // Fallback if unsure, but we read as text
+          else fileType = "binary"
         } else {
-          // Binary (Images, WASM, etc.)
           content = await file.arrayBuffer()
           if (file.type.startsWith("image/")) fileType = "image"
           else fileType = "binary"
         }
 
-        // 3. Create File
         const newPath = targetPath ? `${targetPath}/${file.name}` : file.name
         onCreateFile(newPath, fileType, content)
       }
       return
     }
 
-    // --- Internal App DnD (Moving Files) ---
     const sourcePath = e.dataTransfer.getData("text/plain")
-
-    // Strict Check removed: Can drop on files (to resolve parent)
-
     if (!sourcePath) return
+    if (sourcePath === targetPath) return
 
-    // Prevent dropping onto itself or direct parent (logic needs care)
-    // Source: "folder/file.txt", Target: "folder" -> No op
-    // Source: "file.txt", Target: "" -> No op
-    if (sourcePath === targetPath) return // Same path?
-
-    // Check if already in target folder
     const sourceDir = sourcePath.split("/").slice(0, -1).join("/")
     if (sourceDir === targetPath) return
 
-    // Move logic: New path = targetPath/sourceName
     const sourceName = sourcePath.split("/").pop()
     const newPath = targetPath ? `${targetPath}/${sourceName}` : sourceName
 
@@ -231,7 +291,6 @@ export function FileExplorer({
                     node.type === "file" &&
                     "bg-secondary text-secondary-foreground",
                   selectedFolderId === node.path && "bg-muted/30",
-                  // Stronger highlight in light mode (blue-200), subtle in dark mode (blue-900/40)
                   dragOverNodeId === node.path &&
                     "border-blue-500/50 bg-blue-200/50 dark:border-blue-500/50 dark:bg-blue-900/40"
                 )}
@@ -240,7 +299,6 @@ export function FileExplorer({
                   e.stopPropagation()
                   if (node.type === "file" && node.file) {
                     onFileSelect(node.file)
-                    // Auto-select parent folder so "New File" creates a sibling
                     const parentDir = node.path.split("/").slice(0, -1).join("/")
                     setSelectedFolderId(parentDir || null)
                   } else {
@@ -283,7 +341,6 @@ export function FileExplorer({
             </ContextMenuContent>
           </ContextMenu>
 
-          {/* Render Input if creating directly inside this folder */}
           {isCreatingHere && (
             <div
               className="mx-1 flex items-center gap-1.5 px-2 py-1"
@@ -301,13 +358,7 @@ export function FileExplorer({
               ) : (
                 <File className="h-4 w-4 text-muted-foreground/80" />
               )}
-              <Input
-                ref={inputRef}
-                className="h-6 px-1 py-0 text-sm"
-                onBlur={handleCommitCreation}
-                onKeyDown={handleKeyDown}
-                placeholder={creationStart.type === "file" ? "filename.ext" : "foldername"}
-              />
+              {renderInput()}
             </div>
           )}
 
@@ -321,27 +372,17 @@ export function FileExplorer({
     })
   }
 
-  // Handle root creation vs nested creation
-  const handleStartCreation = (type: "file" | "folder") => {
-    setCreationStart({
-      type,
-      parentPath: selectedFolderId || undefined,
-    })
-  }
-
   return (
     <div
       className={cn(
         "flex h-full flex-col border-r border-muted/50 bg-muted/5 transition-colors",
-        // Stronger root highlight in light mode
         dragOverNodeId === "root" && "bg-blue-300/30 dark:bg-blue-900/20"
       )}
       onClick={() => setSelectedFolderId(null)}
-      onDragOver={(e) => handleDragOver(e, null)} // Handle drag over root
-      onDrop={(e) => handleDrop(e, null)} // Handle drop onto root
+      onDragOver={(e) => handleDragOver(e, null)}
+      onDrop={(e) => handleDrop(e, null)}
       onDragLeave={handleDragLeave}
     >
-      {/* Toolbar */}
       <div
         className="flex items-center justify-between border-b border-muted/50 bg-background/50 px-3 py-2 backdrop-blur-sm"
         onClick={(e) => e.stopPropagation()}
@@ -371,9 +412,7 @@ export function FileExplorer({
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-auto py-2">
-        {/* Input Field at Root (Top) - Only if parentPath is undefined */}
         {creationStart && !creationStart.parentPath && (
           <div className="mx-1 flex items-center gap-1.5 px-2 py-1">
             <span className="pl-2 text-muted-foreground/70">
@@ -388,13 +427,7 @@ export function FileExplorer({
             ) : (
               <File className="h-4 w-4 text-muted-foreground/80" />
             )}
-            <Input
-              ref={inputRef}
-              className="h-6 px-1 py-0 text-sm"
-              onBlur={handleCommitCreation}
-              onKeyDown={handleKeyDown}
-              placeholder={creationStart.type === "file" ? "filename.ext" : "foldername"}
-            />
+            {renderInput()}
           </div>
         )}
 

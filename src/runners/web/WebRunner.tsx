@@ -136,9 +136,9 @@ export const WebRunner = memo(
           if (!onOutput) return
 
           // Format args to string (similar to console.log behavior)
-          const content = args
-            .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
-            .join(" ")
+          const content =
+            args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ") +
+            "\n"
 
           onOutput({
             id: crypto.randomUUID(),
