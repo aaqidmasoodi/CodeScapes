@@ -1,6 +1,7 @@
-import { Files, Search, Settings, Lock } from "lucide-react"
+import { Files, Search, Settings, Lock, MessageSquarePlus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { FeedbackDialog } from "@/components/feedback/FeedbackDialog"
 
 export interface ActivityTool {
   id: string
@@ -83,6 +84,19 @@ export function EditorActivityBar({
             <tool.icon className="h-5 w-5" />
           </Button>
         ))}
+
+        <FeedbackDialog
+          trigger={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 text-muted-foreground"
+              title="Feedback"
+            >
+              <MessageSquarePlus className="h-5 w-5" />
+            </Button>
+          }
+        />
 
         <Button
           variant="ghost"
