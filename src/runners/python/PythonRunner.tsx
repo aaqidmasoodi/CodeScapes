@@ -122,7 +122,7 @@ export const PythonRunner = memo(
       ])
 
       // Forward declaration for initWorker to use
-      const runPythonRef = useRef<() => Promise<void>>(async () => { })
+      const runPythonRef = useRef<() => Promise<void>>(async () => {})
 
       // --- Stable Helpers ---
 

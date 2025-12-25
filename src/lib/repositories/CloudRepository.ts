@@ -122,10 +122,10 @@ export class CloudRepository implements IScapeRepository {
       supabase.from("scapes").select("id", { count: "exact", head: true }).eq("parent_id", id),
       userId
         ? supabase
-          .from("likes")
-          .select("*", { count: "exact", head: true })
-          .eq("scape_id", id)
-          .eq("user_id", userId)
+            .from("likes")
+            .select("*", { count: "exact", head: true })
+            .eq("scape_id", id)
+            .eq("user_id", userId)
         : Promise.resolve({ count: 0 }),
     ])
 
@@ -147,10 +147,10 @@ export class CloudRepository implements IScapeRepository {
       parentId: data.parent_id,
       author: data.author
         ? {
-          name: data.author.full_name || data.author.username || "Unknown",
-          avatar: data.author.avatar_url,
-          username: data.author.username,
-        }
+            name: data.author.full_name || data.author.username || "Unknown",
+            avatar: data.author.avatar_url,
+            username: data.author.username,
+          }
         : undefined,
       stats: {
         views: data.views || 0,
@@ -485,10 +485,10 @@ export class CloudRepository implements IScapeRepository {
         parentId: d.parent_id,
         author: d.profiles
           ? {
-            name: d.profiles.full_name || d.profiles.username || "Unknown",
-            avatar: d.profiles.avatar_url,
-            username: d.profiles.username,
-          }
+              name: d.profiles.full_name || d.profiles.username || "Unknown",
+              avatar: d.profiles.avatar_url,
+              username: d.profiles.username,
+            }
           : undefined,
         stats: {
           views: 0,

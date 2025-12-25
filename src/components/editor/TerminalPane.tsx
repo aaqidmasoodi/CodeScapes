@@ -72,6 +72,153 @@ export function TerminalPane({
   const [programInput, setProgramInput] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
 
+  // --- COMMAND HISTORY ---
+  const MAX_COMMAND_HISTORY = 20
+  const [commandHistory, setCommandHistory] = useState<string[]>(() => {
+    // Load from localStorage
+    if (scapeId) {
+      const stored = localStorage.getItem(`terminal-history-${scapeId}`)
+      if (stored) {
+        try {
+          return JSON.parse(stored)
+        } catch {
+          return []
+        }
+      }
+    }
+    return []
+  })
+  const [historyIndex, setHistoryIndex] = useState(-1) // -1 means not navigating
+  const [savedInput, setSavedInput] = useState("") // Preserve current input when navigating
+
+  // Persist command history
+  useEffect(() => {
+    if (scapeId && commandHistory.length > 0) {
+      localStorage.setItem(`terminal-history-${scapeId}`, JSON.stringify(commandHistory))
+    }
+  }, [commandHistory, scapeId])
+
+  // --- AUTOCOMPLETE ---
+  const COMMANDS = [
+    "echo",
+    "ls",
+    "cat",
+    "touch",
+    "rm",
+    "mkdir",
+    "pwd",
+    "grep",
+    "pip",
+    "clear",
+    "help",
+  ]
+
+  const getFileCompletions = (partial: string): string[] => {
+    const parts = partial.trim().split(/\s+/)
+    if (parts.length < 2) return [] // No file completion if no command yet
+
+    const command = parts[0]
+    if (!COMMANDS.includes(command)) return [] // Only complete after valid commands
+
+    const currentWord = parts[parts.length - 1] || ""
+    const prefix = parts.slice(0, -1).join(" ")
+
+    // Complete file paths
+    const matchingFiles = files
+      .map((f) => f.name)
+      .filter((name) => {
+        if (!currentWord) return true // Show all files if no partial
+        return name.startsWith(currentWord) || name.includes("/" + currentWord)
+      })
+
+    return matchingFiles.map((file) => prefix + " " + file)
+  }
+
+  // --- KEYBOARD HANDLERS ---
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Ctrl+C - Cancel current input and new prompt
+    if (e.key === "c" && e.ctrlKey) {
+      e.preventDefault()
+      if (input.trim()) {
+        // Show cancelled command
+        setHistory((prev) => [...prev, { type: "input", content: input + "^C", cwd: promptCwd }])
+      }
+      setInput("")
+      setHistoryIndex(-1)
+      setSavedInput("")
+      return
+    }
+
+    // Tab - Autocomplete files only (after a valid command)
+    if (e.key === "Tab") {
+      e.preventDefault()
+
+      // If empty input, do nothing (or could insert literal tab)
+      if (!input.trim()) {
+        return
+      }
+
+      const completions = getFileCompletions(input)
+      if (completions.length === 0) {
+        // No completions available
+        return
+      } else if (completions.length === 1) {
+        setInput(completions[0] + " ")
+      } else {
+        // Find common prefix
+        const sorted = completions.sort()
+        const first = sorted[0]
+        const last = sorted[sorted.length - 1]
+        let common = ""
+        for (let i = 0; i < first.length && i < last.length; i++) {
+          if (first[i] === last[i]) common += first[i]
+          else break
+        }
+        if (common.length > input.length) {
+          setInput(common)
+        } else {
+          // Show options in terminal (just the filenames, not full paths with command)
+          const fileNames = completions.map((c) => c.split(" ").pop() || "")
+          setHistory((prev) => [...prev, { type: "output", content: fileNames.join("  ") }])
+        }
+      }
+      return
+    }
+
+    // Up Arrow - Previous command
+    if (e.key === "ArrowUp") {
+      e.preventDefault()
+      if (commandHistory.length === 0) return
+
+      if (historyIndex === -1) {
+        // Starting navigation, save current input
+        setSavedInput(input)
+        setHistoryIndex(commandHistory.length - 1)
+        setInput(commandHistory[commandHistory.length - 1])
+      } else if (historyIndex > 0) {
+        setHistoryIndex(historyIndex - 1)
+        setInput(commandHistory[historyIndex - 1])
+      }
+      return
+    }
+
+    // Down Arrow - Next command
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      if (historyIndex === -1) return
+
+      if (historyIndex < commandHistory.length - 1) {
+        setHistoryIndex(historyIndex + 1)
+        setInput(commandHistory[historyIndex + 1])
+      } else {
+        // Return to saved input
+        setHistoryIndex(-1)
+        setInput(savedInput)
+      }
+      return
+    }
+  }
+
   // Auto-scroll
   useEffect(() => {
     if (activeTab === "terminal" && !isCollapsed) {
@@ -133,58 +280,26 @@ export function TerminalPane({
     setIsProcessing(true)
 
     try {
-      // Detect Legacy Commands (pip)
-      const [cmd] = trimmed.split(/\s+/)
-      if (cmd === "help" || cmd === "clear") {
-        // ... (existing legacy checks)
-        // Note: For 'clear' and 'help' which are sync, we still wrap them but they are fast.
-
-        if (cmd === "clear") {
-          setHistory([])
-          setIsProcessing(false)
-          return
-        }
-
-        if (cmd === "help") {
-          setHistory((prev) => [
-            ...prev,
-            {
-              type: "output",
-              content: (
-                <div className="text-muted-foreground">
-                  Available commands:
-                  <br />
-                  &nbsp;&nbsp;ls, cat, touch, rm, mkdir, pwd
-                  <br />
-                  &nbsp;&nbsp;pip install &lt;pkg&gt;
-                  <br />
-                  &nbsp;&nbsp;echo "text" &gt; file.txt
-                </div>
-              ),
-            },
-          ])
-          setIsProcessing(false)
-          return
-        }
-      }
-
       // Execute via Shell
       const result = await shell.execute(trimmed)
 
-      // Render Output
-      if (result.type === "success") {
-        // no op
+      // Handle different output types
+      if (result.type === "clear") {
+        // Clear terminal history
+        setHistory([])
+      } else if (result.type === "success") {
+        // Silent success (e.g., redirect)
       } else if (result.type === "error") {
-        setHistory((prev) => [...prev, { type: "output", content: `Error: ${result.content}` }])
-      } else {
+        setHistory((prev) => [...prev, { type: "output", content: result.content }])
+      } else if (result.content) {
+        // stdout, info, etc.
         setHistory((prev) => [...prev, { type: "output", content: result.content }])
       }
     } catch (e) {
       setHistory((prev) => [...prev, { type: "output", content: `Error: ${e}` }])
     } finally {
       setIsProcessing(false)
-      // Re-focus input after processing (if it became visible again)
-      // setTimeout to allow React to render the input
+      // Re-focus input after processing
       setTimeout(() => inputRef.current?.focus(), 10)
     }
   }
@@ -207,9 +322,32 @@ export function TerminalPane({
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
-    const currentInput = input
+    const currentInput = input.trim()
 
-    // Add input to history
+    // Empty input - just add an empty prompt line (like real terminal)
+    if (!currentInput) {
+      setHistory((prev) => [...prev, { type: "input", content: "", cwd: promptCwd }])
+      setInput("")
+      return
+    }
+
+    // Add to command history (dedupe consecutive duplicates)
+    if (commandHistory[commandHistory.length - 1] !== currentInput) {
+      setCommandHistory((prev) => {
+        const updated = [...prev, currentInput]
+        // Limit to MAX_COMMAND_HISTORY
+        if (updated.length > MAX_COMMAND_HISTORY) {
+          return updated.slice(-MAX_COMMAND_HISTORY)
+        }
+        return updated
+      })
+    }
+
+    // Reset history navigation
+    setHistoryIndex(-1)
+    setSavedInput("")
+
+    // Add input to display history
     setHistory((prev) => [
       ...prev,
       {
@@ -326,6 +464,7 @@ export function TerminalPane({
                       type="text"
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
                       className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
                       autoFocus
                       autoComplete="off"

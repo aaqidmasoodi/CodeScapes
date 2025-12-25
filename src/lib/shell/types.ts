@@ -2,7 +2,7 @@ import type { ScapeFile } from "@/types/file"
 
 export interface ShellOutput {
   content: string
-  type: "stdout" | "stderr" | "info" | "success" | "error"
+  type: "stdout" | "stderr" | "info" | "success" | "error" | "clear"
 }
 
 export interface ShellContext {

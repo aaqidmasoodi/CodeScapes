@@ -158,13 +158,13 @@ export const WebRunner = memo(
       // Build files with socket injection (only if payload ready)
       const filesWithSocket = stablePayload
         ? [
-          ...stablePayload.files,
-          {
-            name: "socket.js",
-            content: socketClientCode,
-            language: "javascript",
-          } as ScapeFile,
-        ]
+            ...stablePayload.files,
+            {
+              name: "socket.js",
+              content: socketClientCode,
+              language: "javascript",
+            } as ScapeFile,
+          ]
         : []
 
       // Bridge to the Runtime (only active when payload is ready)
