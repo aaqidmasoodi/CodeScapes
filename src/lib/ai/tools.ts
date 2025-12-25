@@ -231,6 +231,14 @@ async function executeCreateFile(
   // Detect language from extension
   const language = getLanguageFromFilename(path) as ScapeFile["language"]
 
+  // Create fake file object for local context update
+  const newFile: ScapeFile = {
+    name: path,
+    language,
+    content,
+  }
+  ctx.files.push(newFile)
+
   await ctx.createFile(path, language, content)
 
   const lines = content.split("\n").length
@@ -243,7 +251,8 @@ async function executeEditFile(
   replace: string,
   ctx: ToolContext
 ): Promise<ToolResult> {
-  const file = ctx.files.find((f) => f.name === path)
+  const fileIndex = ctx.files.findIndex((f) => f.name === path)
+  const file = ctx.files[fileIndex]
 
   if (!file) {
     return { success: false, output: "", error: `File not found: ${path}` }
@@ -267,17 +276,23 @@ async function executeEditFile(
     }
   }
 
+  // Update local context
+  ctx.files[fileIndex] = { ...file, content: newContent }
+
   await ctx.updateFile(path, newContent)
 
   return { success: true, output: `Updated ${path} (${count} replacement${count > 1 ? "s" : ""})` }
 }
 
 async function executeDeleteFile(path: string, ctx: ToolContext): Promise<ToolResult> {
-  const file = ctx.files.find((f) => f.name === path)
+  const fileIndex = ctx.files.findIndex((f) => f.name === path)
 
-  if (!file) {
+  if (fileIndex === -1) {
     return { success: false, output: "", error: `File not found: ${path}` }
   }
+
+  // Update local context
+  ctx.files.splice(fileIndex, 1)
 
   await ctx.deleteFile(path)
 

@@ -73,7 +73,22 @@ export function TerminalPane({
   const outputBottomRef = useRef<HTMLDivElement>(null)
   const outputInputRef = useRef<HTMLInputElement>(null)
   const [programInput, setProgramInput] = useState("")
+  const [isProcessing, setIsProcessing] = useState(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
+  // Spinner animation for Scapper
+  const [spinnerFrame, setSpinnerFrame] = useState(0)
+  const spinnerChars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (isProcessing) {
+      interval = setInterval(() => {
+        setSpinnerFrame((prev) => (prev + 1) % spinnerChars.length)
+      }, 80)
+    }
+    return () => clearInterval(interval)
+  }, [isProcessing])
 
   // --- SCAPPER MODE ---
   const [isScapperMode, setIsScapperMode] = useState(false)
@@ -147,6 +162,13 @@ export function TerminalPane({
     // Ctrl+C - Cancel current input and new prompt
     if (e.key === "c" && e.ctrlKey) {
       e.preventDefault()
+
+      // Abort Scapper task if running
+      if (isScapperMode && isProcessing) {
+        abortControllerRef.current?.abort()
+        return
+      }
+
       if (input.trim()) {
         // Show cancelled command
         setHistory((prev) => [...prev, { type: "input", content: input + "^C", cwd: promptCwd }])
@@ -360,7 +382,13 @@ export function TerminalPane({
       return
     }
 
-
+    // Setup cancellation
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const ac = new AbortController()
+    abortControllerRef.current = ac
+    setIsProcessing(true)
 
     try {
       // Run the agent
@@ -386,7 +414,7 @@ export function TerminalPane({
               ...prev,
               {
                 type: "output",
-                content: <span className="text-muted-foreground">⠋ {progress.message}</span>,
+                content: <span className="text-muted-foreground">{spinnerChars[spinnerFrame]} {progress.message}</span>,
               },
             ])
           } else if (progress.type === "tool") {
@@ -394,7 +422,7 @@ export function TerminalPane({
               ...prev,
               {
                 type: "output",
-                content: <span className="text-muted-foreground">⠙ {progress.message}</span>,
+                content: <span className="text-muted-foreground">{spinnerChars[spinnerFrame]} {progress.message}</span>,
               },
             ])
           } else if (progress.type === "result") {
@@ -414,7 +442,8 @@ export function TerminalPane({
               },
             ])
           }
-        }
+        },
+        ac.signal
       )
 
       // Update conversation
@@ -432,12 +461,21 @@ export function TerminalPane({
           { type: "output", content: <span className="text-red-400">Error: {result.error}</span> },
         ])
       }
-    } catch (e) {
-      setHistory((prev) => [
-        ...prev,
-        { type: "output", content: <span className="text-red-400">Error: {String(e)}</span> },
-      ])
+    } catch (e: any) {
+      if (e.message === "Aborted by user" || e.name === "AbortError") {
+        setHistory((prev) => [
+          ...prev,
+          { type: "output", content: <span className="text-yellow-400">⚠ Operation cancelled by user</span> },
+        ])
+      } else {
+        setHistory((prev) => [
+          ...prev,
+          { type: "output", content: <span className="text-red-400">Error: {String(e)}</span> },
+        ])
+      }
     } finally {
+      setIsProcessing(false)
+      abortControllerRef.current = null
 
       setTimeout(() => {
         if (isScapperMode) {
@@ -623,6 +661,13 @@ export function TerminalPane({
                         )}
                       </div>
                     ))}
+
+                    {isScapperMode && isProcessing && (
+                      <div className="mb-2 flex items-center text-muted-foreground">
+                        <span className="mr-2 inline-block w-4">{spinnerChars[spinnerFrame]}</span>
+                        <span>Scapper is working... <span className="text-xs opacity-70">(Ctrl+C to cancel)</span></span>
+                      </div>
+                    )}
 
                     <div className="mt-1 flex items-start gap-2">
                       {!isScapperMode && !partialPrefix && (
