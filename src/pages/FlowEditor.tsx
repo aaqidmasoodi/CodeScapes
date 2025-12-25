@@ -24,6 +24,7 @@ import type { ActivityTool } from "@/components/layout/EditorActivityBar"
 import { CodeScapeLogo } from "@/components/brand/Logo"
 import { useFlowStore, initAutosave } from "@/stores/flowStore"
 import { SpritePane } from "@/components/editor/SpritePane"
+import { StatusBar } from "@/components/StatusBar"
 
 const StopIcon = ({ className }: { className?: string }) => (
   <div
@@ -471,6 +472,9 @@ export default function FlowEditor() {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      {/* 3. STATUS BAR */}
+      <StatusBar source={source as "local" | "cloud"} environment="flowscape" />
     </div>
   )
 }
