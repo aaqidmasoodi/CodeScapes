@@ -164,8 +164,9 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
       {/* Console Drawer (Overlay) - Only if enabled */}
       {showConsoleUI && (
         <div
-          className={`absolute bottom-0 left-0 right-0 z-50 flex flex-col border-t border-border bg-background/95 backdrop-blur transition-all duration-300 ease-in-out ${isConsoleOpen ? "h-1/3" : "h-10"
-            }`}
+          className={`absolute bottom-0 left-0 right-0 z-50 flex flex-col border-t border-border bg-background/95 backdrop-blur transition-all duration-300 ease-in-out ${
+            isConsoleOpen ? "h-1/3" : "h-10"
+          }`}
         >
           {/* Drawer Handle / Header */}
           <div
