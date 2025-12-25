@@ -103,24 +103,65 @@ self.addEventListener("message", async (event) => {
           });
           window.addEventListener("message", function(e) {
             if (e.data && e.data.type === "SANDBOX_CAPTURE_THUMBNAIL") {
+              // Check if this is a pure canvas app (Three.js, p5.js) or mixed HTML+canvas
               var canvas = document.querySelector("canvas");
+              var isPureCanvasApp = false;
+              
               if (canvas) {
-                try {
-                  var data = canvas.toDataURL("image/jpeg", 0.7);
-                  window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: data }, "*");
-                  return;
-                } catch(err) {
-                  nativeConsole.warn("[Sandbox] Canvas capture failed, trying html2canvas");
+                // Check if canvas is the only significant content (not just a background)
+                // Pure canvas apps typically: 1) canvas fills viewport, 2) minimal other elements
+                var rect = canvas.getBoundingClientRect();
+                var viewportWidth = window.innerWidth;
+                var viewportHeight = window.innerHeight;
+                
+                // Canvas covers most of viewport
+                var coversViewport = (
+                  rect.width >= viewportWidth * 0.8 &&
+                  rect.height >= viewportHeight * 0.8
+                );
+                
+                // Check for significant visible text/HTML content
+                var bodyText = document.body.innerText.trim();
+                var hasMinimalText = bodyText.length < 100; // Very little text content
+                
+                // Check if canvas is position:absolute/fixed (likely the main content, not background)
+                var canvasStyle = window.getComputedStyle(canvas);
+                var isPositionedCanvas = canvasStyle.position === "absolute" || canvasStyle.position === "fixed";
+                
+                // Check z-index - background canvases typically have low/negative z-index
+                var zIndex = parseInt(canvasStyle.zIndex) || 0;
+                var isBackgroundCanvas = zIndex <= 0 && isPositionedCanvas;
+                
+                // Pure canvas app: covers viewport, minimal text, NOT a background canvas
+                isPureCanvasApp = coversViewport && hasMinimalText && !isBackgroundCanvas;
+                
+                if (isPureCanvasApp) {
+                  try {
+                    var data = canvas.toDataURL("image/jpeg", 0.7);
+                    window.parent.postMessage({ type: "SANDBOX_THUMBNAIL_DATA", payload: data }, "*");
+                    return;
+                  } catch(err) {
+                    nativeConsole.warn("[Sandbox] Canvas capture failed, trying html2canvas");
+                  }
                 }
               }
+              
+              // For HTML pages, mixed HTML+canvas, or failed canvas capture: use html2canvas
               if (typeof html2canvas !== "undefined") {
                 setTimeout(function() {
+                  // Detect background color, handle transparent/gradient cases
+                  var bgColor = window.getComputedStyle(document.body).backgroundColor;
+                  // If transparent or empty, fallback to white
+                  if (!bgColor || bgColor === "rgba(0, 0, 0, 0)" || bgColor === "transparent") {
+                    bgColor = "#ffffff";
+                  }
+                  
                   html2canvas(document.body, {
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
                     scale: 1,
-                    backgroundColor: window.getComputedStyle(document.body).backgroundColor || "#ffffff",
+                    backgroundColor: bgColor,
                     onclone: function(clonedDoc) {
                       // Extract all CSS rules from the original document's stylesheets
                       // and inject them as inline <style> tags in the cloned document
