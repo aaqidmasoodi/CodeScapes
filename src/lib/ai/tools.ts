@@ -224,7 +224,7 @@ async function executeCreateFile(
     return {
       success: false,
       output: "",
-      error: `File already exists: ${path}. Use edit_file to modify it.`,
+      error: `File already exists: ${path}`,
     }
   }
 
