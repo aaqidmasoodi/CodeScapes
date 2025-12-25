@@ -179,29 +179,30 @@ export function SearchPane({ files, onNavigate, onUpdateFile, className }: Searc
 
       {/* Search Input */}
       <div className="space-y-2 border-b px-3 py-2">
-        <div className="flex items-center gap-1">
-          <div className="relative flex-1">
-            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search"
-              className="h-7 pl-7 pr-7 text-sm"
-            />
-            {query && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-0 top-1/2 h-6 w-6 -translate-y-1/2 p-0"
-                onClick={handleClear}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
+        {/* Input on its own line */}
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchInputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search"
+            className="h-7 pl-7 pr-7 text-sm"
+          />
+          {query && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-0 top-1/2 h-6 w-6 -translate-y-1/2 p-0"
+              onClick={handleClear}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
 
-          {/* Option toggles */}
+        {/* Options on next line */}
+        <div className="flex items-center justify-end gap-1">
           <Button
             variant="ghost"
             size="sm"
