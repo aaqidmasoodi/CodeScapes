@@ -883,43 +883,7 @@ export function TerminalPane({
       )
       }
 
-      {/* FOOTER: Tab Switcher */}
-      <div className="flex shrink-0 items-center justify-between border-t bg-muted/20 px-4 py-2">
-        <div className="flex gap-4">
-          <button
-            onClick={() => onTabChange("terminal")}
-            className={cn(
-              "text-xs font-medium transition-colors hover:text-foreground/80",
-              activeTab === "terminal" ? "text-foreground" : "text-muted-foreground"
-            )}
-          >
-            TERMINAL
-          </button>
-          <button
-            onClick={() => onTabChange("output")}
-            className={cn(
-              "text-xs font-medium transition-colors hover:text-foreground/80",
-              activeTab === "output" ? "text-foreground" : "text-muted-foreground"
-            )}
-          >
-            OUTPUT
-          </button>
-          <button
-            onClick={() => onTabChange("problems")}
-            className={cn(
-              "text-xs font-medium transition-colors hover:text-foreground/80",
-              activeTab === "problems" ? "text-foreground" : "text-muted-foreground"
-            )}
-          >
-            PROBLEMS {problems.length > 0 && <span className="ml-1 text-destructive">({problems.length})</span>}
-          </button>
-        </div>
-        {onClose && (
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
+
     </div>
   )
 }
