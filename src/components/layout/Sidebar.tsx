@@ -1,9 +1,10 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Settings, LogOut, Database, Cloud, Globe, Book } from "lucide-react"
+import { Settings, LogOut, Database, Cloud, Globe, Book, MessageSquarePlus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
+import { FeedbackDialog } from "@/components/feedback/FeedbackDialog"
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   activeTab?: string
@@ -87,6 +88,28 @@ export function Sidebar({
       </nav>
 
       <div className="flex flex-col gap-2 px-0">
+        <FeedbackDialog
+          trigger={
+            <Button
+              variant="ghost"
+              className="relative flex w-full items-center justify-start overflow-hidden p-0 text-muted-foreground hover:text-primary"
+              onMouseDown={() => !isMobile && setIsHovered(false)}
+            >
+              <div className="flex h-10 w-16 shrink-0 items-center justify-center">
+                <MessageSquarePlus className="h-5 w-5" />
+              </div>
+              <span
+                className={cn(
+                  "whitespace-nowrap transition-opacity duration-300",
+                  isExpanded ? "opacity-100" : "opacity-0"
+                )}
+              >
+                Feedback
+              </span>
+            </Button>
+          }
+        />
+
         <Button
           variant="ghost"
           className="relative flex w-full items-center justify-start overflow-hidden p-0 text-muted-foreground hover:text-primary"

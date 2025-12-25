@@ -103,9 +103,6 @@ export function CodeScapeFullLogo({ className, height = 40 }: FullLogoProps) {
         {/* Rounded square */}
         <rect width="32" height="32" rx="7" fill={`url(#${id}-icon)`} />
 
-        {/* Depth corner */}
-        <path d="M32 16L32 32L16 32L32 16Z" fill={`url(#${id}-accent)`} opacity="0.35" />
-
         {/* Code brackets */}
         <path
           d="M13 10L8 16L13 22"
