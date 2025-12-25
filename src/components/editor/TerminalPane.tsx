@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, type FormEvent } from "react"
 import { Terminal as TerminalIcon, X, AlertCircle, ChevronUp } from "lucide-react"
 import { useShell } from "@/hooks/useShell"
+import { useAuth } from "@/hooks/useAuth"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Problem } from "@/types/problem"
@@ -307,9 +309,31 @@ export function TerminalPane({
     }
   }, [inputPrompt, isRunning])
 
+  const { user } = useAuth()
+  const [showAuthDialog, setShowAuthDialog] = useState(false)
+
   const handleCommand = async (cmdStr: string) => {
     const trimmed = cmdStr.trim()
     if (!trimmed) return
+
+    // Security check for Scapper
+    if (trimmed.startsWith("scapper")) {
+      if (!user) {
+        setHistory((prev) => [
+          ...prev,
+          {
+            type: "output",
+            content: (
+              <span className="text-red-400">
+                Authentication Required: Please sign in to use Scapper AI.
+              </span>
+            ),
+          },
+        ])
+        setShowAuthDialog(true)
+        return
+      }
+    }
 
 
 
@@ -884,6 +908,21 @@ export function TerminalPane({
       }
 
 
+      <Dialog open={showAuthDialog} onOpenChange={setShowAuthDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sign in Required</DialogTitle>
+            <DialogDescription>
+              Please sign in to use Scapper AI. This feature is exclusive to logged-in users.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setShowAuthDialog(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

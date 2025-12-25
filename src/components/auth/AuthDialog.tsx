@@ -13,7 +13,15 @@ import {
 } from "@/components/ui/dialog"
 import { Github, Loader2, Mail } from "lucide-react"
 
-export function AuthDialog({ children }: { children: React.ReactNode }) {
+export function AuthDialog({
+  children,
+  open,
+  onOpenChange,
+}: {
+  children?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
   const { signInWithGithub, signInWithGoogle, signInWithEmail, signUpWithEmail, loading } =
     useAuth()
   const [isGithubLoading, setIsGithubLoading] = useState(false)
@@ -70,8 +78,8 @@ export function AuthDialog({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="text-center text-2xl font-bold">Welcome back</DialogTitle>
