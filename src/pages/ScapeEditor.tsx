@@ -15,6 +15,7 @@ import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import { SecretsPanel } from "@/components/secrets/SecretsPanel"
 import { SaveStatus } from "@/components/editor/SaveStatus"
+import { StatusBar } from "@/components/StatusBar"
 import { ShareDialog } from "@/components/editor/ShareDialog"
 import type { ScapeFile } from "@/types/file"
 import type { Problem } from "@/types/problem"
@@ -1007,6 +1008,7 @@ export default function ScapeEditor() {
             Exit
           </Button>
         }
+        footer={<StatusBar source={source as "local" | "cloud"} environment={scape?.environment} />}
       >
         <ResizablePanelGroup
           ref={mainLayoutGroupRef}
@@ -1062,7 +1064,7 @@ export default function ScapeEditor() {
                     scapeId={id}
                     isOpen={true}
                     ref={secretsPanelRef}
-                  // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
                   />
                 )}
               </ResizablePanel>

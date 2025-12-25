@@ -6,6 +6,7 @@ interface ScapeLayoutProps {
   headerActions?: React.ReactNode
   headerTitle?: React.ReactNode
   headerEndActions?: React.ReactNode
+  footer?: React.ReactNode
 }
 
 export function ScapeLayout({
@@ -14,6 +15,7 @@ export function ScapeLayout({
   headerActions,
   headerTitle,
   headerEndActions,
+  footer,
 }: ScapeLayoutProps) {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
@@ -22,6 +24,7 @@ export function ScapeLayout({
         {sidebar}
         <main className="flex-1 overflow-hidden">{children}</main>
       </div>
+      {footer}
     </div>
   )
 }
