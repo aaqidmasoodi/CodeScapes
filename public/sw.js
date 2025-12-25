@@ -1,32 +1,117 @@
 /// <reference lib="webworker" />
 
-// DEBUG: Set to false for production builds (Vercel)
+// =============================================================================
+// SERVICE WORKER VERSIONING AND LIFECYCLE
+// =============================================================================
+
+/**
+ * SW_VERSION: Increment this on every deploy to force clients to update.
+ * Format: YYYY.MM.DD.patch (e.g., 2024.12.25.1)
+ */
+const SW_VERSION = "2024.12.25.1"
+
+/**
+ * TTL: Maximum age before the SW self-destructs (7 days in milliseconds)
+ * This is a safety net for users who don't visit frequently
+ */
+const SW_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+/**
+ * Creation timestamp - set when SW is first installed
+ * Stored in a way that persists across activations
+ */
+let swCreatedAt = Date.now()
+
+// =============================================================================
+// DEBUG CONFIG
+// =============================================================================
+
 const DEBUG = true
-const log = (...args) => DEBUG && console.log(...args)
-const warn = (...args) => DEBUG && console.warn(...args)
+const log = (...args) => DEBUG && console.log("[SW]", ...args)
+const warn = (...args) => DEBUG && console.warn("[SW]", ...args)
+
+// =============================================================================
+// CACHE AND FILESYSTEM
+// =============================================================================
 
 const CACHE_NAME = "codescape-preview-v3"
 // Structure: Map<ScapeId, Map<FileName, Content>>
 const fileSystem = new Map()
 
+// =============================================================================
+// LIFECYCLE EVENTS
+// =============================================================================
+
 self.addEventListener("install", (event) => {
-  // Activate immediately
+  log(`Installing version ${SW_VERSION}`)
+  // Activate immediately - don't wait for old SW to die
   self.skipWaiting()
 })
 
 self.addEventListener("activate", (event) => {
-  // Claim clients immediately
+  log(`Activated version ${SW_VERSION}`)
+  // Claim all clients immediately
   event.waitUntil(self.clients.claim())
-  log("[SW] Activated")
 })
 
-// --- Message Handling ---
+// =============================================================================
+// TTL SELF-DESTRUCT CHECK
+// =============================================================================
+
+/**
+ * Periodically check if this SW has exceeded its TTL
+ * If so, unregister and let the next page load get a fresh SW
+ */
+const checkTTL = () => {
+  const age = Date.now() - swCreatedAt
+  if (age > SW_MAX_AGE_MS) {
+    warn(`TTL exceeded (${Math.round(age / 1000 / 60 / 60)} hours old). Self-destructing...`)
+    self.registration.unregister().then(() => {
+      log("Unregistered due to TTL")
+    })
+  }
+}
+
+// Check TTL every 5 minutes
+setInterval(checkTTL, 5 * 60 * 1000)
+
+// =============================================================================
+// MESSAGE HANDLING
+// =============================================================================
+
 self.addEventListener("message", (event) => {
   const { data, ports } = event
   const port = ports[0]
 
   if (!data || !data.type) return
 
+  // VERSION CHECK - Respond to version queries from the app
+  if (data.type === "GET_VERSION") {
+    if (port) {
+      port.postMessage({
+        version: SW_VERSION,
+        createdAt: swCreatedAt,
+        maxAge: SW_MAX_AGE_MS,
+      })
+    }
+    return
+  }
+
+  // SKIP_WAITING - Force this SW to activate immediately
+  if (data.type === "SKIP_WAITING") {
+    log("Received SKIP_WAITING, activating immediately")
+    self.skipWaiting()
+    return
+  }
+
+  // FORCE_UNREGISTER - Nuclear option
+  if (data.type === "FORCE_UNREGISTER") {
+    log("Received FORCE_UNREGISTER, self-destructing")
+    self.registration.unregister()
+    return
+  }
+
+  // FILE_UPDATE - Original preview filesystem logic
   if (data.type === "FILE_UPDATE") {
     const { scapeId, files, clear } = data.payload
 
@@ -35,7 +120,7 @@ self.addEventListener("message", (event) => {
       return
     }
 
-    log(`[SW] Received Update for Scape: ${scapeId} (${files.length} files)`)
+    log(`Received Update for Scape: ${scapeId} (${files.length} files)`)
 
     // Get or Create Namespace
     let scapeFs = fileSystem.get(scapeId)
@@ -57,7 +142,7 @@ self.addEventListener("message", (event) => {
       else if (file.name.endsWith(".wasm")) contentType = "application/wasm"
 
       const content = file.content
-      log(`[SW] Storing ${file.name} in ${scapeId}`)
+      log(`Storing ${file.name} in ${scapeId}`)
 
       if (typeof content === "string") {
         // Remote URL or Text
@@ -80,10 +165,16 @@ self.addEventListener("message", (event) => {
   }
 })
 
-// --- Input Blocking Map ---
+// =============================================================================
+// INPUT BLOCKING (Python input() support)
+// =============================================================================
+
 const pendingInputs = new Map()
 
-// --- Fetch Interception ---
+// =============================================================================
+// FETCH INTERCEPTION
+// =============================================================================
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url)
 
@@ -92,12 +183,10 @@ self.addEventListener("fetch", (event) => {
     const id = url.searchParams.get("id")
     if (!id) return event.respondWith(new Response("Missing ID", { status: 400 }))
 
-    log(`[SW] Holding connection for Input ID: ${id}`)
-    log(`[SW] Current Params:`, [...pendingInputs.keys()])
+    log(`Holding connection for Input ID: ${id}`)
 
     event.respondWith(
       new Promise((resolve) => {
-        // Store the resolve function to be called later
         pendingInputs.set(id, resolve)
       })
     )
@@ -119,10 +208,10 @@ self.addEventListener("fetch", (event) => {
           const data = await event.request.json()
           const { id, value } = data
 
-          log(`[SW] Attempting to release ID: ${id}. Available:`, [...pendingInputs.keys()])
+          log(`Attempting to release ID: ${id}. Available:`, [...pendingInputs.keys()])
 
           if (pendingInputs.has(id)) {
-            log(`[SW] Releasing Input ID: ${id} with value: "${value}"`)
+            log(`Releasing Input ID: ${id} with value: "${value}"`)
             const resolve = pendingInputs.get(id)
             resolve(
               new Response(value, {
@@ -143,33 +232,30 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // Scope: /preview-v3/<scapeId/<filePath>
+  // 2. Preview Filesystem - Scope: /preview-v3/<scapeId>/<filePath>
   if (url.pathname.startsWith("/preview-v3/")) {
-    // Extract parts: ["", "preview-v3", "scapeId", "rest..."]
     const parts = url.pathname.split("/")
     if (parts.length < 4) {
       event.respondWith(new Response("Invalid preview URL format", { status: 400 }))
-      return // Invalid path
+      return
     }
 
     const scapeId = parts[2]
-    let path = parts.slice(3).join("/") // Reconstruct file path
+    let path = parts.slice(3).join("/")
 
-    // Default to index.html if path is empty
     if (path === "" || path === "/") path = "index.html"
 
-    // Safety check just in case
     if (!scapeId || !path) {
       event.respondWith(new Response("Invalid preview URL parameters", { status: 400 }))
       return
     }
 
-    log(`[SW] Fetch Request: Scape=${scapeId}, Path=${path}`)
+    log(`Fetch Request: Scape=${scapeId}, Path=${path}`)
 
     const scapeFs = fileSystem.get(scapeId)
 
     if (!scapeFs) {
-      warn(`[SW] No filesystem found for Scape: ${scapeId}`)
+      warn(`No filesystem found for Scape: ${scapeId}`)
       event.respondWith(new Response("Scape not initialized", { status: 404 }))
       return
     }
@@ -182,15 +268,14 @@ self.addEventListener("fetch", (event) => {
         typeof content === "string" &&
         (content.startsWith("http://") || content.startsWith("https://"))
       ) {
-        log(`[SW] Proxying ${path} to ${content}`)
+        log(`Proxying ${path} to ${content}`)
         event.respondWith(
           fetch(content)
             .then((response) => {
-              // Recreate response with enforced CORP headers and No-Cache
               const newHeaders = new Headers(response.headers)
               newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin")
               newHeaders.set("Access-Control-Allow-Origin", "*")
-              newHeaders.set("Cache-Control", "no-store, no-cache") // Force no-cache on proxy too
+              newHeaders.set("Cache-Control", "no-store, no-cache")
 
               return new Response(response.body, {
                 status: response.status,
@@ -206,8 +291,7 @@ self.addEventListener("fetch", (event) => {
         return
       }
 
-      log(`[SW] Serving ${path} from memory (Namespace: ${scapeId})`)
-      // Blob response
+      log(`Serving ${path} from memory (Namespace: ${scapeId})`)
       const response = new Response(content, {
         status: 200,
         headers: {
@@ -225,7 +309,7 @@ self.addEventListener("fetch", (event) => {
       return
     }
 
-    console.warn(`[SW] File not found in ${scapeId}: ${path}`)
+    warn(`File not found in ${scapeId}: ${path}`)
     event.respondWith(new Response("File not found", { status: 404 }))
   }
 })
