@@ -115,12 +115,19 @@ self.addEventListener("message", async (event) => {
               }
               if (typeof html2canvas !== "undefined") {
                 setTimeout(function() {
+                  // Detect background color, handle transparent/gradient cases
+                  var bgColor = window.getComputedStyle(document.body).backgroundColor;
+                  // If transparent or empty, fallback to white
+                  if (!bgColor || bgColor === "rgba(0, 0, 0, 0)" || bgColor === "transparent") {
+                    bgColor = "#ffffff";
+                  }
+                  
                   html2canvas(document.body, {
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
                     scale: 1,
-                    backgroundColor: window.getComputedStyle(document.body).backgroundColor || "#ffffff",
+                    backgroundColor: bgColor,
                     onclone: function(clonedDoc) {
                       // Extract all CSS rules from the original document's stylesheets
                       // and inject them as inline <style> tags in the cloned document
