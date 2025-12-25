@@ -69,6 +69,7 @@ export function TerminalPane({
   const [input, setInput] = useState("")
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const outputBottomRef = useRef<HTMLDivElement>(null)
   const outputInputRef = useRef<HTMLInputElement>(null)
   const [programInput, setProgramInput] = useState("")
@@ -244,7 +245,11 @@ export function TerminalPane({
   // Focus input on click
   const handleContainerClick = () => {
     if (activeTab === "terminal" && !isCollapsed) {
-      inputRef.current?.focus()
+      if (isScapperMode) {
+        textareaRef.current?.focus()
+      } else {
+        inputRef.current?.focus()
+      }
     }
   }
 
@@ -310,7 +315,13 @@ export function TerminalPane({
     } finally {
       setIsProcessing(false)
       // Re-focus input after processing
-      setTimeout(() => inputRef.current?.focus(), 10)
+      setTimeout(() => {
+        if (isScapperMode) {
+          textareaRef.current?.focus()
+        } else {
+          inputRef.current?.focus()
+        }
+      }, 10)
     }
   }
 
@@ -428,7 +439,13 @@ export function TerminalPane({
       ])
     } finally {
       setIsProcessing(false)
-      setTimeout(() => inputRef.current?.focus(), 10)
+      setTimeout(() => {
+        if (isScapperMode) {
+          textareaRef.current?.focus()
+        } else {
+          inputRef.current?.focus()
+        }
+      }, 10)
     }
   }
 
@@ -456,7 +473,7 @@ export function TerminalPane({
     if (!currentInput) {
       setHistory((prev) => [
         ...prev,
-        { type: "input", content: "", cwd: isScapperMode ? "[scapper]" : promptCwd },
+        { type: "input", content: "", cwd: isScapperMode ? "scapper" : promptCwd },
       ])
       setInput("")
       return
@@ -484,7 +501,7 @@ export function TerminalPane({
       {
         type: "input",
         content: currentInput,
-        cwd: isScapperMode ? "[scapper]" : promptCwd,
+        cwd: isScapperMode ? "scapper" : promptCwd,
       },
     ])
 
@@ -575,15 +592,19 @@ export function TerminalPane({
           {activeTab === "terminal" && (
             <>
               {history.map((item, i) => (
-                <div key={i} className="mb-1 break-words">
+                <div key={i} className="mb-1" style={{ wordBreak: "break-word" }}>
                   {item.type === "input" ? (
-                    <div className="flex gap-2">
-                      <span className="text-green-500">➜</span>
-                      <span className="min-w-fit text-blue-500">{item.cwd}</span>
-                      <span className="text-foreground">{item.content}</span>
+                    <div className="flex flex-wrap">
+                      <span className="shrink-0 text-green-500">➜</span>
+                      <span className="shrink-0 px-1 text-blue-500">{item.cwd}</span>
+                      <span className="text-foreground" style={{ wordBreak: "break-word" }}>
+                        {item.content}
+                      </span>
                     </div>
                   ) : (
-                    <div className="whitespace-pre-wrap text-muted-foreground">{item.content}</div>
+                    <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {item.content}
+                    </div>
                   )}
                 </div>
               ))}
@@ -591,9 +612,9 @@ export function TerminalPane({
               <div ref={bottomRef} />
 
               {!isProcessing && (
-                <div className="flex items-center gap-2">
+                <div className={isScapperMode ? "flex flex-col gap-1" : "flex items-center gap-2"}>
                   {isScapperMode ? (
-                    <span className="text-blue-400">[scapper]</span>
+                    <span className="text-blue-400">scapper</span>
                   ) : (
                     <>
                       <span className="text-green-500">➜</span>
@@ -601,17 +622,52 @@ export function TerminalPane({
                     </>
                   )}
                   <form onSubmit={handleSubmit} className="min-w-0 flex-1">
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
-                      autoFocus
-                      autoComplete="off"
-                      spellCheck="false"
-                    />
+                    {isScapperMode ? (
+                      <div className="flex gap-2">
+                        <span className="shrink-0 text-green-500">❯</span>
+                        <textarea
+                          ref={textareaRef}
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            // Submit on Enter without Shift
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault()
+                              handleSubmit(e as unknown as React.FormEvent)
+                            }
+                            handleKeyDown(e as unknown as React.KeyboardEvent<HTMLInputElement>)
+                          }}
+                          className="m-0 w-full resize-none border-none bg-transparent p-0 text-foreground outline-none"
+                          rows={1}
+                          autoFocus
+                          autoComplete="off"
+                          spellCheck={false}
+                          style={{
+                            minHeight: "1.5em",
+                            height: "auto",
+                            overflow: "hidden",
+                          }}
+                          onInput={(e) => {
+                            // Auto-resize textarea
+                            const target = e.target as HTMLTextAreaElement
+                            target.style.height = "auto"
+                            target.style.height = target.scrollHeight + "px"
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
+                        autoFocus
+                        autoComplete="off"
+                        spellCheck="false"
+                      />
+                    )}
                   </form>
                 </div>
               )}
