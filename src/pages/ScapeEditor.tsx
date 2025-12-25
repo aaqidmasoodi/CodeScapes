@@ -651,7 +651,7 @@ export default function ScapeEditor() {
     // ----------------------------
 
     if (files.some((f) => f.name === fileName)) {
-      alert("File already exists")
+      // alert("File already exists")
       return
     }
 
@@ -1090,7 +1090,7 @@ export default function ScapeEditor() {
                     scapeId={id}
                     isOpen={true}
                     ref={secretsPanelRef}
-                  // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
                   />
                 )}
               </ResizablePanel>
