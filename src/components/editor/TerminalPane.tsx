@@ -73,7 +73,7 @@ export function TerminalPane({
   const outputBottomRef = useRef<HTMLDivElement>(null)
   const outputInputRef = useRef<HTMLInputElement>(null)
   const [programInput, setProgramInput] = useState("")
-  const [isProcessing, setIsProcessing] = useState(false)
+
 
   // --- SCAPPER MODE ---
   const [isScapperMode, setIsScapperMode] = useState(false)
@@ -289,7 +289,7 @@ export function TerminalPane({
     const trimmed = cmdStr.trim()
     if (!trimmed) return
 
-    setIsProcessing(true)
+
 
     try {
       // Execute via Shell
@@ -313,7 +313,7 @@ export function TerminalPane({
     } catch (e) {
       setHistory((prev) => [...prev, { type: "output", content: `Error: ${e}` }])
     } finally {
-      setIsProcessing(false)
+
       // Re-focus input after processing
       setTimeout(() => {
         if (isScapperMode) {
@@ -360,7 +360,7 @@ export function TerminalPane({
       return
     }
 
-    setIsProcessing(true)
+
 
     try {
       // Run the agent
@@ -438,7 +438,7 @@ export function TerminalPane({
         { type: "output", content: <span className="text-red-400">Error: {String(e)}</span> },
       ])
     } finally {
-      setIsProcessing(false)
+
       setTimeout(() => {
         if (isScapperMode) {
           textareaRef.current?.focus()
@@ -529,8 +529,8 @@ export function TerminalPane({
             className={cn(
               "-mb-2.5 flex cursor-pointer items-center gap-2 pb-2 transition-colors hover:text-foreground",
               activeTab === "terminal" &&
-                !isCollapsed &&
-                "border-b-2 border-primary text-foreground",
+              !isCollapsed &&
+              "border-b-2 border-primary text-foreground",
               activeTab === "terminal" && isCollapsed && "text-foreground"
             )}
             onClick={() => onTabChange("terminal")}
@@ -552,8 +552,8 @@ export function TerminalPane({
             className={cn(
               "-mb-2.5 flex cursor-pointer items-center gap-1.5 pb-2 transition-colors hover:text-foreground",
               activeTab === "problems" &&
-                !isCollapsed &&
-                "border-b-2 border-primary text-foreground",
+              !isCollapsed &&
+              "border-b-2 border-primary text-foreground",
               activeTab === "problems" && isCollapsed && "text-foreground"
             )}
             onClick={() => onTabChange("problems")}
@@ -591,174 +591,290 @@ export function TerminalPane({
         >
           {activeTab === "terminal" && (
             <>
-              {history.map((item, i) => (
-                <div key={i} className="mb-1" style={{ wordBreak: "break-word" }}>
-                  {item.type === "input" ? (
-                    <div className="flex flex-wrap">
-                      <span className="shrink-0 text-green-500">➜</span>
-                      <span className="shrink-0 px-1 text-blue-500">{item.cwd}</span>
-                      <span className="text-foreground" style={{ wordBreak: "break-word" }}>
-                        {item.content}
-                      </span>
+              {(() => {
+                const lastItem = history[history.length - 1]
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const itemHasNewline = (text: any) => typeof text === "string" && text.endsWith("\n")
+
+                const isPartialLine =
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  lastItem && (lastItem as any).type === "stdout" && !itemHasNewline(lastItem.content)
+
+                // Render all items EXCEPT the last one if it's partial and we are about to show input
+                const itemsToRender = isPartialLine ? history.slice(0, -1) : history
+
+                // If partial, the content acts as the prefix for the input
+                const partialPrefix = isPartialLine ? lastItem.content : ""
+
+                return (
+                  <>
+                    {itemsToRender.map((item, i) => (
+                      <div key={i} className="mb-1" style={{ wordBreak: "break-word" }}>
+                        {item.type === "input" ? (
+                          <div className="flex flex-wrap">
+                            <span className="shrink-0 text-green-500">➜</span>
+                            <span className="shrink-0 px-1 text-blue-500">{item.cwd}</span>
+                            <span className="text-foreground" style={{ wordBreak: "break-word" }}>
+                              {item.content}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="whitespace-pre-wrap">{item.content}</span>
+                        )}
+                      </div>
+                    ))}
+
+                    <div className="mt-1 flex items-start gap-2">
+                      {!isScapperMode && !partialPrefix && (
+                        <>
+                          <span className="text-green-500">➜</span>
+                          <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
+                        </>
+                      )}
+
+                      {/* Render Partial Prefix Inline */}
+                      {partialPrefix && (
+                        <span className="whitespace-pre-wrap">{partialPrefix}</span>
+                      )}
+
+                      {/* Form continues below */}
+                      <form onSubmit={handleSubmit} className="min-w-0 flex-1">
+                        {isScapperMode ? (
+                          <div className="flex gap-2">
+                            <span className="shrink-0 text-green-500">❯</span>
+                            <textarea
+                              ref={textareaRef}
+                              value={input}
+                              onChange={(e) => setInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                // Submit on Enter without Shift
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault()
+                                  handleSubmit(e as unknown as React.FormEvent)
+                                }
+                                handleKeyDown(e as unknown as React.KeyboardEvent<HTMLInputElement>)
+                              }}
+                              className="m-0 w-full resize-none border-none bg-transparent p-0 text-foreground outline-none"
+                              rows={1}
+                              autoFocus
+                              autoComplete="off"
+                              spellCheck={false}
+                              style={{
+                                minHeight: "1.5em",
+                                height: "auto",
+                                overflow: "hidden",
+                              }}
+                              onInput={(e) => {
+                                // Auto-resize textarea
+                                const target = e.target as HTMLTextAreaElement
+                                target.style.height = "auto"
+                                target.style.height = target.scrollHeight + "px"
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <input
+                            ref={inputRef}
+                            type="text"
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
+                            autoFocus
+                            autoComplete="off"
+                            spellCheck="false"
+                          />
+                        )}
+                      </form>
                     </div>
-                  ) : (
-                    <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                      {item.content}
-                    </div>
-                  )}
-                </div>
-              ))}
+                  </>
+                )
+              })()}
+
 
               <div ref={bottomRef} />
-
-              {!isProcessing && (
-                <div className={isScapperMode ? "flex flex-col gap-1" : "flex items-center gap-2"}>
-                  {isScapperMode ? (
-                    <span className="text-blue-400">scapper</span>
-                  ) : (
-                    <>
-                      <span className="text-green-500">➜</span>
-                      <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
-                    </>
-                  )}
-                  <form onSubmit={handleSubmit} className="min-w-0 flex-1">
-                    {isScapperMode ? (
-                      <div className="flex gap-2">
-                        <span className="shrink-0 text-green-500">❯</span>
-                        <textarea
-                          ref={textareaRef}
-                          value={input}
-                          onChange={(e) => setInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            // Submit on Enter without Shift
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault()
-                              handleSubmit(e as unknown as React.FormEvent)
-                            }
-                            handleKeyDown(e as unknown as React.KeyboardEvent<HTMLInputElement>)
-                          }}
-                          className="m-0 w-full resize-none border-none bg-transparent p-0 text-foreground outline-none"
-                          rows={1}
-                          autoFocus
-                          autoComplete="off"
-                          spellCheck={false}
-                          style={{
-                            minHeight: "1.5em",
-                            height: "auto",
-                            overflow: "hidden",
-                          }}
-                          onInput={(e) => {
-                            // Auto-resize textarea
-                            const target = e.target as HTMLTextAreaElement
-                            target.style.height = "auto"
-                            target.style.height = target.scrollHeight + "px"
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <input
-                        ref={inputRef}
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
-                        autoFocus
-                        autoComplete="off"
-                        spellCheck="false"
-                      />
-                    )}
-                  </form>
-                </div>
-              )}
             </>
-          )}
+          )
+          }
 
           {activeTab === "output" && (
             <div className="flex flex-col gap-0.5">
               {outputLogs.length === 0 && !inputPrompt ? (
                 <div className="text-muted-foreground">No output available.</div>
               ) : (
-                outputLogs.map((log) => (
-                  <div
-                    key={log.id}
-                    className={cn(
-                      "whitespace-pre-wrap break-words",
-                      log.type === "stderr"
-                        ? "text-red-400"
-                        : log.type === "system"
-                          ? "italic text-blue-400"
-                          : "text-foreground"
-                    )}
-                  >
-                    {log.content}
-                  </div>
-                ))
-              )}
-              {inputPrompt !== undefined && inputPrompt !== null && (
-                <div className="flex items-center">
-                  <span className="whitespace-pre-wrap">{inputPrompt}</span>
-                  <form
-                    className="flex-1"
-                    onSubmit={(e) => {
-                      e.preventDefault()
-                      onInputSubmit?.(programInput)
-                      setProgramInput("")
-                    }}
-                  >
-                    <input
-                      ref={outputInputRef}
-                      type="text"
-                      value={programInput}
-                      onChange={(e) => setProgramInput(e.target.value)}
-                      className={cn(
-                        "w-full bg-transparent font-mono text-foreground outline-none",
-                        !isRunning && "cursor-text opacity-50"
-                      )}
-                      autoFocus
-                      disabled={!isRunning}
-                      autoComplete="off"
-                    />
-                  </form>
-                </div>
+                <>
+                  {outputLogs.map((log, i) => {
+                    const isLast = i === outputLogs.length - 1
+                    // Check if we should inline the input form with this log
+                    // Condition: It's the last log, we have an input prompt active,
+                    // the log is standard output, and it doesn't end with a newline.
+                    const showInlineInput =
+                      isLast &&
+                      inputPrompt !== undefined &&
+                      inputPrompt !== null &&
+                      log.type === "stdout" &&
+                      !log.content.endsWith("\n")
+
+                    return (
+                      <div
+                        key={log.id}
+                        className={cn(
+                          "whitespace-pre-wrap break-words",
+                          log.type === "stderr"
+                            ? "text-red-400"
+                            : log.type === "system"
+                              ? "italic text-blue-400"
+                              : "text-foreground",
+                          // Use flex to align text and input if inlining
+                          showInlineInput && "flex flex-wrap items-center gap-0.5"
+                        )}
+                      >
+                        {/* We use a span for content to play nice with flex if needed, though text node works too */}
+                        <span>{log.content}</span>
+
+                        {showInlineInput && (
+                          <form
+                            className="flex-1 min-w-[50px] inline-flex items-center"
+                            onSubmit={(e) => {
+                              e.preventDefault()
+                              onInputSubmit?.(programInput)
+                              setProgramInput("")
+                            }}
+                          >
+                            {/* Only render extra prompt text if provided and distinct */}
+                            {inputPrompt && <span className="mr-1">{inputPrompt}</span>}
+                            <input
+                              ref={outputInputRef}
+                              type="text"
+                              value={programInput}
+                              onChange={(e) => setProgramInput(e.target.value)}
+                              className={cn(
+                                "min-w-0 flex-1 bg-transparent font-mono text-foreground outline-none",
+                                !isRunning && "cursor-text opacity-50"
+                              )}
+                              autoFocus
+                              disabled={!isRunning}
+                              autoComplete="off"
+                            />
+                          </form>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {/* Standalone Input Form - Render only if NOT inlined above */}
+                  {(inputPrompt !== undefined && inputPrompt !== null) && (
+                    (outputLogs.length === 0 ||
+                      outputLogs[outputLogs.length - 1].type !== "stdout" ||
+                      outputLogs[outputLogs.length - 1].content.endsWith("\n")) && (
+                      <div className="flex items-center">
+                        <span className="whitespace-pre-wrap">{inputPrompt}</span>
+                        <form
+                          className="flex-1 ml-1"
+                          onSubmit={(e) => {
+                            e.preventDefault()
+                            onInputSubmit?.(programInput)
+                            setProgramInput("")
+                          }}
+                        >
+                          <input
+                            ref={outputInputRef}
+                            type="text"
+                            value={programInput}
+                            onChange={(e) => setProgramInput(e.target.value)}
+                            className={cn(
+                              "w-full bg-transparent font-mono text-foreground outline-none",
+                              !isRunning && "cursor-text opacity-50"
+                            )}
+                            autoFocus
+                            disabled={!isRunning}
+                            autoComplete="off"
+                          />
+                        </form>
+                      </div>
+                    )
+                  )}
+                </>
               )}
               <div ref={outputBottomRef} />
             </div>
-          )}
+          )
+          }
 
-          {activeTab === "problems" && (
-            <div className="flex flex-col gap-1">
-              {problems.length === 0 ? (
-                <div className="text-muted-foreground">
-                  No problems have been detected in the workspace.
-                </div>
-              ) : (
-                problems.map((problem) => (
-                  <div
-                    key={problem.id}
-                    className="group flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-muted/50"
-                  >
-                    <AlertCircle
-                      className={cn(
-                        "mt-0.5 h-3.5 w-3.5 flex-shrink-0",
-                        problem.severity === "error"
-                          ? "text-red-600 dark:text-red-400"
-                          : "text-yellow-600 dark:text-yellow-400"
-                      )}
-                    />
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-foreground">{problem.message}</span>
-                      <span className="text-muted-foreground">
-                        {problem.file} [{problem.line}:{problem.column}]
-                      </span>
-                    </div>
+          {
+            activeTab === "problems" && (
+              <div className="flex flex-col gap-1">
+                {problems.length === 0 ? (
+                  <div className="text-muted-foreground">
+                    No problems have been detected in the workspace.
                   </div>
-                ))
-              )}
-            </div>
-          )}
+                ) : (
+                  problems.map((problem) => (
+                    <div
+                      key={problem.id}
+                      className="group flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-muted/50"
+                    >
+                      <AlertCircle
+                        className={cn(
+                          "mt-0.5 h-3.5 w-3.5 flex-shrink-0",
+                          problem.severity === "error"
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-yellow-600 dark:text-yellow-400"
+                        )}
+                      />
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-foreground">{problem.message}</span>
+                        <span className="text-muted-foreground">
+                          {problem.file} [{problem.line}:{problem.column}]
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )
+          }
+        </div >
+      )
+      }
+
+      {/* FOOTER: Tab Switcher */}
+      <div className="flex shrink-0 items-center justify-between border-t bg-muted/20 px-4 py-2">
+        <div className="flex gap-4">
+          <button
+            onClick={() => onTabChange("terminal")}
+            className={cn(
+              "text-xs font-medium transition-colors hover:text-foreground/80",
+              activeTab === "terminal" ? "text-foreground" : "text-muted-foreground"
+            )}
+          >
+            TERMINAL
+          </button>
+          <button
+            onClick={() => onTabChange("output")}
+            className={cn(
+              "text-xs font-medium transition-colors hover:text-foreground/80",
+              activeTab === "output" ? "text-foreground" : "text-muted-foreground"
+            )}
+          >
+            OUTPUT
+          </button>
+          <button
+            onClick={() => onTabChange("problems")}
+            className={cn(
+              "text-xs font-medium transition-colors hover:text-foreground/80",
+              activeTab === "problems" ? "text-foreground" : "text-muted-foreground"
+            )}
+          >
+            PROBLEMS {problems.length > 0 && <span className="ml-1 text-destructive">({problems.length})</span>}
+          </button>
         </div>
-      )}
+        {onClose && (
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
     </div>
   )
 }
