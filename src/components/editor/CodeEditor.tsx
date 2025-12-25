@@ -80,6 +80,9 @@ export function CodeEditor({
   }, [monaco, files, fileName])
 
   const handleEditorDidMount: OnMount = (editor, monaco) => {
+    // Store editor reference for external content sync
+    editorRef.current = editor
+
     // Basic configuration
     editor.updateOptions({
       minimap: { enabled: false },
@@ -115,17 +118,26 @@ export function CodeEditor({
     })
   }
 
-  // Handle File Switching Manually
-  // When fileName changes, we want to update the editor content.
-  // When initialValue changes BUT fileName is the same, we ignore it (user is typing).
-  const lastFileName = useRef(fileName)
+  // Sync external content changes to Monaco
+  // This handles cases like search/replace updating file content
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null)
+  const lastExternalValue = useRef(initialValue)
+
   useEffect(() => {
-    if (fileName !== lastFileName.current) {
-      // File changed, update content
-      // Monaco handles this via 'path' prop mostly, but explicit check helps if using same model
-      lastFileName.current = fileName
+    if (!editorRef.current) return
+
+    const currentModelValue = editorRef.current.getValue()
+
+    // Only sync if:
+    // 1. The initialValue changed
+    // 2. The change isn't from the editor itself (content differs from model)
+    if (initialValue !== lastExternalValue.current && initialValue !== currentModelValue) {
+      // This is an external change, sync it to the editor
+      editorRef.current.setValue(initialValue)
     }
-  }, [fileName, initialValue])
+
+    lastExternalValue.current = initialValue
+  }, [initialValue])
 
   const handleValidate: OnValidate = (markers) => {
     if (!onValidate) return

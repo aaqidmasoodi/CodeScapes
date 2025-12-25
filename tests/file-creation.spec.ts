@@ -4,7 +4,7 @@ test("File Creation works", async ({ page }) => {
   await page.goto("/dashboard")
 
   // 1. Create a New Scape
-  await page.getByRole("button", { name: "New Scape" }).click()
+  await page.getByRole("button", { name: "New Scape" }).first().click()
   await page.getByRole("textbox", { name: "Scape Name" }).fill("FileCreationTest")
   await page.getByText("Blank ProjectA simple HTML/").click()
   await page.getByRole("button", { name: "Create Scape" }).click()

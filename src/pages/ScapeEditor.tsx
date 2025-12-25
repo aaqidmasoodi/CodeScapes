@@ -11,6 +11,7 @@ import { FileExplorer } from "@/components/editor/FileExplorer"
 import { PreviewPane, type PreviewPaneHandle } from "@/components/editor/PreviewPane"
 import { PackagePane } from "@/components/editor/PackagePane"
 import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane"
+import { SearchPane } from "@/components/editor/SearchPane"
 
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import { SecretsPanel } from "@/components/secrets/SecretsPanel"
@@ -1046,9 +1047,14 @@ export default function ScapeEditor() {
                   />
                 )}
                 {activeTool === "search" && (
-                  <div className="flex h-full items-center justify-center p-4 text-muted-foreground">
-                    Search coming soon...
-                  </div>
+                  <SearchPane
+                    files={files}
+                    onNavigate={(fileName) => {
+                      setActiveFilePath(fileName)
+                      // TODO: Navigate to specific line in CodeEditor
+                    }}
+                    onUpdateFile={updateFile}
+                  />
                 )}
                 {/* Dynamically check capabilities before rendering packages UI in sidebar content */}
                 {activeTool === "packages" &&

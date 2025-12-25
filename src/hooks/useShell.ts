@@ -2,6 +2,7 @@ import { useCallback } from "react"
 import { parseCommand } from "@/lib/shell/parser"
 import type { CommandHandler, ShellContext, ShellOutput } from "@/lib/shell/types"
 import type { ScapeFile } from "@/types/file"
+import { searchFiles } from "@/lib/search"
 
 // Kernel Interface - Needs access to file system hooks
 interface FileSystemHooks {
@@ -99,6 +100,70 @@ const commands: Record<string, CommandHandler> = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await ctx.createFile(args[0], "folder" as any)
     return
+  },
+
+  grep: async (args, ctx) => {
+    // Parse flags
+    let caseInsensitive = false
+    let listFilesOnly = false
+    const patterns: string[] = []
+    const fileFilters: string[] = []
+
+    for (const arg of args) {
+      if (arg === "-i") {
+        caseInsensitive = true
+      } else if (arg === "-l") {
+        listFilesOnly = true
+      } else if (arg.startsWith("-")) {
+        // Ignore unknown flags
+      } else if (patterns.length === 0) {
+        patterns.push(arg)
+      } else {
+        fileFilters.push(arg)
+      }
+    }
+
+    if (patterns.length === 0) {
+      return { type: "error", content: "usage: grep [-i] [-l] <pattern> [file...]" }
+    }
+
+    const pattern = patterns[0]
+
+    // Filter files if specified
+    let filesToSearch = ctx.files
+    if (fileFilters.length > 0) {
+      filesToSearch = ctx.files.filter((f) => fileFilters.some((filter) => f.name.includes(filter)))
+    }
+
+    // Perform search
+    const results = searchFiles(filesToSearch, pattern, {
+      caseSensitive: !caseInsensitive,
+      regex: false,
+      maxTotalResults: 200,
+    })
+
+    if (results.totalMatches === 0) {
+      return { type: "stdout", content: "" }
+    }
+
+    // Format output
+    const lines: string[] = []
+
+    if (listFilesOnly) {
+      // Just list file names
+      for (const fileResult of results.results) {
+        lines.push(fileResult.file.name)
+      }
+    } else {
+      // Show matches with line numbers
+      for (const fileResult of results.results) {
+        for (const match of fileResult.matches) {
+          lines.push(`${fileResult.file.name}:${match.line}:${match.lineContent}`)
+        }
+      }
+    }
+
+    return { type: "stdout", content: lines.join("\n") }
   },
 
   pip: async (args, ctx) => {
