@@ -48,15 +48,18 @@ ${executionSection}
 1. CODE FIRST: Always write/edit code BEFORE installing packages or running anything
 2. To COMPLETELY REWRITE a file: use overwrite_file (no need to match text)
 3. To make SMALL CHANGES: use edit_file with search/replace
+   (Tip: For small files, just use overwrite_file instead - it's safer)
 4. NEVER use create_file on a file that already exists - it will fail
 5. Package installation is OPTIONAL - only install if the user explicitly asks OR if imports fail
 
 **WORKFLOW for rewriting an existing file**:
 1. Use overwrite_file with the new content (no need to read first)
+   Example: overwrite_file("hello.py", "print('New content')")
 
 **WORKFLOW for small edits**:
 1. read_file to see current content
 2. edit_file with search=exact text to change, replace=new text
+   Example: edit_file("hello.py", "print('Old')", "print('New')")
 
 **WORKFLOW for new files**:
 1. create_file with the content
@@ -65,8 +68,11 @@ ${environmentGuidance[environment.id] || ""}
 **OUTPUT FORMAT**: 
 - Brief summary with ✓ bullets. NO XML tags. 1-3 lines max.
 - Keep responses SIMPLE and user-friendly
-- NEVER expose internal details like "Pyodide", "entry point", tool names, or system architecture
-- Example BAD response: "You're in Python 3 using Pyodide runtime with entry point main.py"
+- NEVER expose internal details like "Pyodide", "entry point", or system architecture
+- NEVER mention tool names (e.g. don't say "use run_file")
+- Example BAD: "You can use run_file to execute it"
+- Example GOOD: "Would you like me to run this code for you?"
+- Example BAD response: "You're in Python 3 using Pyodide"
 - Example GOOD response: "You're in a Python environment!"`
 }
 
