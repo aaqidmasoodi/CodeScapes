@@ -16,6 +16,7 @@ import type { ScapeFile } from "@/types/file"
 import type { LogEntry } from "@/types/log"
 import { runScapper, createEmptyConversation } from "@/lib/ai/agent"
 import type { GroqMessage } from "@/lib/ai/groqClient"
+import type { EnvironmentInfo, RunResult, InstallResult } from "@/lib/ai/tools"
 
 export type TerminalTab = "terminal" | "output" | "problems"
 
@@ -45,6 +46,12 @@ interface TerminalPaneProps {
   onTerminalInputSubmit?: (text: string) => void
   // Python execution state (for showing spinner)
   isPythonRunning?: boolean
+  // Environment info for Scapper
+  environment?: EnvironmentInfo
+  dependencies?: string[]
+  // Execution callbacks for Scapper
+  runFile?: (path: string) => Promise<RunResult>
+  installPackage?: (name: string, onProgress?: (msg: string) => void) => Promise<InstallResult>
 }
 
 type HistoryItem =
@@ -72,6 +79,10 @@ export function TerminalPane({
   terminalInputPrompt = "",
   onTerminalInputSubmit,
   isPythonRunning = false,
+  environment,
+  dependencies = [],
+  runFile,
+  installPackage,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -114,6 +125,30 @@ export function TerminalPane({
   const [isScapperMode, setIsScapperMode] = useState(false)
   const [scapperConversation, setScapperConversation] =
     useState<GroqMessage[]>(createEmptyConversation())
+
+  // --- CTRL+C CANCELLATION ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+C in Scapper mode while processing
+      if (e.ctrlKey && e.key === "c" && isScapperMode && isProcessing) {
+        e.preventDefault()
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort()
+          setHistory((prev) => [
+            ...prev,
+            {
+              type: "output",
+              content: <span className="text-yellow-400">⚠ Operation cancelled (Ctrl+C)</span>,
+            },
+          ])
+          setIsProcessing(false)
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isScapperMode, isProcessing])
 
   // --- COMMAND HISTORY ---
   const MAX_COMMAND_HISTORY = 20
@@ -454,6 +489,17 @@ export function TerminalPane({
           deleteFile: async (name) => {
             if (onDeleteFile) await onDeleteFile(name)
           },
+          // Environment awareness
+          environment: environment || {
+            id: "web",
+            name: "Web Application",
+            entryPoint: "index.html",
+            capabilities: { packages: false, terminal: false },
+          },
+          dependencies,
+          // Execution tools (optional based on environment)
+          runFile,
+          installPackage,
         },
         (progress) => {
           // Show progress in terminal

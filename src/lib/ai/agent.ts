@@ -6,12 +6,41 @@
 
 import { chatCompletion, parseToolArguments, GroqAPIError } from "./groqClient"
 import type { GroqMessage, GroqToolCall } from "./groqClient"
-import { SCAPPER_TOOLS, executeTool } from "./tools"
+import { getToolsForEnvironment, executeTool } from "./tools"
 import type { ToolContext, ToolResult } from "./tools"
 
-// --- System Prompt ---
+// --- Dynamic System Prompt Builder ---
 
-const SYSTEM_PROMPT = `You are Scapper, an AI coding assistant for CodeScapes - a web-based code editor.
+function buildSystemPrompt(ctx: ToolContext): string {
+  const { environment, dependencies } = ctx
+
+  // Environment-specific guidance
+  const environmentGuidance: Record<string, string> = {
+    python: `
+- Use matplotlib.pyplot.show() to display plots
+- The Python runtime is Pyodide (browser-based)
+- Use the run_file tool to verify your code works`,
+    web: `
+- Use ES modules for JavaScript
+- You can use import maps for CDN dependencies
+- The preview updates live as you save files`,
+    flowscape: `
+- This is a visual programming environment
+- Only modify project.json for flow data`,
+  }
+
+  const hasExecutionTools = environment.capabilities.terminal || environment.capabilities.packages
+  const executionSection = hasExecutionTools
+    ? `
+Execution Tools:
+${environment.capabilities.terminal ? "- run_file: Execute a script and see output\n" : ""}${environment.capabilities.packages ? "- install_package: Install packages with pip/npm\n" : ""}`
+    : ""
+
+  return `You are Scapper, an AI coding assistant for CodeScapes - a web-based code editor.
+
+**ENVIRONMENT**: ${environment.name} (${environment.id})
+**ENTRY POINT**: ${environment.entryPoint}
+**INSTALLED DEPENDENCIES**: ${dependencies.length > 0 ? dependencies.join(", ") : "None"}
 
 Your job is to help users build and modify code through natural language. You have access to tools to:
 - List and read files
@@ -19,16 +48,18 @@ Your job is to help users build and modify code through natural language. You ha
 - Edit existing files (using search/replace)
 - Delete files
 - Search across files
-
+${executionSection}
 Guidelines:
 1. Always read a file before editing it to understand the current content
 2. When creating files, provide complete, working code
 3. Use clear, descriptive file names with proper extensions
-4. For web projects, use semantic HTML, modern CSS, and clean JavaScript
-5. Be concise in your responses - show what you did, not explanations of what you're about to do
-6. If something fails, explain the error briefly and try an alternative approach
+4. Be concise in your responses - show what you did, not explanations of what you're about to do
+5. If something fails, read the error and try to fix it
+6. After creating or editing code, use run_file to verify it works (if available)
+${environmentGuidance[environment.id] || ""}
 
 When you're done with a task, provide a brief summary of what was created or changed.`
+}
 
 // --- Conversation Memory ---
 
@@ -56,9 +87,15 @@ export async function runScapper(
   onProgress: (progress: ScapperProgress) => void,
   signal?: AbortSignal
 ): Promise<{ result: ScapperResult; updatedHistory: GroqMessage[] }> {
+  // Build dynamic system prompt based on environment
+  const systemPrompt = buildSystemPrompt(toolContext)
+
+  // Get tools based on environment capabilities
+  const tools = getToolsForEnvironment(toolContext.environment.capabilities)
+
   // Build messages array
   const messages: GroqMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     ...conversationHistory,
     { role: "user", content: userMessage },
   ]
@@ -83,7 +120,7 @@ export async function runScapper(
         throw new Error("Aborted by user")
       }
 
-      const response = await chatCompletion(messages, SCAPPER_TOOLS, { signal })
+      const response = await chatCompletion(messages, tools, { signal })
       const choice = response.choices[0]
       const assistantMessage = choice.message
 

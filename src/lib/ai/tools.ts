@@ -9,9 +9,9 @@ import type { ScapeFile } from "@/types/file"
 import { searchFiles, replaceInFile } from "@/lib/search"
 import { getLanguageFromFilename } from "@/lib/language-utils"
 
-// --- Tool Definitions (sent to LLM) ---
+// --- Base Tool Definitions (sent to LLM) ---
 
-export const SCAPPER_TOOLS: GroqTool[] = [
+const BASE_TOOLS: GroqTool[] = [
   {
     type: "function",
     function: {
@@ -127,13 +127,110 @@ export const SCAPPER_TOOLS: GroqTool[] = [
   },
 ]
 
+// --- Execution Tools (conditionally available) ---
+
+const RUN_FILE_TOOL: GroqTool = {
+  type: "function",
+  function: {
+    name: "run_file",
+    description:
+      "Execute a file and get the output. Use this to verify your code works after creating or editing it.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "The file path to run (e.g., 'main.py')",
+        },
+      },
+      required: ["path"],
+    },
+  },
+}
+
+const INSTALL_PACKAGE_TOOL: GroqTool = {
+  type: "function",
+  function: {
+    name: "install_package",
+    description:
+      "Install a package using the environment's package manager (pip for Python, npm for Web).",
+    parameters: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "The package name to install (e.g., 'pandas', 'lodash')",
+        },
+      },
+      required: ["name"],
+    },
+  },
+}
+
+// --- Dynamic Tool List Builder ---
+
+export function getToolsForEnvironment(capabilities: {
+  packages?: boolean
+  terminal?: boolean
+}): GroqTool[] {
+  const tools = [...BASE_TOOLS]
+
+  if (capabilities.terminal) {
+    tools.push(RUN_FILE_TOOL)
+  }
+
+  if (capabilities.packages) {
+    tools.push(INSTALL_PACKAGE_TOOL)
+  }
+
+  return tools
+}
+
+// Legacy export for backwards compatibility
+export const SCAPPER_TOOLS = BASE_TOOLS
+
+// --- Environment Info Type ---
+
+export interface EnvironmentInfo {
+  id: string
+  name: string
+  entryPoint: string
+  capabilities: {
+    packages?: boolean
+    terminal?: boolean
+  }
+}
+
+// --- Execution Result Types ---
+
+export interface RunResult {
+  stdout: string
+  stderr: string
+  exitCode?: number
+}
+
+export interface InstallResult {
+  success: boolean
+  logs: string
+  error?: string
+}
+
 // --- Tool Executor Context ---
 
 export interface ToolContext {
+  // File operations
   files: ScapeFile[]
   createFile: (name: string, type: ScapeFile["language"], content?: string) => Promise<void>
   updateFile: (name: string, content: string) => Promise<void>
   deleteFile: (name: string) => Promise<void>
+
+  // Environment awareness
+  environment: EnvironmentInfo
+  dependencies: string[]
+
+  // Execution capabilities (optional - depends on environment)
+  runFile?: (path: string) => Promise<RunResult>
+  installPackage?: (name: string, onProgress?: (msg: string) => void) => Promise<InstallResult>
 }
 
 // --- Tool Result Type ---
@@ -170,6 +267,12 @@ export async function executeTool(
 
       case "search_files":
         return executeSearchFiles(args.query, ctx)
+
+      case "run_file":
+        return await executeRunFile(args.path, ctx)
+
+      case "install_package":
+        return await executeInstallPackage(args.name, ctx)
 
       default:
         return { success: false, output: "", error: `Unknown tool: ${toolName}` }
@@ -322,4 +425,95 @@ function executeSearchFiles(query: string, ctx: ToolContext): ToolResult {
   }
 
   return { success: true, output }
+}
+
+// --- Execution Tools ---
+
+async function executeRunFile(path: string, ctx: ToolContext): Promise<ToolResult> {
+  if (!ctx.runFile) {
+    return {
+      success: false,
+      output: "",
+      error: "Run capability not available in this environment",
+    }
+  }
+
+  // Find the file to verify it exists
+  const file = ctx.files.find((f) => f.name === path)
+  if (!file) {
+    return { success: false, output: "", error: `File not found: ${path}` }
+  }
+
+  try {
+    // Run with a timeout (30 seconds)
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Execution timed out after 30 seconds")), 30000)
+    })
+
+    const result = await Promise.race([ctx.runFile(path), timeoutPromise])
+
+    // Build output string
+    let output = ""
+    if (result.stdout) {
+      output += result.stdout
+    }
+    if (result.stderr) {
+      // Include stderr in output so the agent can see errors
+      if (output) output += "\n"
+      output += `[STDERR]\n${result.stderr}`
+    }
+
+    if (result.stderr && !result.stdout) {
+      // Pure error case
+      return {
+        success: false,
+        output: "",
+        error: `Execution failed:\n${result.stderr}`,
+      }
+    }
+
+    return {
+      success: true,
+      output: output || "(No output)",
+    }
+  } catch (error) {
+    return {
+      success: false,
+      output: "",
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+async function executeInstallPackage(name: string, ctx: ToolContext): Promise<ToolResult> {
+  if (!ctx.installPackage) {
+    return {
+      success: false,
+      output: "",
+      error: "Package installation not available in this environment",
+    }
+  }
+
+  try {
+    const result = await ctx.installPackage(name)
+
+    if (result.success) {
+      return {
+        success: true,
+        output: `Successfully installed ${name}${result.logs ? `\n${result.logs}` : ""}`,
+      }
+    } else {
+      return {
+        success: false,
+        output: "",
+        error: result.error || `Failed to install ${name}`,
+      }
+    }
+  } catch (error) {
+    return {
+      success: false,
+      output: "",
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
 }
