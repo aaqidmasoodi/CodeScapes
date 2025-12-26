@@ -181,7 +181,7 @@ const INSTALL_PACKAGE_TOOL: GroqTool = {
       properties: {
         name: {
           type: "string",
-          description: "The package name to install (e.g., 'pandas', 'lodash')",
+          description: "Comma-separated package names to install (e.g., 'pandas, numpy, scipy')",
         },
       },
       required: ["name"],
@@ -547,7 +547,7 @@ async function executeRunFile(path: string, ctx: ToolContext): Promise<ToolResul
   }
 }
 
-async function executeInstallPackage(name: string, ctx: ToolContext): Promise<ToolResult> {
+async function executeInstallPackage(names: string, ctx: ToolContext): Promise<ToolResult> {
   if (!ctx.installPackage) {
     return {
       success: false,
@@ -556,34 +556,45 @@ async function executeInstallPackage(name: string, ctx: ToolContext): Promise<To
     }
   }
 
-  try {
-    // Longer timeout for package installs (120 seconds) - some packages like matplotlib are large
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(
-        () => reject(new Error(`Package installation timed out after 120 seconds`)),
-        120000
-      )
-    })
+  const packages = names
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean)
+  if (packages.length === 0) {
+    return { success: false, output: "", error: "No package names provided" }
+  }
 
-    const result = await Promise.race([ctx.installPackage(name), timeoutPromise])
+  const results: string[] = []
+  const errors: string[] = []
 
-    if (result.success) {
-      return {
-        success: true,
-        output: `Successfully installed ${name}${result.logs ? `\n${result.logs}` : ""}`,
+  for (const pkg of packages) {
+    try {
+      // 120s timeout per package
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error(`Package installation timed out after 120 seconds`)),
+          120000
+        )
+      })
+
+      const result = await Promise.race([ctx.installPackage(pkg), timeoutPromise])
+
+      if (result.success) {
+        results.push(`✓ Installed ${pkg}`)
+      } else {
+        errors.push(`✗ Failed ${pkg}: ${result.error}`)
       }
-    } else {
-      return {
-        success: false,
-        output: "",
-        error: result.error || `Failed to install ${name}`,
-      }
+    } catch (error) {
+      errors.push(`✗ Error ${pkg}: ${error instanceof Error ? error.message : String(error)}`)
     }
-  } catch (error) {
-    return {
-      success: false,
-      output: "",
-      error: error instanceof Error ? error.message : String(error),
-    }
+  }
+
+  const success = errors.length === 0
+  const output = [...results, ...errors].join("\n")
+
+  return {
+    success,
+    output,
+    error: success ? undefined : "Some packages failed to install",
   }
 }
