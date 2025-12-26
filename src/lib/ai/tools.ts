@@ -396,10 +396,11 @@ async function executeDeleteFile(path: string, ctx: ToolContext): Promise<ToolRe
     return { success: false, output: "", error: `File not found: ${path}` }
   }
 
-  // Update local context
-  ctx.files.splice(fileIndex, 1)
-
+  // Call the actual delete callback FIRST
   await ctx.deleteFile(path)
+
+  // Update local context AFTER callback succeeds
+  ctx.files.splice(fileIndex, 1)
 
   return { success: true, output: `Deleted ${path}` }
 }

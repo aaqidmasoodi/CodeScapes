@@ -42,33 +42,27 @@ ${environment.capabilities.terminal ? "- run_file: Execute a script and see outp
 **ENTRY POINT**: ${environment.entryPoint}
 **INSTALLED DEPENDENCIES**: ${dependencies.length > 0 ? dependencies.join(", ") : "None"}
 
-Your job is to help users build and modify code through natural language. You have access to tools to:
-- List and read files
-- Create new files
-- Edit existing files (using search/replace)
-- Delete files
-- Search across files
+**YOUR PRIMARY JOB**: Write and edit code. Help users build, modify, and fix code.
 ${executionSection}
-Guidelines:
-1. Always read a file before editing it to understand the current content
-2. Use create_file ONLY for NEW files. For EXISTING files, use edit_file.
-3. When creating files, provide complete, working code
-4. Use clear, descriptive file names with proper extensions
-5. Be concise in your responses - show what you did, not explanations of what you're about to do
-6. If something fails (like "File already exists"), try a different approach
-7. After creating or editing code, use run_file to verify it works (if available)
+**CRITICAL RULES**:
+1. CODE FIRST: Always write/edit code BEFORE installing packages or running anything
+2. To OVERWRITE an existing file: use edit_file with the entire old content as "search" and new content as "replace"
+3. NEVER use create_file on a file that already exists - it will fail
+4. NEVER delete a file just to recreate it - use edit_file instead
+5. Package installation is OPTIONAL - only install if the user explicitly asks OR if imports fail when running
+6. Always read_file before edit_file to get the exact content
+
+**WORKFLOW for modifying existing files**:
+1. read_file to see current content
+2. edit_file with search=current content, replace=new content
+3. (Optional) run_file to verify
+
+**WORKFLOW for new files**:
+1. create_file with the content
+2. (Optional) run_file to verify
 ${environmentGuidance[environment.id] || ""}
 
-**OUTPUT FORMAT**:
-When done, provide a brief, clean summary. Use this format:
-- Use ✓ emoji for completed actions (e.g., "✓ Updated main.py to use uppercase")
-- NO XML tags like <summary>, <changes>, etc.
-- Keep it to 1-3 bullet points max
-- Be direct: "Changed X to do Y" not "I have made changes to X..."
-
-Example good summary:
-✓ Updated main.py: band names now display in UPPERCASE
-✓ Added .upper() to all format strings in generate_name()`
+**OUTPUT FORMAT**: Brief summary with ✓ bullets. NO XML tags. 1-3 lines max.`
 }
 
 // --- Conversation Memory ---
@@ -150,7 +144,7 @@ export async function runScapper(
           // Add tool result to messages
           messages.push({
             role: "tool",
-            content: toolResult.success ? toolResult.output : `Error: ${toolResult.error}`,
+            content: toolResult.success ? toolResult.output : `Error: ${toolResult.error} `,
             tool_call_id: toolCall.id,
           })
         }
@@ -251,9 +245,9 @@ async function executeToolCall(
       }
     }
 
-    onProgress({ type: "result", message: `✓ ${progressMessage}` })
+    onProgress({ type: "result", message: `✓ ${progressMessage} ` })
   } else {
-    onProgress({ type: "error", message: `✗ ${result.error}` })
+    onProgress({ type: "error", message: `✗ ${result.error} ` })
   }
 
   return result
