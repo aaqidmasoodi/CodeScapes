@@ -189,6 +189,20 @@ const INSTALL_PACKAGE_TOOL: GroqTool = {
   },
 }
 
+const LIST_PACKAGES_TOOL: GroqTool = {
+  type: "function",
+  function: {
+    name: "list_packages",
+    description:
+      "List all currently installed packages in the environment. Use this to verify installations.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+}
+
 // --- Dynamic Tool List Builder ---
 
 export function getToolsForEnvironment(capabilities: {
@@ -203,6 +217,7 @@ export function getToolsForEnvironment(capabilities: {
 
   if (capabilities.packages) {
     tools.push(INSTALL_PACKAGE_TOOL)
+    tools.push(LIST_PACKAGES_TOOL)
   }
 
   return tools
@@ -257,6 +272,7 @@ export interface ToolContext {
   // Execution capabilities (optional - depends on environment)
   runFile?: (path: string) => Promise<RunResult>
   installPackage?: (name: string, onProgress?: (msg: string) => void) => Promise<InstallResult>
+  listPackages?: () => Promise<{ name: string; version: string }[]>
 }
 
 // --- Tool Result Type ---
@@ -303,6 +319,9 @@ export async function executeTool(
 
       case "install_package":
         return await executeInstallPackage(args.name, ctx, onProgress)
+
+      case "list_packages":
+        return await executeListPackages(ctx)
 
       default:
         return { success: false, output: "", error: `Unknown tool: ${toolName}` }
@@ -612,5 +631,31 @@ async function executeInstallPackage(
     success,
     output,
     error: success ? undefined : "Some packages failed to install",
+  }
+}
+
+async function executeListPackages(ctx: ToolContext): Promise<ToolResult> {
+  if (!ctx.listPackages) {
+    return { success: false, output: "", error: "Environment does not support listing packages." }
+  }
+
+  try {
+    const packages = await ctx.listPackages()
+
+    if (packages.length === 0) {
+      return { success: true, output: "No packages installed." }
+    }
+
+    const lines = packages.map((p) => `${p.name} (${p.version})`)
+    return {
+      success: true,
+      output: `Installed Packages:\n${lines.join("\n")}`,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      output: "",
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }

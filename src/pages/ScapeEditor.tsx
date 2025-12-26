@@ -1443,6 +1443,12 @@ export default function ScapeEditor() {
                                         }
                                       : undefined
                                   }
+                                  listPackages={
+                                    scape?.environment === "python"
+                                      ? async () =>
+                                          (await previewRef.current?.listPackages?.()) ?? []
+                                      : undefined
+                                  }
                                 />
                               </ResizablePanel>
                             )}

@@ -52,6 +52,7 @@ interface TerminalPaneProps {
   // Execution callbacks for Scapper
   runFile?: (path: string) => Promise<RunResult>
   installPackage?: (name: string, onProgress?: (msg: string) => void) => Promise<InstallResult>
+  listPackages?: () => Promise<{ name: string; version: string }[]>
 }
 
 type HistoryItem =
@@ -83,6 +84,7 @@ export function TerminalPane({
   dependencies = [],
   runFile,
   installPackage,
+  listPackages,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -516,6 +518,7 @@ export function TerminalPane({
           // Execution tools (optional based on environment)
           runFile,
           installPackage,
+          listPackages,
         },
         (progress) => {
           // Show progress in terminal

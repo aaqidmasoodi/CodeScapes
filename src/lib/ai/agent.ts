@@ -96,7 +96,7 @@ function buildPythonPrompt(ctx: ToolContext): string {
 2. **Data First**: Before reading a file (read_csv), CHECK if it exists using \`list_files\`.
    - If missing, ask user if they want sample data created.
 3. **Robustness**: Wrap risky operations (IO, parsing) in try/except blocks.
-4. **Packages**: If a user asks for a library (like 'pandas'), verify it's installed. If not, ask to install.
+4. **Packages**: Use \`list_packages\` to verify installed libraries. Do NOT assume packages are installed. Install them if missing.
 
 ${getExecutionSection(ctx)}
 ${COMMON_RULES}
