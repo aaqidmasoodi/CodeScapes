@@ -15,12 +15,12 @@ import type { ToolContext, ToolResult } from "./tools"
 
 const COMMON_RULES = `
 **CRITICAL RULES**:
-1. CODE FIRST: Always write/edit code BEFORE installing packages or running anything
-2. To COMPLETELY REWRITE a file: use overwrite_file (no need to match text)
-3. To make SMALL CHANGES: use edit_file with search/replace
+1. To COMPLETELY REWRITE a file: use overwrite_file (no need to match text)
+2. To make SMALL CHANGES: use edit_file with search/replace
    (Tip: For small files, just use overwrite_file instead - it's safer)
-4. NEVER use create_file on a file that already exists - it will fail
-5. Package installation is OPTIONAL - only install if the user explicitly asks OR if imports fail
+3. NEVER use create_file on a file that already exists - it will fail
+4. If you need packages, INSTALL THEM FIRST. Verify via \`list_packages\` and install via \`install_package\`.
+
 
 **WORKFLOW for rewriting an existing file**:
 1. Use overwrite_file with the new content (no need to read first)
@@ -96,7 +96,7 @@ function buildPythonPrompt(ctx: ToolContext): string {
 2. **Data First**: Before reading a file (read_csv), CHECK if it exists using \`list_files\`.
    - If missing, ask user if they want sample data created.
 3. **Robustness**: Wrap risky operations (IO, parsing) in try/except blocks.
-4. **Packages**: Use \`list_packages\` to verify installed libraries. Do NOT assume packages are installed. Install them if missing.
+4. **Packages**: You MUST verify installed packages using \`list_packages\`. If a required package (like 'pandas') is missing, you MUST install it using \`install_package\` BEFORE writing code. Do not ask for permission for standard libraries.
 
 ${getExecutionSection(ctx)}
 ${COMMON_RULES}
