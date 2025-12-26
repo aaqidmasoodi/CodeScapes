@@ -6,29 +6,64 @@
 
 import { chatCompletion, parseToolArguments, GroqAPIError } from "./groqClient"
 import type { GroqMessage, GroqToolCall } from "./groqClient"
-import { SCAPPER_TOOLS, executeTool } from "./tools"
+import { getToolsForEnvironment, executeTool } from "./tools"
 import type { ToolContext, ToolResult } from "./tools"
 
-// --- System Prompt ---
+// --- Dynamic System Prompt Builder ---
 
-const SYSTEM_PROMPT = `You are Scapper, an AI coding assistant for CodeScapes - a web-based code editor.
+function buildSystemPrompt(ctx: ToolContext): string {
+  const { environment, dependencies } = ctx
 
-Your job is to help users build and modify code through natural language. You have access to tools to:
-- List and read files
-- Create new files
-- Edit existing files (using search/replace)
-- Delete files
-- Search across files
+  // Environment-specific guidance
+  const environmentGuidance: Record<string, string> = {
+    python: `
+- Use matplotlib.pyplot.show() to display plots
+- The Python runtime is Pyodide (browser-based)
+- Use the run_file tool to verify your code works`,
+    web: `
+- Use ES modules for JavaScript
+- You can use import maps for CDN dependencies
+- The preview updates live as you save files`,
+    flowscape: `
+- This is a visual programming environment
+- Only modify project.json for flow data`,
+  }
 
-Guidelines:
-1. Always read a file before editing it to understand the current content
-2. When creating files, provide complete, working code
-3. Use clear, descriptive file names with proper extensions
-4. For web projects, use semantic HTML, modern CSS, and clean JavaScript
-5. Be concise in your responses - show what you did, not explanations of what you're about to do
-6. If something fails, explain the error briefly and try an alternative approach
+  const hasExecutionTools = environment.capabilities.terminal || environment.capabilities.packages
+  const executionSection = hasExecutionTools
+    ? `
+Execution Tools:
+${environment.capabilities.terminal ? "- run_file: Execute a script and see output\n" : ""}${environment.capabilities.packages ? "- install_package: Install packages with pip/npm\n" : ""}`
+    : ""
 
-When you're done with a task, provide a brief summary of what was created or changed.`
+  return `You are Scapper, an AI coding assistant for CodeScapes - a web-based code editor.
+
+**ENVIRONMENT**: ${environment.name} (${environment.id})
+**ENTRY POINT**: ${environment.entryPoint}
+**INSTALLED DEPENDENCIES**: ${dependencies.length > 0 ? dependencies.join(", ") : "None"}
+
+**YOUR PRIMARY JOB**: Write and edit code. Help users build, modify, and fix code.
+${executionSection}
+**CRITICAL RULES**:
+1. CODE FIRST: Always write/edit code BEFORE installing packages or running anything
+2. To COMPLETELY REWRITE a file: use overwrite_file (no need to match text)
+3. To make SMALL CHANGES: use edit_file with search/replace
+4. NEVER use create_file on a file that already exists - it will fail
+5. Package installation is OPTIONAL - only install if the user explicitly asks OR if imports fail
+
+**WORKFLOW for rewriting an existing file**:
+1. Use overwrite_file with the new content (no need to read first)
+
+**WORKFLOW for small edits**:
+1. read_file to see current content
+2. edit_file with search=exact text to change, replace=new text
+
+**WORKFLOW for new files**:
+1. create_file with the content
+${environmentGuidance[environment.id] || ""}
+
+**OUTPUT FORMAT**: Brief summary with ✓ bullets. NO XML tags. 1-3 lines max.`
+}
 
 // --- Conversation Memory ---
 
@@ -56,9 +91,15 @@ export async function runScapper(
   onProgress: (progress: ScapperProgress) => void,
   signal?: AbortSignal
 ): Promise<{ result: ScapperResult; updatedHistory: GroqMessage[] }> {
+  // Build dynamic system prompt based on environment
+  const systemPrompt = buildSystemPrompt(toolContext)
+
+  // Get tools based on environment capabilities
+  const tools = getToolsForEnvironment(toolContext.environment.capabilities)
+
   // Build messages array
   const messages: GroqMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     ...conversationHistory,
     { role: "user", content: userMessage },
   ]
@@ -83,7 +124,7 @@ export async function runScapper(
         throw new Error("Aborted by user")
       }
 
-      const response = await chatCompletion(messages, SCAPPER_TOOLS, { signal })
+      const response = await chatCompletion(messages, tools, { signal })
       const choice = response.choices[0]
       const assistantMessage = choice.message
 
@@ -103,7 +144,7 @@ export async function runScapper(
           // Add tool result to messages
           messages.push({
             role: "tool",
-            content: toolResult.success ? toolResult.output : `Error: ${toolResult.error}`,
+            content: toolResult.success ? toolResult.output : `Error: ${toolResult.error} `,
             tool_call_id: toolCall.id,
           })
         }
@@ -173,6 +214,7 @@ async function executeToolCall(
     list_files: "Reading project structure...",
     read_file: `Reading ${args.path}...`,
     create_file: `Creating ${args.path}...`,
+    overwrite_file: `Overwriting ${args.path}...`,
     edit_file: `Editing ${args.path}...`,
     delete_file: `Deleting ${args.path}...`,
     search_files: `Searching for "${args.query}"...`,
@@ -183,9 +225,30 @@ async function executeToolCall(
   const result = await executeTool(toolName, args, ctx)
 
   if (result.success) {
-    onProgress({ type: "result", message: `✓ ${result.output}` })
+    // Format progress message based on tool type
+    let progressMessage = result.output
+
+    // For read_file, show compact summary instead of full content
+    if (toolName === "read_file") {
+      const lineCount = result.output.split("\n").length
+      progressMessage = `📄 Analyzed ${args.path} (${lineCount} lines)`
+    }
+    // For list_files, show count instead of full list if many files
+    else if (toolName === "list_files" && result.output.split("\n").length > 5) {
+      const fileCount = result.output.split("\n").length
+      progressMessage = `📁 Found ${fileCount} files in project`
+    }
+    // For search_files, show match count
+    else if (toolName === "search_files") {
+      const matchCount = (result.output.match(/\n/g) || []).length + 1
+      if (matchCount > 5) {
+        progressMessage = `🔍 Found ${matchCount} matches for "${args.query}"`
+      }
+    }
+
+    onProgress({ type: "result", message: `✓ ${progressMessage} ` })
   } else {
-    onProgress({ type: "error", message: `✗ ${result.error}` })
+    onProgress({ type: "error", message: `✗ ${result.error} ` })
   }
 
   return result

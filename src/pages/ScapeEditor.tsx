@@ -1368,6 +1368,67 @@ export default function ScapeEditor() {
                                   terminalInputPrompt={terminalInputPrompt}
                                   onTerminalInputSubmit={handleTerminalInputSubmit}
                                   isPythonRunning={isPythonRunning}
+                                  // Scapper environment awareness
+                                  environment={
+                                    scape?.environment
+                                      ? {
+                                          id: scape.environment,
+                                          name:
+                                            ENVIRONMENTS[scape.environment]?.name ||
+                                            scape.environment,
+                                          entryPoint:
+                                            ENVIRONMENTS[scape.environment]?.entryPoint ||
+                                            "index.html",
+                                          capabilities:
+                                            ENVIRONMENTS[scape.environment]?.capabilities || {},
+                                        }
+                                      : undefined
+                                  }
+                                  dependencies={optimisticDependencies ?? scape?.dependencies ?? []}
+                                  // Scapper execution tools
+                                  runFile={
+                                    scape?.environment === "python"
+                                      ? async (path) => {
+                                          let stdout = ""
+                                          let stderr = ""
+                                          if (previewRef.current?.runFile) {
+                                            await previewRef.current.runFile(path, {
+                                              files: files
+                                                .filter((f) => typeof f.content === "string")
+                                                .map((f) => ({
+                                                  name: f.name,
+                                                  content: f.content as string,
+                                                  language: f.language,
+                                                })),
+                                              onOutput: (content, type) => {
+                                                if (type === "stderr") {
+                                                  stderr += content
+                                                } else {
+                                                  stdout += content
+                                                }
+                                              },
+                                            })
+                                          }
+                                          return { stdout, stderr }
+                                        }
+                                      : undefined
+                                  }
+                                  installPackage={
+                                    scape?.environment === "python"
+                                      ? async (name, onProgress) => {
+                                          const result = await handleExecCommand(
+                                            "pip-install",
+                                            name,
+                                            onProgress
+                                          )
+                                          return {
+                                            success: result.success,
+                                            logs: "",
+                                            error: result.error,
+                                          }
+                                        }
+                                      : undefined
+                                  }
                                 />
                               </ResizablePanel>
                             )}
