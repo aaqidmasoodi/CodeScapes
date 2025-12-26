@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useParams } from "react-router-dom"
 import { Loader2, AlertCircle, TerminalSquare, ChevronUp, ChevronDown } from "lucide-react"
 import { LocalRepository } from "@/lib/repositories/LocalRepository"
@@ -30,6 +30,72 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [isConsoleOpen, setIsConsoleOpen] = useState(false)
   const [unreadLogs, setUnreadLogs] = useState(0)
+
+  // Input State
+  const [isWaitingForInput, setIsWaitingForInput] = useState(false)
+  const [inputValue, setInputValue] = useState("")
+  const inputResolveRef = useRef<((value: string) => void) | null>(null)
+  const consoleBottomRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll on new logs
+  useEffect(() => {
+    if (isConsoleOpen) {
+      consoleBottomRef.current?.scrollIntoView({ behavior: "auto" })
+    }
+  }, [logs, isConsoleOpen, isWaitingForInput])
+
+  // Handle Input Request from Runner
+  const handleInputRequest = (): Promise<string> => {
+    setIsWaitingForInput(true)
+    setIsConsoleOpen(true) // Force open console
+
+    // Scroll to bottom when input is requested
+    setTimeout(() => {
+      consoleBottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    }, 100)
+
+    return new Promise((resolve) => {
+      inputResolveRef.current = resolve
+    })
+  }
+
+  // Handle Input Submission
+  const submitInput = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!inputResolveRef.current) return
+
+    // Add explicit log for the user input (so it stays in history)
+    // The prompt is already there (from stdout usually), we just add user's typing + newline
+    // MERGE logic: If the last log was the prompt (partial), append input to it.
+    setLogs((prev) => {
+      const inputContent = inputValue + "\n"
+      if (prev.length > 0) {
+        const last = prev[prev.length - 1]
+        if (last.type === "stdout" && !last.content.endsWith("\n")) {
+          return [...prev.slice(0, -1), { ...last, content: last.content + inputContent }]
+        }
+      }
+
+      // Fallback: Add new log
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          type: "stdout",
+          content: inputContent,
+          timestamp: Date.now(),
+        },
+      ]
+    })
+
+    // Resolve promise
+    inputResolveRef.current(inputValue)
+    inputResolveRef.current = null
+
+    // Reset UI
+    setIsWaitingForInput(false)
+    setInputValue("")
+  }
 
   // Determine if we should show the console UI
   // 1. Always show in Dev mode
@@ -142,7 +208,24 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
 
   // Stable callback to prevent unnecessary Runner re-renders
   const addLog = (log: LogEntry) => {
-    setLogs((prev) => [...prev, log])
+    setLogs((prev) => {
+      if (prev.length === 0) return [log]
+
+      const last = prev[prev.length - 1]
+      // Merge if same type and last one didn't end with newline
+      if (
+        last.type === log.type &&
+        // Ensure strictly standard output types merge.
+        // We might want to keep stderr separate, or merge if suitable.
+        // For now, enable merging for stdout/stderr if types match.
+        !last.content.endsWith("\n")
+      ) {
+        // Return new array with replaced last item
+        return [...prev.slice(0, -1), { ...last, content: last.content + log.content }]
+      }
+
+      return [...prev, log]
+    })
     setIsConsoleOpen((current) => {
       if (!current) setUnreadLogs((prev) => prev + 1)
       return current
@@ -157,6 +240,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
           scapeId={scape.id}
           dependencies={scape.dependencies}
           onOutput={addLog}
+          onInputRequest={handleInputRequest}
           isLive={isLiveRunner}
         />
       )}
@@ -196,22 +280,107 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
 
           {/* Console Content */}
           {isConsoleOpen && (
-            <ScrollArea className="flex-1 p-4">
-              <div className="flex flex-col gap-1 font-mono text-xs">
+            <ScrollArea className="flex-1 p-4 font-mono text-xs">
+              <div className="flex flex-col gap-0.5">
                 {logs.length === 0 && (
                   <div className="italic text-muted-foreground/50">No output yet...</div>
                 )}
-                {logs.map((log) => (
-                  <div
-                    key={log.id}
-                    className={log.type === "stderr" ? "text-red-500" : "text-foreground"}
-                  >
-                    <span className="mr-2 text-muted-foreground/50">
-                      [{new Date(log.timestamp).toLocaleTimeString()}]
-                    </span>
-                    {log.content}
-                  </div>
-                ))}
+
+                {/* Render Logic with Partial Support */}
+                {(() => {
+                  const renderItems = []
+                  // We need to handle the case where the LAST log item is a partial line (prompt)
+                  // If waiting for input, the prompt might be the very last item without a newline.
+
+                  let limit = logs.length
+                  let inlinePrompt = null
+
+                  if (isWaitingForInput && logs.length > 0) {
+                    const lastLog = logs[logs.length - 1]
+                    // If last log is a string and does NOT end with newline, treat as inline prompt
+                    if (lastLog.type !== "stderr" && !lastLog.content.endsWith("\n")) {
+                      inlinePrompt = lastLog.content
+                      limit = logs.length - 1 // Don't render it in the main loop
+                    }
+                  }
+
+                  for (let i = 0; i < limit; i++) {
+                    const log = logs[i]
+
+                    // Strip trailing newline visually to prevent double spacing
+                    // But keep it for logic if we were doing complex parsing
+                    const displayContent = log.content.endsWith("\n")
+                      ? log.content.slice(0, -1)
+                      : log.content
+
+                    renderItems.push(
+                      <div
+                        key={log.id}
+                        className={log.type === "stderr" ? "text-red-500" : "text-foreground"}
+                        style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                      >
+                        <span className="mr-2 select-none text-[10px] opacity-30">
+                          [
+                          {new Date(log.timestamp).toLocaleTimeString([], {
+                            hour12: false,
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
+                          ]
+                        </span>
+                        {displayContent}
+                      </div>
+                    )
+                  }
+
+                  // Push the Inline Input Row if waiting
+                  if (isWaitingForInput) {
+                    renderItems.push(
+                      <form
+                        key="input-form"
+                        onSubmit={submitInput}
+                        className="mt-0.5 flex items-start"
+                      >
+                        {/* Timestamp for the input line too */}
+                        <span className="mr-2 select-none pt-1 text-[10px] opacity-30">
+                          [
+                          {new Date().toLocaleTimeString([], {
+                            hour12: false,
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
+                          ]
+                        </span>
+
+                        <div className="flex flex-1 flex-wrap items-center">
+                          {/* The Prompt */}
+                          {inlinePrompt && (
+                            <span className="mr-1 whitespace-pre-wrap text-foreground">
+                              {inlinePrompt}
+                            </span>
+                          )}
+
+                          {/* The Input */}
+                          <input
+                            autoFocus
+                            type="text"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            className="m-0 min-w-[10px] flex-1 border-none bg-transparent p-0 font-mono text-foreground outline-none"
+                            autoComplete="off"
+                            spellCheck="false"
+                          />
+                        </div>
+                      </form>
+                    )
+                  }
+
+                  return renderItems
+                })()}
+
+                <div ref={consoleBottomRef} />
               </div>
             </ScrollArea>
           )}

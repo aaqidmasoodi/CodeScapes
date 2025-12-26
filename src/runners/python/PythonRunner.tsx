@@ -23,7 +23,7 @@ interface PythonRunnerProps {
   onOutput?: (log: LogEntry) => void
   dependencies?: string[]
   onBusyChange?: (isBusy: boolean) => void
-  onInputRequest?: (prompt: string) => void
+  onInputRequest?: (prompt: string) => Promise<string> | void
   onFileSystemUpdate?: (files: ScapeFile[]) => void
   isLive?: boolean
 }
@@ -332,7 +332,18 @@ export const PythonRunner = memo(
                 })
               } else {
                 // Normal behavior: trigger prop callback
-                propsRef.current.onInputRequest?.(prompt)
+                const result = propsRef.current.onInputRequest?.(prompt)
+
+                // If the host returns a promise (Preview Console), wait for it and submit
+                if (result instanceof Promise) {
+                  result.then((value) => {
+                    fetch("/_submit_input", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id, value }),
+                    })
+                  })
+                }
               }
               break
             }
@@ -478,7 +489,7 @@ export const PythonRunner = memo(
             })
           })
         },
-        [initWorker, log, setBusy, envVars, files]
+        [initWorker, log, setBusy, envVars]
       )
 
       // Keep ref updated

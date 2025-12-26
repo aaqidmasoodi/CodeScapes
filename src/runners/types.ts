@@ -7,7 +7,7 @@ export interface ScapeRunnerProps {
   onOutput?: (log: LogEntry) => void
   onCollapse?: () => void
   onBusyChange?: (isBusy: boolean) => void
-  onInputRequest?: (prompt: string) => void
+  onInputRequest?: (prompt: string) => Promise<string> | void
   isLive?: boolean
 }
 
