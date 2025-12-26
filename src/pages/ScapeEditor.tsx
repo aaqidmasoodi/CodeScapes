@@ -469,6 +469,21 @@ export default function ScapeEditor() {
         }
       }
 
+      if (cmd === "pip-list") {
+        const pkgs = (await previewRef.current?.listPackages?.()) ?? []
+        if (pkgs.length === 0) {
+          onProgress?.("No packages found (or list failed/not supported).")
+        } else {
+          // Format as a simple table
+          const header = "Package".padEnd(20) + "Version"
+          const sep = "-".repeat(20) + " " + "-".repeat(10)
+          const lines = pkgs.map((p) => p.name.padEnd(20) + p.version)
+          const output = [header, sep, ...lines].join("\n")
+          onProgress?.(output)
+        }
+        return { success: true }
+      }
+
       if (cmd === "pip-install") {
         // 1. Install in Runtime (expects the full payload with flags)
         const result = (await previewRef.current?.installPackage?.(arg, onProgress)) ?? {

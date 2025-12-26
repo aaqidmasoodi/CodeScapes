@@ -581,28 +581,28 @@ async function executeInstallPackage(
   const results: string[] = []
   const errors: string[] = []
 
-  for (const pkg of packages) {
-    try {
-      // 120s timeout per package
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(
-          () => reject(new Error(`Package installation timed out after 120 seconds`)),
-          120000
-        )
-      })
+  try {
+    // 120s timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`Package installation timed out after 120 seconds`)),
+        120000
+      )
+    })
 
-      if (onProgress) onProgress(`Installing ${pkg}...`)
+    if (onProgress) onProgress(`Installing ${packages.join(", ")}...`)
 
-      const result = await Promise.race([ctx.installPackage(pkg), timeoutPromise])
+    // Send as JSON payload to support batching
+    const payload = JSON.stringify({ packages })
+    const result = await Promise.race([ctx.installPackage(payload), timeoutPromise])
 
-      if (result.success) {
-        results.push(`✓ Installed ${pkg}`)
-      } else {
-        errors.push(`✗ Failed ${pkg}: ${result.error}`)
-      }
-    } catch (error) {
-      errors.push(`✗ Error ${pkg}: ${error instanceof Error ? error.message : String(error)}`)
+    if (result.success) {
+      results.push(`✓ Installed ${packages.join(", ")}`)
+    } else {
+      errors.push(`✗ Failed: ${result.error}`)
     }
+  } catch (error) {
+    errors.push(`✗ Error: ${error instanceof Error ? error.message : String(error)}`)
   }
 
   const success = errors.length === 0

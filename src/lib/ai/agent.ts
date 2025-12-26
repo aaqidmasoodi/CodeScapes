@@ -223,7 +223,9 @@ export async function runScapper(
           // Add tool result to messages
           messages.push({
             role: "tool",
-            content: toolResult.success ? toolResult.output : `Error: ${toolResult.error} `,
+            content: toolResult.success
+              ? toolResult.output
+              : `Error: ${toolResult.error}\nDetails:\n${toolResult.output}`,
             tool_call_id: toolCall.id,
           })
         }

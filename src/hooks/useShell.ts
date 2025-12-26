@@ -471,6 +471,17 @@ const commands: Record<string, CommandHandler> = {
       }
     }
 
+    if (subCmd === "list") {
+      try {
+        await ctx.execCommand("pip-list", "", (msg) => {
+          ctx.log({ type: "stdout", content: msg })
+        })
+        return { type: "success", content: "" }
+      } catch (e) {
+        return { type: "error", content: `Error: ${e}` }
+      }
+    }
+
     if (subCmd === "uninstall") {
       if (packages.length === 0) return { type: "error", content: "usage: pip uninstall PACKAGE" }
 

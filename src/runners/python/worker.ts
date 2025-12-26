@@ -110,7 +110,7 @@ self.onmessage = async (e: MessageEvent) => {
 
       // Define blocking input function in JS
       // Using self explicitly to attach to global scope for Pyodide access
-      ; (self as any).wait_for_input = (prompt: string) => {
+      ;(self as any).wait_for_input = (prompt: string) => {
         const id = Math.random().toString(36).substring(7)
 
         // Notify Main Thread (React) to show input UI
@@ -260,6 +260,31 @@ self.onmessage = async (e: MessageEvent) => {
     }
     readyPromise = readyPromise.then(runInstall)
     await readyPromise
+  }
+
+  if (type === "LIST_PACKAGES") {
+    const py = await loadPyodide()
+    try {
+      const packagesJson = await py.runPythonAsync(`
+        import importlib.metadata
+        import json
+        
+        pkgs = []
+        try:
+            for dist in importlib.metadata.distributions():
+                name = dist.metadata["Name"]
+                version = dist.version
+                if name:
+                    pkgs.append({"name": name, "version": version})
+        except Exception as e:
+             print(f"DEBUG: pip list failed: {e}")
+        
+        json.dumps(pkgs)
+      `)
+      postMessage({ type: "PACKAGES_LIST", payload: packagesJson })
+    } catch (e: any) {
+      postMessage({ type: "ERROR", payload: `Failed to list packages: ${e.message}` })
+    }
   }
 
   if (type === "SOCKET_EVENT") {
@@ -655,4 +680,4 @@ except ImportError:
   }
 }
 
-export { }
+export {}
