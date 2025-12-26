@@ -208,6 +208,10 @@ export function getToolsForEnvironment(capabilities: {
   return tools
 }
 
+function normalizePath(path: string): string {
+  return path.replace(/^\/+/, "")
+}
+
 // Legacy export for backwards compatibility
 export const SCAPPER_TOOLS = BASE_TOOLS
 
@@ -324,7 +328,7 @@ function executeListFiles(ctx: ToolContext): ToolResult {
 }
 
 function executeReadFile(path: string, ctx: ToolContext): ToolResult {
-  const file = ctx.files.find((f) => f.name === path)
+  const file = ctx.files.find((f) => normalizePath(f.name) === normalizePath(path))
 
   if (!file) {
     return { success: false, output: "", error: `File not found: ${path}` }
@@ -347,7 +351,7 @@ async function executeCreateFile(
   ctx: ToolContext
 ): Promise<ToolResult> {
   // Check if file already exists
-  const existing = ctx.files.find((f) => f.name === path)
+  const existing = ctx.files.find((f) => normalizePath(f.name) === normalizePath(path))
   if (existing) {
     return {
       success: false,
@@ -381,7 +385,7 @@ async function executeEditFile(
   replace: string,
   ctx: ToolContext
 ): Promise<ToolResult> {
-  const fileIndex = ctx.files.findIndex((f) => f.name === path)
+  const fileIndex = ctx.files.findIndex((f) => normalizePath(f.name) === normalizePath(path))
   const file = ctx.files[fileIndex]
 
   if (!file) {
@@ -419,15 +423,23 @@ async function executeOverwriteFile(
   content: string,
   ctx: ToolContext
 ): Promise<ToolResult> {
-  const fileIndex = ctx.files.findIndex((f) => f.name === path)
+  const fileIndex = ctx.files.findIndex((f) => normalizePath(f.name) === normalizePath(path))
   const file = ctx.files[fileIndex]
 
   if (!file) {
+    // If not found, try to create it? No, overwrite implies existing.
+    // But maybe we should be lenient? The prompt says "NEVER use create_file on existing".
+    // Does overwrite_file imply strict replacement?
+    // Let's stick to strict existing check for now, but with normalized path.
     return { success: false, output: "", error: `File not found: ${path}` }
   }
 
+  // Use the actual found name for the callback to ensure exact match if case differs (though we normalized)
+  // Actually, we should probably use the matched file's name for the update to be safe
+  const targetPath = file ? file.name : path
+
   // Call the update callback FIRST
-  await ctx.updateFile(path, content)
+  await ctx.updateFile(targetPath, content)
 
   // Update local context AFTER callback succeeds
   ctx.files[fileIndex] = { ...file, content }
@@ -437,7 +449,7 @@ async function executeOverwriteFile(
 }
 
 async function executeDeleteFile(path: string, ctx: ToolContext): Promise<ToolResult> {
-  const fileIndex = ctx.files.findIndex((f) => f.name === path)
+  const fileIndex = ctx.files.findIndex((f) => normalizePath(f.name) === normalizePath(path))
 
   if (fileIndex === -1) {
     return { success: false, output: "", error: `File not found: ${path}` }

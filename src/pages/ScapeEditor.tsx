@@ -744,8 +744,7 @@ export default function ScapeEditor() {
     // ----------------------------
 
     if (files.some((f) => f.name === fileName)) {
-      // alert("File already exists")
-      return
+      throw new Error(`File '${fileName}' already exists`)
     }
 
     let language: ScapeFile["language"] = "javascript"
