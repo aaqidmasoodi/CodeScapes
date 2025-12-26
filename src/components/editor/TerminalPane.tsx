@@ -315,9 +315,9 @@ export function TerminalPane({
     onExecCommand,
     onLog: (output) => {
       // Stream output to history
-      // Strip trailing newlines to prevent double-spacing (print() includes \n)
-      const content =
-        typeof output.content === "string" ? output.content.replace(/\n+$/, "") : output.content
+      // FIX: Do NOT strip newlines here. This breaks partial line detection for input().
+      // e.g. print("foo") comes as "foo\n". If stripped to "foo", it looks like a partial line.
+      const content = typeof output.content === "string" ? output.content : output.content
       if (content === "") return // Don't add empty lines
       setHistory((prev) => [
         ...prev,
@@ -727,7 +727,11 @@ export function TerminalPane({
                             </span>
                           </div>
                         ) : (
-                          <span className="whitespace-pre-wrap">{item.content}</span>
+                          <span className="whitespace-pre-wrap">
+                            {typeof item.content === "string"
+                              ? item.content.replace(/\n$/, "")
+                              : item.content}
+                          </span>
                         )}
                       </div>
                     ))}
