@@ -189,6 +189,20 @@ const INSTALL_PACKAGE_TOOL: GroqTool = {
   },
 }
 
+const LIST_PACKAGES_TOOL: GroqTool = {
+  type: "function",
+  function: {
+    name: "list_packages",
+    description:
+      "List all currently installed packages in the environment. Use this to verify installations.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+}
+
 // --- Dynamic Tool List Builder ---
 
 export function getToolsForEnvironment(capabilities: {
@@ -203,6 +217,7 @@ export function getToolsForEnvironment(capabilities: {
 
   if (capabilities.packages) {
     tools.push(INSTALL_PACKAGE_TOOL)
+    tools.push(LIST_PACKAGES_TOOL)
   }
 
   return tools
@@ -257,6 +272,7 @@ export interface ToolContext {
   // Execution capabilities (optional - depends on environment)
   runFile?: (path: string) => Promise<RunResult>
   installPackage?: (name: string, onProgress?: (msg: string) => void) => Promise<InstallResult>
+  listPackages?: () => Promise<{ name: string; version: string }[]>
 }
 
 // --- Tool Result Type ---
@@ -272,7 +288,8 @@ export interface ToolResult {
 export async function executeTool(
   toolName: string,
   args: Record<string, string>,
-  ctx: ToolContext
+  ctx: ToolContext,
+  onProgress?: (message: string) => void
 ): Promise<ToolResult> {
   try {
     switch (toolName) {
@@ -301,7 +318,10 @@ export async function executeTool(
         return await executeRunFile(args.path, ctx)
 
       case "install_package":
-        return await executeInstallPackage(args.name, ctx)
+        return await executeInstallPackage(args.name, ctx, onProgress)
+
+      case "list_packages":
+        return await executeListPackages(ctx)
 
       default:
         return { success: false, output: "", error: `Unknown tool: ${toolName}` }
@@ -342,7 +362,16 @@ function executeReadFile(path: string, ctx: ToolContext): ToolResult {
     return { success: false, output: "", error: `Cannot read binary file: ${path}` }
   }
 
-  return { success: true, output: file.content }
+  // Smart Truncation: Cap at 4000 characters (~1000 tokens)
+  const MAX_CHARS = 4000
+  let content = file.content
+  if (content.length > MAX_CHARS) {
+    content =
+      content.slice(0, MAX_CHARS) +
+      `\n\n[...File truncated. Displaying first ${MAX_CHARS} of ${file.content.length} characters. Use chunked reading if needed.]`
+  }
+
+  return { success: true, output: content }
 }
 
 async function executeCreateFile(
@@ -547,7 +576,11 @@ async function executeRunFile(path: string, ctx: ToolContext): Promise<ToolResul
   }
 }
 
-async function executeInstallPackage(names: string, ctx: ToolContext): Promise<ToolResult> {
+async function executeInstallPackage(
+  names: string,
+  ctx: ToolContext,
+  onProgress?: (message: string) => void
+): Promise<ToolResult> {
   if (!ctx.installPackage) {
     return {
       success: false,
@@ -567,26 +600,28 @@ async function executeInstallPackage(names: string, ctx: ToolContext): Promise<T
   const results: string[] = []
   const errors: string[] = []
 
-  for (const pkg of packages) {
-    try {
-      // 120s timeout per package
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(
-          () => reject(new Error(`Package installation timed out after 120 seconds`)),
-          120000
-        )
-      })
+  try {
+    // 120s timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`Package installation timed out after 120 seconds`)),
+        120000
+      )
+    })
 
-      const result = await Promise.race([ctx.installPackage(pkg), timeoutPromise])
+    if (onProgress) onProgress(`Installing ${packages.join(", ")}...`)
 
-      if (result.success) {
-        results.push(`✓ Installed ${pkg}`)
-      } else {
-        errors.push(`✗ Failed ${pkg}: ${result.error}`)
-      }
-    } catch (error) {
-      errors.push(`✗ Error ${pkg}: ${error instanceof Error ? error.message : String(error)}`)
+    // Send as JSON payload to support batching
+    const payload = JSON.stringify({ packages })
+    const result = await Promise.race([ctx.installPackage(payload), timeoutPromise])
+
+    if (result.success) {
+      results.push(`✓ Installed ${packages.join(", ")}`)
+    } else {
+      errors.push(`✗ Failed: ${result.error}`)
     }
+  } catch (error) {
+    errors.push(`✗ Error: ${error instanceof Error ? error.message : String(error)}`)
   }
 
   const success = errors.length === 0
@@ -596,5 +631,31 @@ async function executeInstallPackage(names: string, ctx: ToolContext): Promise<T
     success,
     output,
     error: success ? undefined : "Some packages failed to install",
+  }
+}
+
+async function executeListPackages(ctx: ToolContext): Promise<ToolResult> {
+  if (!ctx.listPackages) {
+    return { success: false, output: "", error: "Environment does not support listing packages." }
+  }
+
+  try {
+    const packages = await ctx.listPackages()
+
+    if (packages.length === 0) {
+      return { success: true, output: "No packages installed." }
+    }
+
+    const lines = packages.map((p) => `${p.name} (${p.version})`)
+    return {
+      success: true,
+      output: `Installed Packages:\n${lines.join("\n")}`,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      output: "",
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }

@@ -125,10 +125,22 @@ export async function chatCompletion(
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
 
-        // Check if rate limited
-        if (response.status === 429) {
-          lastError = new GroqAPIError("Rate limited - waiting before retry...", 429, "rate_limit")
-          continue // Retry
+        // Check if rate limited or generation failed (e.g. invalid tool call hallucination)
+        if (
+          response.status === 429 ||
+          (response.status === 400 && errorData.error?.code === "failed_generation") ||
+          (response.status === 400 && JSON.stringify(errorData).includes("failed_generation"))
+        ) {
+          const isRateLimit = response.status === 429
+          lastError = new GroqAPIError(
+            isRateLimit
+              ? "Rate limited - waiting before retry..."
+              : "Model generation failed - retrying...",
+            response.status,
+            isRateLimit ? "rate_limit" : "generation_failed"
+          )
+          // Exponential backoff handles the wait
+          continue
         }
 
         throw new GroqAPIError(

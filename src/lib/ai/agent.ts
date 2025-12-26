@@ -15,12 +15,12 @@ import type { ToolContext, ToolResult } from "./tools"
 
 const COMMON_RULES = `
 **CRITICAL RULES**:
-1. CODE FIRST: Always write/edit code BEFORE installing packages or running anything
-2. To COMPLETELY REWRITE a file: use overwrite_file (no need to match text)
-3. To make SMALL CHANGES: use edit_file with search/replace
+1. To COMPLETELY REWRITE a file: use overwrite_file (no need to match text)
+2. To make SMALL CHANGES: use edit_file with search/replace
    (Tip: For small files, just use overwrite_file instead - it's safer)
-4. NEVER use create_file on a file that already exists - it will fail
-5. Package installation is OPTIONAL - only install if the user explicitly asks OR if imports fail
+3. NEVER use create_file on a file that already exists - it will fail
+4. If you need packages, INSTALL THEM FIRST. Verify via \`list_packages\` and install via \`install_package\`.
+
 
 **WORKFLOW for rewriting an existing file**:
 1. Use overwrite_file with the new content (no need to read first)
@@ -96,7 +96,7 @@ function buildPythonPrompt(ctx: ToolContext): string {
 2. **Data First**: Before reading a file (read_csv), CHECK if it exists using \`list_files\`.
    - If missing, ask user if they want sample data created.
 3. **Robustness**: Wrap risky operations (IO, parsing) in try/except blocks.
-4. **Packages**: If a user asks for a library (like 'pandas'), verify it's installed. If not, ask to install.
+4. **Packages**: You MUST verify installed packages using \`list_packages\`. If a required package (like 'pandas') is missing, you MUST install it using \`install_package\` BEFORE writing code. Do not ask for permission for standard libraries.
 
 ${getExecutionSection(ctx)}
 ${COMMON_RULES}
@@ -124,11 +124,31 @@ function buildSystemPrompt(ctx: ToolContext): string {
   }
 }
 
-// --- Conversation Memory ---
+// --- History Compression ---
 
-const MAX_HISTORY_MESSAGES = 20 // Keep last 10 user+assistant pairs
+const MAX_HISTORY_MESSAGES = 10 // Keep last 5 user+assistant pairs
 
-// --- Types ---
+function compressHistory(history: GroqMessage[]): GroqMessage[] {
+  // Keep the last 6 messages intact (3 turns)
+  const PRESERVE_COUNT = 6
+  if (history.length <= PRESERVE_COUNT) return history
+
+  return history.map((msg, index) => {
+    // Determine if this message is "old" (outside the preserved window)
+    const isOld = index < history.length - PRESERVE_COUNT
+
+    if (isOld && msg.role === "tool" && typeof msg.content === "string") {
+      // Truncate huge tool outputs (like file reads or long stdout)
+      if (msg.content.length > 200) {
+        return {
+          ...msg,
+          content: `[Output truncated. Original length: ${msg.content.length} chars]`,
+        }
+      }
+    }
+    return msg
+  })
+}
 
 export interface ScapperProgress {
   type: "thinking" | "tool" | "result" | "error" | "done"
@@ -203,7 +223,9 @@ export async function runScapper(
           // Add tool result to messages
           messages.push({
             role: "tool",
-            content: toolResult.success ? toolResult.output : `Error: ${toolResult.error} `,
+            content: toolResult.success
+              ? toolResult.output
+              : `Error: ${toolResult.error}\nDetails:\n${toolResult.output}`,
             tool_call_id: toolCall.id,
           })
         }
@@ -228,7 +250,7 @@ export async function runScapper(
 
       return {
         result: { success: true, message: finalMessage },
-        updatedHistory,
+        updatedHistory: compressHistory(updatedHistory),
       }
     }
 
@@ -239,7 +261,7 @@ export async function runScapper(
         message: "Task incomplete",
         error: "Maximum iterations reached. The task may be too complex.",
       },
-      updatedHistory,
+      updatedHistory: compressHistory(updatedHistory),
     }
   } catch (error) {
     const errorMessage =
@@ -253,7 +275,7 @@ export async function runScapper(
 
     return {
       result: { success: false, message: "", error: errorMessage },
-      updatedHistory,
+      updatedHistory: compressHistory(updatedHistory),
     }
   }
 }
@@ -281,7 +303,9 @@ async function executeToolCall(
 
   onProgress({ type: "tool", message: progressMessages[toolName] || `Running ${toolName}...` })
 
-  const result = await executeTool(toolName, args, ctx)
+  const result = await executeTool(toolName, args, ctx, (msg) => {
+    onProgress({ type: "tool", message: msg })
+  })
 
   if (result.success) {
     // Format progress message based on tool type

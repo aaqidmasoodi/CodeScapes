@@ -69,6 +69,9 @@ export const PythonRunner = memo(
           }
         >
       >(new Map())
+      const pendingListPackages = useRef<
+        ((packages: { name: string; version: string }[]) => void) | null
+      >(null)
       const runResolveRef = useRef<(() => void) | null>(null)
       // For terminal-initiated runs that need to wait for completion
       const pendingFileRunRef = useRef<{
@@ -157,6 +160,13 @@ export const PythonRunner = memo(
       // It reads the latest dependencies from propsRef.
       const initWorker = useCallback(() => {
         if (workerRef.current) {
+          // Reject any pending installs if the worker is being killed
+          if (pendingInstalls.current.size > 0) {
+            pendingInstalls.current.forEach((handler) =>
+              handler.resolve({ success: false, error: "Worker terminated during operation" })
+            )
+            pendingInstalls.current.clear()
+          }
           workerRef.current.terminate()
         }
 
@@ -314,6 +324,17 @@ export const PythonRunner = memo(
                 }
               }
               break
+            case "PACKAGES_LIST":
+              if (pendingListPackages.current) {
+                try {
+                  const list = JSON.parse(payload)
+                  pendingListPackages.current(list)
+                } catch {
+                  pendingListPackages.current([])
+                }
+                pendingListPackages.current = null
+              }
+              break
             case "INPUT_REQUEST": {
               // Store ID for submission
               const { prompt, id } = payload
@@ -360,6 +381,13 @@ export const PythonRunner = memo(
           if (runResolveRef.current) {
             runResolveRef.current()
             runResolveRef.current = null
+          }
+          // Also fail any pending installs
+          if (pendingInstalls.current.size > 0) {
+            pendingInstalls.current.forEach((handler) =>
+              handler.resolve({ success: false, error: `Worker Error: ${e.message}` })
+            )
+            pendingInstalls.current.clear()
           }
         }
 
@@ -563,6 +591,7 @@ export const PythonRunner = memo(
               resolve({ success: false, error: "Runtime not ready" })
               return
             }
+            // ... install logic
             setBusy(true)
             pendingInstalls.current.set(pkg, { resolve, onProgress })
 
@@ -582,6 +611,24 @@ export const PythonRunner = memo(
                 setBusy(false)
               }
             }, 120000)
+          })
+        },
+
+        listPackages: async () => {
+          return new Promise((resolve) => {
+            if (!workerRef.current) {
+              resolve([])
+              return
+            }
+            pendingListPackages.current = resolve
+            workerRef.current.postMessage({ type: "LIST_PACKAGES" })
+            // Timeout 5s
+            setTimeout(() => {
+              if (pendingListPackages.current) {
+                pendingListPackages.current([])
+                pendingListPackages.current = null
+              }
+            }, 5000)
           })
         },
 

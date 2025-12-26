@@ -26,6 +26,7 @@ export interface ScapeRunnerHandle {
     pkg: string,
     onProgress?: (message: string) => void
   ): Promise<{ success: boolean; error?: string }>
+  listPackages?: () => Promise<{ name: string; version: string }[]>
   run?: () => void
   runFile?: (path: string, opts?: RunFileOptions) => Promise<void>
   stop?: () => void

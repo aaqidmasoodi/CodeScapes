@@ -180,8 +180,8 @@ export default function Dashboard() {
               {!searchQuery && <CreateScapeDialog />}
             </div>
           ) : viewMode === "list" ? (
-            /* List View - Compact */
-            <div className="space-y-1">
+            /* List View - Compact Grid */
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
               {filteredScapes.map((scape) => {
                 const envLabel =
                   {

@@ -52,6 +52,7 @@ interface TerminalPaneProps {
   // Execution callbacks for Scapper
   runFile?: (path: string) => Promise<RunResult>
   installPackage?: (name: string, onProgress?: (msg: string) => void) => Promise<InstallResult>
+  listPackages?: () => Promise<{ name: string; version: string }[]>
 }
 
 type HistoryItem =
@@ -83,6 +84,7 @@ export function TerminalPane({
   dependencies = [],
   runFile,
   installPackage,
+  listPackages,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -350,17 +352,33 @@ export function TerminalPane({
     onExecCommand,
     onLog: (output) => {
       // Stream output to history
-      // FIX: Do NOT strip newlines here. This breaks partial line detection for input().
-      // e.g. print("foo") comes as "foo\n". If stripped to "foo", it looks like a partial line.
       const content = typeof output.content === "string" ? output.content : output.content
       if (content === "") return // Don't add empty lines
-      setHistory((prev) => [
-        ...prev,
-        {
-          type: "output",
-          content,
-        },
-      ])
+
+      setHistory((prev) => {
+        const last = prev[prev.length - 1]
+        // Merge with previous line if it's a string and doesn't end with newline
+        // This handles python's unbuffered stream (print("a", "b") -> write("a"), write(" "), write("b"), write("\n"))
+        if (
+          last &&
+          last.type === "output" &&
+          typeof last.content === "string" &&
+          !last.content.endsWith("\n") &&
+          typeof content === "string"
+        ) {
+          return [...prev.slice(0, -1), { ...last, content: last.content + content }]
+        }
+
+        return [
+          ...prev,
+          {
+            type: "output",
+            // If it's an error type from shell, maybe wrap in span?
+            // Existing logic just passed content.
+            content,
+          },
+        ]
+      })
     },
   })
 
@@ -500,6 +518,7 @@ export function TerminalPane({
           // Execution tools (optional based on environment)
           runFile,
           installPackage,
+          listPackages,
         },
         (progress) => {
           // Show progress in terminal

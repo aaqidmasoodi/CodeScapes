@@ -50,6 +50,12 @@ export const PreviewPane = memo(
         }
         return { success: false, error: "Environment not running or packages not supported" }
       },
+      listPackages: async () => {
+        if (isRunning && runnerRef.current?.listPackages) {
+          return await runnerRef.current.listPackages()
+        }
+        return []
+      },
       restart: async () => {
         if (isRunning && runnerRef.current?.restart) {
           await runnerRef.current.restart()
