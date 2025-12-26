@@ -39,8 +39,17 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
 
   // Auto-scroll on new logs
   useEffect(() => {
-    if (isConsoleOpen) {
-      consoleBottomRef.current?.scrollIntoView({ behavior: "auto" })
+    if (isConsoleOpen && consoleBottomRef.current) {
+      // Use scrollTop on the viewport instead of scrollIntoView to prevent page jumping
+      const viewport = consoleBottomRef.current.closest(
+        "[data-radix-scroll-area-viewport]"
+      ) as HTMLElement
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight
+      } else {
+        // Fallback (e.g. if not using ScrollArea) - use block: nearest
+        consoleBottomRef.current.scrollIntoView({ block: "nearest" })
+      }
     }
   }, [logs, isConsoleOpen, isWaitingForInput])
 
@@ -51,7 +60,16 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
 
     // Scroll to bottom when input is requested
     setTimeout(() => {
-      consoleBottomRef.current?.scrollIntoView({ behavior: "smooth" })
+      if (consoleBottomRef.current) {
+        const viewport = consoleBottomRef.current.closest(
+          "[data-radix-scroll-area-viewport]"
+        ) as HTMLElement
+        if (viewport) {
+          viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })
+        } else {
+          consoleBottomRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" })
+        }
+      }
     }, 100)
 
     return new Promise((resolve) => {
