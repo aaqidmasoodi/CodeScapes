@@ -67,6 +67,28 @@ const BASE_TOOLS: GroqTool[] = [
   {
     type: "function",
     function: {
+      name: "overwrite_file",
+      description:
+        "Replace the entire content of an existing file. Use this when you want to completely rewrite a file instead of making small edits.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The file path to overwrite",
+          },
+          content: {
+            type: "string",
+            description: "The new complete content for the file",
+          },
+        },
+        required: ["path", "content"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "edit_file",
       description:
         "Edit a file by replacing specific text. Use read_file first to see the current content, then provide the exact text to replace.",
@@ -262,6 +284,9 @@ export async function executeTool(
       case "edit_file":
         return await executeEditFile(args.path, args.search, args.replace, ctx)
 
+      case "overwrite_file":
+        return await executeOverwriteFile(args.path, args.content, ctx)
+
       case "delete_file":
         return await executeDeleteFile(args.path, ctx)
 
@@ -387,6 +412,28 @@ async function executeEditFile(
   await ctx.updateFile(path, newContent)
 
   return { success: true, output: `Updated ${path} (${count} replacement${count > 1 ? "s" : ""})` }
+}
+
+async function executeOverwriteFile(
+  path: string,
+  content: string,
+  ctx: ToolContext
+): Promise<ToolResult> {
+  const fileIndex = ctx.files.findIndex((f) => f.name === path)
+  const file = ctx.files[fileIndex]
+
+  if (!file) {
+    return { success: false, output: "", error: `File not found: ${path}` }
+  }
+
+  // Call the update callback FIRST
+  await ctx.updateFile(path, content)
+
+  // Update local context AFTER callback succeeds
+  ctx.files[fileIndex] = { ...file, content }
+
+  const lines = content.split("\n").length
+  return { success: true, output: `Overwrote ${path} (${lines} lines)` }
 }
 
 async function executeDeleteFile(path: string, ctx: ToolContext): Promise<ToolResult> {

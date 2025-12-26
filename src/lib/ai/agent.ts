@@ -46,20 +46,20 @@ ${environment.capabilities.terminal ? "- run_file: Execute a script and see outp
 ${executionSection}
 **CRITICAL RULES**:
 1. CODE FIRST: Always write/edit code BEFORE installing packages or running anything
-2. To OVERWRITE an existing file: use edit_file with the entire old content as "search" and new content as "replace"
-3. NEVER use create_file on a file that already exists - it will fail
-4. NEVER delete a file just to recreate it - use edit_file instead
-5. Package installation is OPTIONAL - only install if the user explicitly asks OR if imports fail when running
-6. Always read_file before edit_file to get the exact content
+2. To COMPLETELY REWRITE a file: use overwrite_file (no need to match text)
+3. To make SMALL CHANGES: use edit_file with search/replace
+4. NEVER use create_file on a file that already exists - it will fail
+5. Package installation is OPTIONAL - only install if the user explicitly asks OR if imports fail
 
-**WORKFLOW for modifying existing files**:
+**WORKFLOW for rewriting an existing file**:
+1. Use overwrite_file with the new content (no need to read first)
+
+**WORKFLOW for small edits**:
 1. read_file to see current content
-2. edit_file with search=current content, replace=new content
-3. (Optional) run_file to verify
+2. edit_file with search=exact text to change, replace=new text
 
 **WORKFLOW for new files**:
 1. create_file with the content
-2. (Optional) run_file to verify
 ${environmentGuidance[environment.id] || ""}
 
 **OUTPUT FORMAT**: Brief summary with ✓ bullets. NO XML tags. 1-3 lines max.`
@@ -214,6 +214,7 @@ async function executeToolCall(
     list_files: "Reading project structure...",
     read_file: `Reading ${args.path}...`,
     create_file: `Creating ${args.path}...`,
+    overwrite_file: `Overwriting ${args.path}...`,
     edit_file: `Editing ${args.path}...`,
     delete_file: `Deleting ${args.path}...`,
     search_files: `Searching for "${args.query}"...`,
