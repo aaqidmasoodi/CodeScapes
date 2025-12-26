@@ -76,6 +76,11 @@ export const PreviewPane = memo(
           runnerRef.current.stop()
         }
       },
+      runFile: async (path: string, opts?: import("@/runners/types").RunFileOptions) => {
+        if (runnerRef.current?.runFile) {
+          await runnerRef.current.runFile(path, opts)
+        }
+      },
     }))
 
     // STOPPED STATE

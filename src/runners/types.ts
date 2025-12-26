@@ -11,6 +11,14 @@ export interface ScapeRunnerProps {
   isLive?: boolean
 }
 
+// Options for runFile when executing from terminal
+export interface RunFileOptions {
+  onOutput?: (content: string, type: "stdout" | "stderr") => void
+  onInputRequest?: (prompt: string) => Promise<string>
+  // Pass files directly to bypass debounced props
+  files?: { name: string; content: string; language: string }[]
+}
+
 export interface ScapeRunnerHandle {
   captureThumbnail(): Promise<string | null>
   restart(): Promise<void>
@@ -19,6 +27,8 @@ export interface ScapeRunnerHandle {
     onProgress?: (message: string) => void
   ): Promise<{ success: boolean; error?: string }>
   run?: () => void
+  runFile?: (path: string, opts?: RunFileOptions) => Promise<void>
   stop?: () => void
   updateScript?: (code: string) => void
+  provideInput?: (text: string) => void
 }

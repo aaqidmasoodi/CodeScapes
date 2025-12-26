@@ -152,6 +152,12 @@ export default function ScapeEditor() {
   // Secrets Ref for .env interception
   const secretsPanelRef = useRef<{ handlePasteEnv: (t: string) => void }>(null)
 
+  // Terminal input handling: stores the resolve function for Promise-based input
+  const terminalInputResolveRef = useRef<((value: string) => void) | null>(null)
+  const [isWaitingForTerminalInput, setIsWaitingForTerminalInput] = useState(false)
+  const [terminalInputPrompt, setTerminalInputPrompt] = useState("") // Store input() prompt separate from history
+  const [isPythonRunning, setIsPythonRunning] = useState(false)
+
   // --- PERSISTENT STATE ---
 
   // Activity Bar State
@@ -266,7 +272,6 @@ export default function ScapeEditor() {
   // Initial Preview Sync: Always show content on load, regardless of Auto-Refresh setting
   useEffect(() => {
     if (!initialPreviewSynced && files.length > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDebouncedFiles(files)
       setInitialPreviewSynced(true)
     }
@@ -275,7 +280,6 @@ export default function ScapeEditor() {
   // Auto-Refresh Preview State
   useEffect(() => {
     if (autoRefresh) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDebouncedFiles(deferredFiles)
     }
   }, [deferredFiles, autoRefresh])
@@ -388,6 +392,83 @@ export default function ScapeEditor() {
       arg: string,
       onProgress?: (message: string) => void
     ): Promise<{ success: boolean; warning?: string; error?: string }> => {
+      // --- PYTHON EXECUTION ---
+      if (cmd === "python3") {
+        if (!arg) return { success: false, error: "Filename required" }
+        // We only support file execution in Python environment currently
+        if (scape?.environment !== "python") {
+          return {
+            success: false,
+            error: "`python` command is only available in Python environments.",
+          }
+        }
+
+        // 1. Ensure Running FIRST (this mounts the runner if stopped)
+        setIsRunning(true)
+        setIsPythonRunning(true)
+
+        // 2. Wait for runner to be ready (with timeout)
+        const waitForRunner = async (maxWaitMs = 30000): Promise<boolean> => {
+          const startTime = Date.now()
+          while (Date.now() - startTime < maxWaitMs) {
+            if (previewRef.current?.runFile) {
+              return true
+            }
+            await new Promise((r) => setTimeout(r, 100))
+          }
+          return false
+        }
+
+        // Show spinner (handled by isPythonRunning state) while waiting
+
+        const runnerReady = await waitForRunner()
+        if (!runnerReady || !previewRef.current?.runFile) {
+          setIsPythonRunning(false)
+          return { success: false, error: "Python runtime failed to initialize. Try again." }
+        }
+
+        try {
+          // 3. Run the file with explicit callbacks AND pass files directly
+          await previewRef.current.runFile(arg, {
+            // Pass files directly - this bypasses debounced props and ensures fresh code
+            files: files
+              .filter((f) => typeof f.content === "string")
+              .map((f) => ({
+                name: f.name,
+                content: f.content as string,
+                language: f.language,
+              })),
+            // Output callback: stream to terminal
+            onOutput: (content) => {
+              // Do NOT strip newlines; preserve them so TerminalPane knows what is a full line
+              const cleanContent = content
+              if (cleanContent) {
+                onProgress?.(cleanContent)
+              }
+            },
+            // Input callback: show prompt in terminal and wait for user input
+            onInputRequest: (prompt) => {
+              // Store the prompt
+              setTerminalInputPrompt(prompt || "")
+              // Set state to show input field
+              setIsWaitingForTerminalInput(true)
+              // Return a Promise that resolves when user submits input
+              return new Promise((resolve) => {
+                terminalInputResolveRef.current = resolve
+              })
+            },
+          })
+          return { success: true }
+        } catch (e) {
+          return { success: false, error: String(e) }
+        } finally {
+          setIsWaitingForTerminalInput(false)
+          setTerminalInputPrompt("")
+          terminalInputResolveRef.current = null
+          setIsPythonRunning(false)
+        }
+      }
+
       if (cmd === "pip-install") {
         // 1. Install in Runtime (expects the full payload with flags)
         const result = (await previewRef.current?.installPackage?.(arg, onProgress)) ?? {
@@ -458,7 +539,7 @@ export default function ScapeEditor() {
 
       return { success: false, error: "Unknown command handling" }
     },
-    [scape?.dependencies, emitUpdate, updateScape]
+    [scape?.dependencies, scape?.environment, emitUpdate, updateScape]
   )
 
   const handleDeletePackage = useCallback(
@@ -470,6 +551,8 @@ export default function ScapeEditor() {
 
   const handleInputRequest = useCallback(
     (prompt: string) => {
+      // This is only called for normal runs (Run button, auto-run)
+      // Terminal-initiated runs handle input via the callback passed to runFile
       setInputPrompt(prompt)
       setTerminalTab("output")
       setIsTerminalOpen(true)
@@ -477,9 +560,19 @@ export default function ScapeEditor() {
     [setTerminalTab, setIsTerminalOpen]
   )
 
+  const handleTerminalInputSubmit = useCallback((text: string) => {
+    // Clear the waiting state
+    setIsWaitingForTerminalInput(false)
+
+    // Resolve the Promise with the input value
+    if (terminalInputResolveRef.current) {
+      terminalInputResolveRef.current(text)
+      terminalInputResolveRef.current = null
+    }
+  }, [])
+
   const handleInputSubmit = useCallback(
     async (text: string) => {
-      // 1. Echo to output (Prompt + Input + Newline)
       // 1. Echo to output (Merge with previous line if no newline)
       setOutputLogs((prev) => {
         const last = prev[prev.length - 1]
@@ -737,6 +830,7 @@ export default function ScapeEditor() {
   }
 
   const handleOutput = useCallback((log: LogEntry) => {
+    // Terminal-initiated runs use explicit callbacks, so output here is for normal runs only
     setOutputLogs((prev) => {
       const last = prev[prev.length - 1]
 
@@ -1270,6 +1364,10 @@ export default function ScapeEditor() {
                                   inputPrompt={inputPrompt}
                                   onInputSubmit={handleInputSubmit}
                                   isRunning={isRunning}
+                                  isWaitingForTerminalInput={isWaitingForTerminalInput}
+                                  terminalInputPrompt={terminalInputPrompt}
+                                  onTerminalInputSubmit={handleTerminalInputSubmit}
+                                  isPythonRunning={isPythonRunning}
                                 />
                               </ResizablePanel>
                             )}
