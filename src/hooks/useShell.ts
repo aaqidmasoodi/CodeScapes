@@ -517,6 +517,7 @@ const commands: Record<string, CommandHandler> = {
   rm [-rf] FILE         Remove file or directory
   grep [-ilnv] PATTERN [FILE...]  Search for pattern
   pip install PKG       Install Python package
+  python3 FILE          Run a Python file
   scapper               Start AI coding assistant
   clear                 Clear terminal
   help                  Show this help`
@@ -526,6 +527,32 @@ const commands: Record<string, CommandHandler> = {
   scapper: async () => {
     // Special command that signals TerminalPane to enter scapper mode
     return { type: "scapper-enter", content: "" }
+  },
+
+  python3: async (args, ctx) => {
+    if (!ctx.execCommand) {
+      return { type: "error", content: "python3: environment does not support Python execution" }
+    }
+
+    if (args.length === 0) {
+      return { type: "error", content: "usage: python3 FILE" }
+    }
+
+    const filename = args[0]
+
+    try {
+      const result = await ctx.execCommand("python3", filename, (msg) => {
+        ctx.log({ type: "stdout", content: msg })
+      })
+
+      if (result.success) {
+        return { type: "success", content: "" }
+      } else {
+        return { type: "error", content: result.error || "Execution failed" }
+      }
+    } catch (e) {
+      return { type: "error", content: `Error: ${e}` }
+    }
   },
 }
 

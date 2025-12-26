@@ -69,6 +69,17 @@ export const PythonRunner = memo(
           }
         >
       >(new Map())
+      const runResolveRef = useRef<(() => void) | null>(null)
+      // For terminal-initiated runs that need to wait for completion
+      const pendingFileRunRef = useRef<{
+        path: string
+        resolve: () => void
+        opts?: import("../types").RunFileOptions
+      } | null>(null)
+      // Per-run callbacks for terminal-initiated execution
+      const activeRunCallbacks = useRef<import("../types").RunFileOptions | null>(null)
+      // Flag to prevent auto-run from interfering with explicit runFile calls
+      const isExplicitRunRef = useRef(false)
 
       // 0. Socket Bridge
       const { emit: socketEmit } = useSocketBridge(scapeId, (event, data) => {
@@ -181,7 +192,12 @@ export const PythonRunner = memo(
               // Otherwise, suppress system logs (Blue text) from Output Pane as requested.
               break
             case "OUTPUT":
-              log("stdout", payload)
+              // If terminal-initiated run, use the passed callback
+              if (activeRunCallbacks.current?.onOutput) {
+                activeRunCallbacks.current.onOutput(payload, "stdout")
+              } else {
+                log("stdout", payload)
+              }
               break
             case "ERROR": {
               // Sanitize Pyodide error messages
@@ -192,7 +208,12 @@ export const PythonRunner = memo(
                   "The module '$1' is not installed.\nYou can install it by running:\n  pip install $1\n"
                 )
               }
-              log("stderr", cleanPayload)
+              // If terminal-initiated run, use the passed callback
+              if (activeRunCallbacks.current?.onOutput) {
+                activeRunCallbacks.current.onOutput(cleanPayload, "stderr")
+              } else {
+                log("stderr", cleanPayload)
+              }
               // Don't clear busy on simple stderr, only on finish/error
               // Actually stderr usually means execution continues or finishes differently.
               // We'll let DidRun clear the busy state.
@@ -216,10 +237,55 @@ export const PythonRunner = memo(
               setBusy(false)
               if (!isReadyRef.current) {
                 isReadyRef.current = true
-                if (pendingRunRef.current) {
+                // Check for pending file run first (terminal-initiated)
+                if (pendingFileRunRef.current) {
+                  const { path, resolve: pendingResolve, opts } = pendingFileRunRef.current
+                  pendingFileRunRef.current = null
+                  // Execute with the stored path and resolve
+                  runResolveRef.current = pendingResolve
+                  // IMPORTANT: Set the callbacks for this run
+                  activeRunCallbacks.current = opts || null
+                  // Re-run with the specific path (don't await, just trigger)
+                  // Use opts.files if provided, otherwise use propsRef
+                  const currentFiles = opts?.files || propsRef.current.files
+                  const entryPoint = path
+                  if (currentFiles.some((f) => f.name === entryPoint)) {
+                    setPreviewItems([])
+                    setBusy(true)
+                    workerRef.current?.postMessage({
+                      type: "RUN",
+                      payload: {
+                        files: currentFiles.map((f) => ({
+                          name: f.name,
+                          content: f.content,
+                          language: f.language,
+                        })),
+                        entryPoint,
+                        env: envVars,
+                      },
+                    })
+                    // DON'T resolve yet - wait for the new run's DidRun
+                    break
+                  } else {
+                    log("stderr", `Error: File '${entryPoint}' not found.`)
+                    pendingResolve()
+                    runResolveRef.current = null
+                    activeRunCallbacks.current = null
+                  }
+                } else if (pendingRunRef.current) {
                   pendingRunRef.current = false
                   runPythonRef.current()
+                  // Don't clear callbacks here - the new run will set them if needed
+                  break
                 }
+              }
+              // Resolve the pending run promise if any (this is the ACTUAL completion)
+              if (runResolveRef.current) {
+                runResolveRef.current()
+                runResolveRef.current = null
+                // Clear callbacks and explicit run flag when run actually completes
+                activeRunCallbacks.current = null
+                isExplicitRunRef.current = false
               }
               break
             case "INSTALL_SUCCESS":
@@ -252,7 +318,22 @@ export const PythonRunner = memo(
               // Store ID for submission
               const { prompt, id } = payload
               pendingInputIdRef.current = id
-              propsRef.current.onInputRequest?.(prompt)
+
+              // If terminal-initiated run, use the passed callback
+              if (activeRunCallbacks.current?.onInputRequest) {
+                // Call async callback and submit input when resolved
+                activeRunCallbacks.current.onInputRequest(prompt).then((value) => {
+                  // Submit the input to the worker
+                  fetch("/_submit_input", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id, value }),
+                  })
+                })
+              } else {
+                // Normal behavior: trigger prop callback
+                propsRef.current.onInputRequest?.(prompt)
+              }
               break
             }
             case "FS_UPDATE":
@@ -264,6 +345,11 @@ export const PythonRunner = memo(
         worker.onerror = (e) => {
           log("stderr", `Worker Error: ${e.message}`)
           setBusy(false)
+          // Resolve with error if crashing (safety)
+          if (runResolveRef.current) {
+            runResolveRef.current()
+            runResolveRef.current = null
+          }
         }
 
         // Initialize with CURRENT dependencies
@@ -275,80 +361,129 @@ export const PythonRunner = memo(
             // sharedBuffer: sab, // No longer vital, but can keep if needed for other things? No.
           },
         })
-      }, [log, setBusy])
+      }, [log, setBusy, envVars])
 
       // --- Stable Run Logic ---
-      const runPython = useCallback(async () => {
-        // Use `files` prop directly (it will be updated by parent setDebouncedFiles)
-        const currentFiles = files
-        if (!currentFiles.length) return
+      // --- Stable Run Logic ---
+      const runPython = useCallback(
+        (overrideEntryPoint?: string, opts?: import("../types").RunFileOptions) => {
+          return new Promise<void>((resolve) => {
+            // Use opts.files if provided (direct terminal exec), otherwise use props
+            const currentFiles = opts?.files || propsRef.current.files
+            if (!currentFiles.length) {
+              resolve()
+              return
+            }
 
-        // 1. Check if busy -> Restart if so to clear input blocks
-        if (workerRef.current && isBusyRef.current) {
-          initWorker()
-          pendingRunRef.current = true
-          return
-        }
+            // Store per-run callbacks if provided (for terminal-initiated runs)
+            if (opts) {
+              activeRunCallbacks.current = opts
+              isExplicitRunRef.current = true // Prevent auto-run from interfering
+            } else if (!isExplicitRunRef.current) {
+              // Only clear if not in explicit run mode (auto-run shouldn't interfere)
+              activeRunCallbacks.current = null
+            }
 
-        // 2. Check if init -> Queue
-        if (!workerRef.current) {
-          initWorker()
-          pendingRunRef.current = true
-          return
-        }
-        if (!isReadyRef.current) {
-          pendingRunRef.current = true
-          return
-        }
+            // 1. Check if busy -> Restart if so to clear input blocks
+            if (workerRef.current && isBusyRef.current) {
+              initWorker()
+              // If an explicit file path was provided (terminal run), store it to wait for completion
+              if (overrideEntryPoint) {
+                pendingFileRunRef.current = { path: overrideEntryPoint, resolve, opts }
+              } else {
+                pendingRunRef.current = true
+                resolve()
+              }
+              return
+            }
 
-        // Strict Entry Point Logic
-        const entryPoint = currentFiles.find((f) => f.name === "main.py")
-          ? "main.py"
-          : currentFiles.find((f) => f.name === "app.py")
-            ? "app.py"
-            : null
+            // 2. Check if init -> Queue
+            if (!workerRef.current) {
+              initWorker()
+              if (overrideEntryPoint) {
+                pendingFileRunRef.current = { path: overrideEntryPoint, resolve, opts }
+              } else {
+                pendingRunRef.current = true
+                resolve()
+              }
+              return
+            }
+            if (!isReadyRef.current) {
+              if (overrideEntryPoint) {
+                pendingFileRunRef.current = { path: overrideEntryPoint, resolve, opts }
+              } else {
+                pendingRunRef.current = true
+                resolve()
+              }
+              return
+            }
 
-        // Conflict Warning
-        if (
-          currentFiles.find((f) => f.name === "main.py") &&
-          currentFiles.find((f) => f.name === "app.py")
-        ) {
-          log("system", "Note: Both 'main.py' and 'app.py' found. Defaulting to 'main.py'.")
-        }
+            // Strict Entry Point Logic
+            const entryPoint =
+              overrideEntryPoint ||
+              (currentFiles.find((f) => f.name === "main.py")
+                ? "main.py"
+                : currentFiles.find((f) => f.name === "app.py")
+                  ? "app.py"
+                  : null)
 
-        if (!entryPoint) {
-          log(
-            "stderr",
-            "Error: No entry point found.\nPlease create a 'main.py' or 'app.py' file in the root directory to run your code."
-          )
-          return
-        }
+            // Conflict Warning
+            if (
+              !overrideEntryPoint &&
+              currentFiles.find((f) => f.name === "main.py") &&
+              currentFiles.find((f) => f.name === "app.py")
+            ) {
+              log("system", "Note: Both 'main.py' and 'app.py' found. Defaulting to 'main.py'.")
+            }
 
-        setPreviewItems([])
+            if (!entryPoint) {
+              log(
+                "stderr",
+                "Error: No entry point found.\nPlease create a 'main.py' or 'app.py' file in the root directory to run your code."
+              )
+              resolve()
+              return
+            }
 
-        // Clear shared buffer if still used for other things, but not vital for input anymore
-        if (sharedArrayRef.current) {
-          Atomics.store(sharedArrayRef.current, 0, 0)
-        }
+            // If overriding, check if file exists
+            if (overrideEntryPoint && !currentFiles.some((f) => f.name === overrideEntryPoint)) {
+              log("stderr", `Error: File '${overrideEntryPoint}' not found.`)
+              resolve()
+              return
+            }
 
-        setBusy(true)
-        workerRef.current.postMessage({
-          type: "RUN",
-          payload: {
-            files: currentFiles.map((f) => ({
-              name: f.name,
-              content: f.content,
-              language: f.language,
-            })),
-            entryPoint,
-            env: envVars, // Inject Secrets
-          },
-        })
-      }, [initWorker, log, setBusy, envVars, files])
+            setPreviewItems([])
+
+            // Clear shared buffer if still used for other things, but not vital for input anymore
+            if (sharedArrayRef.current) {
+              Atomics.store(sharedArrayRef.current, 0, 0)
+            }
+
+            setBusy(true)
+
+            // Set resolving ref (will be called by DidRun)
+            runResolveRef.current = resolve
+
+            workerRef.current.postMessage({
+              type: "RUN",
+              payload: {
+                files: currentFiles.map((f) => ({
+                  name: f.name,
+                  content: f.content,
+                  language: f.language,
+                })),
+                entryPoint,
+                env: envVars, // Inject Secrets
+              },
+            })
+          })
+        },
+        [initWorker, log, setBusy, envVars, files]
+      )
 
       // Keep ref updated
       useEffect(() => {
-        runPythonRef.current = runPython
+        runPythonRef.current = () => runPython()
       }, [runPython])
 
       // 0. Service Worker Watchdog
@@ -383,6 +518,10 @@ export const PythonRunner = memo(
 
       // 2. Run whenever files change (and secrets are ready, if needed)
       useEffect(() => {
+        // Skip auto-run if an explicit runFile call is in progress
+        if (isExplicitRunRef.current) {
+          return
+        }
         // Defer execution to avoid synchronous state update during render
         const t = setTimeout(() => {
           runPython()
@@ -403,6 +542,9 @@ export const PythonRunner = memo(
           // which triggers the useEffect above (calling runPython).
           // We don't need to do anything here except maybe log.
           debug.log("[PythonRunner] Soft restart initiated via prop update")
+        },
+        runFile: async (path: string, opts?: import("../types").RunFileOptions) => {
+          await runPython(path, opts)
         },
         installPackage: async (pkg, onProgress) => {
           return new Promise((resolve) => {

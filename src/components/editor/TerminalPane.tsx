@@ -2,7 +2,13 @@ import { useState, useEffect, useRef, type FormEvent } from "react"
 import { Terminal as TerminalIcon, X, AlertCircle, ChevronUp } from "lucide-react"
 import { useShell } from "@/hooks/useShell"
 import { useAuth } from "@/hooks/useAuth"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { Problem } from "@/types/problem"
@@ -33,6 +39,11 @@ interface TerminalPaneProps {
   inputPrompt?: string | null
   onInputSubmit?: (text: string) => void
   isRunning?: boolean
+  // Terminal-mode input (when running via python3 command)
+  isWaitingForTerminalInput?: boolean
+  onTerminalInputSubmit?: (text: string) => void
+  // Python execution state (for showing spinner)
+  isPythonRunning?: boolean
 }
 
 type HistoryItem =
@@ -56,6 +67,9 @@ export function TerminalPane({
   inputPrompt,
   onInputSubmit,
   isRunning = true,
+  isWaitingForTerminalInput = false,
+  onTerminalInputSubmit,
+  isPythonRunning = false,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -75,22 +89,24 @@ export function TerminalPane({
   const outputBottomRef = useRef<HTMLDivElement>(null)
   const outputInputRef = useRef<HTMLInputElement>(null)
   const [programInput, setProgramInput] = useState("")
+  const [terminalInput, setTerminalInput] = useState("") // For python3 input() calls
+  const terminalInputRef = useRef<HTMLInputElement>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Spinner animation for Scapper
+  // Spinner animation for Scapper and Python
   const [spinnerFrame, setSpinnerFrame] = useState(0)
   const spinnerChars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
   useEffect(() => {
     let interval: NodeJS.Timeout
-    if (isProcessing) {
+    if (isProcessing || isPythonRunning) {
       interval = setInterval(() => {
         setSpinnerFrame((prev) => (prev + 1) % spinnerChars.length)
       }, 80)
     }
     return () => clearInterval(interval)
-  }, [isProcessing])
+  }, [isProcessing, isPythonRunning])
 
   // --- SCAPPER MODE ---
   const [isScapperMode, setIsScapperMode] = useState(false)
@@ -134,6 +150,7 @@ export function TerminalPane({
     "pwd",
     "grep",
     "pip",
+    "python3",
     "clear",
     "help",
   ]
@@ -264,7 +281,11 @@ export function TerminalPane({
       // We need a ref for this new input
       setTimeout(() => outputInputRef.current?.focus(), 50)
     }
-  }, [history, activeTab, isCollapsed, outputLogs, inputPrompt])
+    // Focus terminal input if waiting for input
+    if (activeTab === "terminal" && isWaitingForTerminalInput && !isCollapsed) {
+      setTimeout(() => terminalInputRef.current?.focus(), 50)
+    }
+  }, [history, activeTab, isCollapsed, outputLogs, inputPrompt, isWaitingForTerminalInput])
 
   // Focus input on click
   const handleContainerClick = () => {
@@ -292,11 +313,15 @@ export function TerminalPane({
     onExecCommand,
     onLog: (output) => {
       // Stream output to history
+      // Strip trailing newlines to prevent double-spacing (print() includes \n)
+      const content =
+        typeof output.content === "string" ? output.content.replace(/\n+$/, "") : output.content
+      if (content === "") return // Don't add empty lines
       setHistory((prev) => [
         ...prev,
         {
           type: "output",
-          content: output.content,
+          content,
         },
       ])
     },
@@ -335,8 +360,6 @@ export function TerminalPane({
       }
     }
 
-
-
     try {
       // Execute via Shell
       const result = await shell.execute(trimmed)
@@ -359,7 +382,6 @@ export function TerminalPane({
     } catch (e) {
       setHistory((prev) => [...prev, { type: "output", content: `Error: ${e}` }])
     } finally {
-
       // Re-focus input after processing
       setTimeout(() => {
         if (isScapperMode) {
@@ -438,7 +460,11 @@ export function TerminalPane({
               ...prev,
               {
                 type: "output",
-                content: <span className="text-muted-foreground">{spinnerChars[spinnerFrame]} {progress.message}</span>,
+                content: (
+                  <span className="text-muted-foreground">
+                    {spinnerChars[spinnerFrame]} {progress.message}
+                  </span>
+                ),
               },
             ])
           } else if (progress.type === "tool") {
@@ -446,7 +472,11 @@ export function TerminalPane({
               ...prev,
               {
                 type: "output",
-                content: <span className="text-muted-foreground">{spinnerChars[spinnerFrame]} {progress.message}</span>,
+                content: (
+                  <span className="text-muted-foreground">
+                    {spinnerChars[spinnerFrame]} {progress.message}
+                  </span>
+                ),
               },
             ])
           } else if (progress.type === "result") {
@@ -485,11 +515,15 @@ export function TerminalPane({
           { type: "output", content: <span className="text-red-400">Error: {result.error}</span> },
         ])
       }
-    } catch (e: any) {
-      if (e.message === "Aborted by user" || e.name === "AbortError") {
+    } catch (e: unknown) {
+      const error = e as Error | null
+      if (error?.message === "Aborted by user" || error?.name === "AbortError") {
         setHistory((prev) => [
           ...prev,
-          { type: "output", content: <span className="text-yellow-400">⚠ Operation cancelled by user</span> },
+          {
+            type: "output",
+            content: <span className="text-yellow-400">⚠ Operation cancelled by user</span>,
+          },
         ])
       } else {
         setHistory((prev) => [
@@ -591,8 +625,8 @@ export function TerminalPane({
             className={cn(
               "-mb-2.5 flex cursor-pointer items-center gap-2 pb-2 transition-colors hover:text-foreground",
               activeTab === "terminal" &&
-              !isCollapsed &&
-              "border-b-2 border-primary text-foreground",
+                !isCollapsed &&
+                "border-b-2 border-primary text-foreground",
               activeTab === "terminal" && isCollapsed && "text-foreground"
             )}
             onClick={() => onTabChange("terminal")}
@@ -614,8 +648,8 @@ export function TerminalPane({
             className={cn(
               "-mb-2.5 flex cursor-pointer items-center gap-1.5 pb-2 transition-colors hover:text-foreground",
               activeTab === "problems" &&
-              !isCollapsed &&
-              "border-b-2 border-primary text-foreground",
+                !isCollapsed &&
+                "border-b-2 border-primary text-foreground",
               activeTab === "problems" && isCollapsed && "text-foreground"
             )}
             onClick={() => onTabChange("problems")}
@@ -655,18 +689,19 @@ export function TerminalPane({
             <>
               {(() => {
                 const lastItem = history[history.length - 1]
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const itemHasNewline = (text: any) => typeof text === "string" && text.endsWith("\n")
-
+                // Check if last item should be shown inline with input
+                // Only do this when waiting for input AND last item is output type
                 const isPartialLine =
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  lastItem && (lastItem as any).type === "stdout" && !itemHasNewline(lastItem.content)
+                  isWaitingForTerminalInput &&
+                  lastItem &&
+                  lastItem.type === "output" &&
+                  typeof lastItem.content === "string"
 
-                // Render all items EXCEPT the last one if it's partial and we are about to show input
+                // Render all items EXCEPT the last one if it's going to be inline with input
                 const itemsToRender = isPartialLine ? history.slice(0, -1) : history
 
                 // If partial, the content acts as the prefix for the input
-                const partialPrefix = isPartialLine ? lastItem.content : ""
+                const partialPrefix = isPartialLine ? (lastItem.content as string) : ""
 
                 return (
                   <>
@@ -689,82 +724,138 @@ export function TerminalPane({
                     {isScapperMode && isProcessing && (
                       <div className="mb-2 flex items-center text-muted-foreground">
                         <span className="mr-2 inline-block w-4">{spinnerChars[spinnerFrame]}</span>
-                        <span>Scapper is working... <span className="text-xs opacity-70">(Ctrl+C to cancel)</span></span>
+                        <span>
+                          Scapper is working...{" "}
+                          <span className="text-xs opacity-70">(Ctrl+C to cancel)</span>
+                        </span>
                       </div>
                     )}
 
-                    <div className="mt-1 flex items-start gap-2">
-                      {!isScapperMode && !partialPrefix && (
-                        <>
-                          <span className="text-green-500">➜</span>
-                          <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
-                        </>
-                      )}
+                    {/* Python Running Spinner */}
+                    {isPythonRunning && !isWaitingForTerminalInput && (
+                      <div className="mb-2 flex items-center text-muted-foreground">
+                        <span className="mr-2 inline-block w-4">{spinnerChars[spinnerFrame]}</span>
+                        <span>Running Python...</span>
+                      </div>
+                    )}
 
-                      {/* Render Partial Prefix Inline */}
-                      {partialPrefix && (
-                        <span className="whitespace-pre-wrap">{partialPrefix}</span>
-                      )}
-
-                      {/* Form continues below */}
-                      <form onSubmit={handleSubmit} className="min-w-0 flex-1">
-                        {isScapperMode ? (
-                          <div className="flex gap-2">
-                            <span className="shrink-0 text-green-500">❯</span>
-                            <textarea
-                              ref={textareaRef}
-                              value={input}
-                              onChange={(e) => setInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                // Submit on Enter without Shift
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault()
-                                  handleSubmit(e as unknown as React.FormEvent)
+                    {/* Terminal Input (for python3 input() calls) */}
+                    {isWaitingForTerminalInput && (
+                      <div className="mt-1 flex items-center">
+                        {/* Show the last output as inline prompt prefix */}
+                        {partialPrefix && <span className="whitespace-pre">{partialPrefix}</span>}
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault()
+                            if (onTerminalInputSubmit) {
+                              // REPLACE the last history item with combined line (prompt + input)
+                              // This prevents showing the prompt twice
+                              setHistory((prev) => {
+                                const newHistory = [...prev]
+                                // Replace the last item (the prompt) with combined line
+                                if (newHistory.length > 0) {
+                                  newHistory[newHistory.length - 1] = {
+                                    type: "output",
+                                    content: `${partialPrefix}${terminalInput}`,
+                                  }
                                 }
-                                handleKeyDown(e as unknown as React.KeyboardEvent<HTMLInputElement>)
-                              }}
-                              className="m-0 w-full resize-none border-none bg-transparent p-0 text-foreground outline-none"
-                              rows={1}
-                              autoFocus
-                              autoComplete="off"
-                              spellCheck={false}
-                              style={{
-                                minHeight: "1.5em",
-                                height: "auto",
-                                overflow: "hidden",
-                              }}
-                              onInput={(e) => {
-                                // Auto-resize textarea
-                                const target = e.target as HTMLTextAreaElement
-                                target.style.height = "auto"
-                                target.style.height = target.scrollHeight + "px"
-                              }}
-                            />
-                          </div>
-                        ) : (
+                                return newHistory
+                              })
+                              onTerminalInputSubmit(terminalInput)
+                              setTerminalInput("")
+                            }
+                          }}
+                          className="flex-1"
+                        >
                           <input
-                            ref={inputRef}
+                            ref={terminalInputRef}
                             type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={handleKeyDown}
+                            value={terminalInput}
+                            onChange={(e) => setTerminalInput(e.target.value)}
                             className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
                             autoFocus
                             autoComplete="off"
                             spellCheck="false"
                           />
+                        </form>
+                      </div>
+                    )}
+
+                    {/* Normal Command Prompt (hidden when waiting for input OR Python running) */}
+                    {!isWaitingForTerminalInput && !isPythonRunning && (
+                      <div className="mt-1 flex items-start gap-2">
+                        {!isScapperMode && !partialPrefix && (
+                          <>
+                            <span className="text-green-500">➜</span>
+                            <span className="whitespace-nowrap text-blue-500">{promptCwd}</span>
+                          </>
                         )}
-                      </form>
-                    </div>
+
+                        {/* Render Partial Prefix Inline */}
+                        {partialPrefix && (
+                          <span className="whitespace-pre-wrap">{partialPrefix}</span>
+                        )}
+
+                        {/* Form continues below */}
+                        <form onSubmit={handleSubmit} className="min-w-0 flex-1">
+                          {isScapperMode ? (
+                            <div className="flex gap-2">
+                              <span className="shrink-0 text-green-500">❯</span>
+                              <textarea
+                                ref={textareaRef}
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  // Submit on Enter without Shift
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault()
+                                    handleSubmit(e as unknown as React.FormEvent)
+                                  }
+                                  handleKeyDown(
+                                    e as unknown as React.KeyboardEvent<HTMLInputElement>
+                                  )
+                                }}
+                                className="m-0 w-full resize-none border-none bg-transparent p-0 text-foreground outline-none"
+                                rows={1}
+                                autoFocus
+                                autoComplete="off"
+                                spellCheck={false}
+                                style={{
+                                  minHeight: "1.5em",
+                                  height: "auto",
+                                  overflow: "hidden",
+                                }}
+                                onInput={(e) => {
+                                  // Auto-resize textarea
+                                  const target = e.target as HTMLTextAreaElement
+                                  target.style.height = "auto"
+                                  target.style.height = target.scrollHeight + "px"
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <input
+                              ref={inputRef}
+                              type="text"
+                              value={input}
+                              onChange={(e) => setInput(e.target.value)}
+                              onKeyDown={handleKeyDown}
+                              className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
+                              autoFocus
+                              autoComplete="off"
+                              spellCheck="false"
+                            />
+                          )}
+                        </form>
+                      </div>
+                    )}
                   </>
                 )
               })()}
 
-
               <div ref={bottomRef} />
             </>
-          )
-          }
+          )}
 
           {activeTab === "output" && (
             <div className="flex flex-col gap-0.5">
@@ -803,7 +894,7 @@ export function TerminalPane({
 
                         {showInlineInput && (
                           <form
-                            className="flex-1 min-w-[50px] inline-flex items-center"
+                            className="inline-flex min-w-[50px] flex-1 items-center"
                             onSubmit={(e) => {
                               e.preventDefault()
                               onInputSubmit?.(programInput)
@@ -832,14 +923,15 @@ export function TerminalPane({
                   })}
 
                   {/* Standalone Input Form - Render only if NOT inlined above */}
-                  {(inputPrompt !== undefined && inputPrompt !== null) && (
+                  {inputPrompt !== undefined &&
+                    inputPrompt !== null &&
                     (outputLogs.length === 0 ||
                       outputLogs[outputLogs.length - 1].type !== "stdout" ||
                       outputLogs[outputLogs.length - 1].content.endsWith("\n")) && (
                       <div className="flex items-center">
                         <span className="whitespace-pre-wrap">{inputPrompt}</span>
                         <form
-                          className="flex-1 ml-1"
+                          className="ml-1 flex-1"
                           onSubmit={(e) => {
                             e.preventDefault()
                             onInputSubmit?.(programInput)
@@ -861,52 +953,46 @@ export function TerminalPane({
                           />
                         </form>
                       </div>
-                    )
-                  )}
+                    )}
                 </>
               )}
               <div ref={outputBottomRef} />
             </div>
-          )
-          }
+          )}
 
-          {
-            activeTab === "problems" && (
-              <div className="flex flex-col gap-1">
-                {problems.length === 0 ? (
-                  <div className="text-muted-foreground">
-                    No problems have been detected in the workspace.
-                  </div>
-                ) : (
-                  problems.map((problem) => (
-                    <div
-                      key={problem.id}
-                      className="group flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-muted/50"
-                    >
-                      <AlertCircle
-                        className={cn(
-                          "mt-0.5 h-3.5 w-3.5 flex-shrink-0",
-                          problem.severity === "error"
-                            ? "text-red-600 dark:text-red-400"
-                            : "text-yellow-600 dark:text-yellow-400"
-                        )}
-                      />
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-foreground">{problem.message}</span>
-                        <span className="text-muted-foreground">
-                          {problem.file} [{problem.line}:{problem.column}]
-                        </span>
-                      </div>
+          {activeTab === "problems" && (
+            <div className="flex flex-col gap-1">
+              {problems.length === 0 ? (
+                <div className="text-muted-foreground">
+                  No problems have been detected in the workspace.
+                </div>
+              ) : (
+                problems.map((problem) => (
+                  <div
+                    key={problem.id}
+                    className="group flex cursor-pointer items-start gap-2 rounded p-1 hover:bg-muted/50"
+                  >
+                    <AlertCircle
+                      className={cn(
+                        "mt-0.5 h-3.5 w-3.5 flex-shrink-0",
+                        problem.severity === "error"
+                          ? "text-red-600 dark:text-red-400"
+                          : "text-yellow-600 dark:text-yellow-400"
+                      )}
+                    />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-foreground">{problem.message}</span>
+                      <span className="text-muted-foreground">
+                        {problem.file} [{problem.line}:{problem.column}]
+                      </span>
                     </div>
-                  ))
-                )}
-              </div>
-            )
-          }
-        </div >
-      )
-      }
-
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <Dialog open={showAuthDialog} onOpenChange={setShowAuthDialog}>
         <DialogContent className="sm:max-w-md">
