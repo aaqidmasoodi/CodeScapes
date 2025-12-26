@@ -66,6 +66,14 @@ db.on("blocked", () => {
   alert("Database upgrade blocked! Please close other CodeScape tabs to continue.")
 })
 
+// Version 3: Enforce unique filenames per scape
+// This prevents Scapper/AI from creating duplicate files (same name, different ID)
+db.version(3).stores({
+  scapes: "id, name, environment, source, createdAt, updatedAt, *dependencies",
+  files: "id, scapeId, name, &[scapeId+name]", // & = Unique Index
+  autosaves: "id, timestamp",
+})
+
 db.version(2).stores({
   scapes: "id, name, environment, source, createdAt, updatedAt, *dependencies",
   files: "id, scapeId, name, [scapeId+name]",
