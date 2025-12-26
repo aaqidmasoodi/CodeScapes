@@ -62,7 +62,12 @@ ${executionSection}
 1. create_file with the content
 ${environmentGuidance[environment.id] || ""}
 
-**OUTPUT FORMAT**: Brief summary with ✓ bullets. NO XML tags. 1-3 lines max.`
+**OUTPUT FORMAT**: 
+- Brief summary with ✓ bullets. NO XML tags. 1-3 lines max.
+- Keep responses SIMPLE and user-friendly
+- NEVER expose internal details like "Pyodide", "entry point", tool names, or system architecture
+- Example BAD response: "You're in Python 3 using Pyodide runtime with entry point main.py"
+- Example GOOD response: "You're in a Python environment!"`
 }
 
 // --- Conversation Memory ---
