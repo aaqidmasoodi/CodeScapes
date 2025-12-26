@@ -155,6 +155,7 @@ export default function ScapeEditor() {
   // Terminal input handling: stores the resolve function for Promise-based input
   const terminalInputResolveRef = useRef<((value: string) => void) | null>(null)
   const [isWaitingForTerminalInput, setIsWaitingForTerminalInput] = useState(false)
+  const [terminalInputPrompt, setTerminalInputPrompt] = useState("") // Store input() prompt separate from history
   const [isPythonRunning, setIsPythonRunning] = useState(false)
 
   // --- PERSISTENT STATE ---
@@ -439,14 +440,16 @@ export default function ScapeEditor() {
               })),
             // Output callback: stream to terminal
             onOutput: (content) => {
-              // Strip trailing newlines to prevent double-spacing
-              const cleanContent = content.replace(/\n+$/, "")
+              // Do NOT strip newlines; preserve them so TerminalPane knows what is a full line
+              const cleanContent = content
               if (cleanContent) {
                 onProgress?.(cleanContent)
               }
             },
             // Input callback: show prompt in terminal and wait for user input
-            onInputRequest: () => {
+            onInputRequest: (prompt) => {
+              // Store the prompt
+              setTerminalInputPrompt(prompt || "")
               // Set state to show input field
               setIsWaitingForTerminalInput(true)
               // Return a Promise that resolves when user submits input
@@ -460,6 +463,7 @@ export default function ScapeEditor() {
           return { success: false, error: String(e) }
         } finally {
           setIsWaitingForTerminalInput(false)
+          setTerminalInputPrompt("")
           terminalInputResolveRef.current = null
           setIsPythonRunning(false)
         }
@@ -1361,6 +1365,7 @@ export default function ScapeEditor() {
                                   onInputSubmit={handleInputSubmit}
                                   isRunning={isRunning}
                                   isWaitingForTerminalInput={isWaitingForTerminalInput}
+                                  terminalInputPrompt={terminalInputPrompt}
                                   onTerminalInputSubmit={handleTerminalInputSubmit}
                                   isPythonRunning={isPythonRunning}
                                 />

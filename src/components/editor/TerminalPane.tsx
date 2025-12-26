@@ -41,6 +41,7 @@ interface TerminalPaneProps {
   isRunning?: boolean
   // Terminal-mode input (when running via python3 command)
   isWaitingForTerminalInput?: boolean
+  terminalInputPrompt?: string // Prompt from input() call (e.g. "What is your name? ")
   onTerminalInputSubmit?: (text: string) => void
   // Python execution state (for showing spinner)
   isPythonRunning?: boolean
@@ -68,6 +69,7 @@ export function TerminalPane({
   onInputSubmit,
   isRunning = true,
   isWaitingForTerminalInput = false,
+  terminalInputPrompt = "",
   onTerminalInputSubmit,
   isPythonRunning = false,
 }: TerminalPaneProps) {
@@ -688,20 +690,29 @@ export function TerminalPane({
           {activeTab === "terminal" && (
             <>
               {(() => {
-                const lastItem = history[history.length - 1]
-                // Check if last item should be shown inline with input
-                // Only do this when waiting for input AND last item is output type
-                const isPartialLine =
-                  isWaitingForTerminalInput &&
-                  lastItem &&
-                  lastItem.type === "output" &&
-                  typeof lastItem.content === "string"
+                // Determine which items should be rendered as part of the history vs inline input prefix
+                // We scan backwards for any "partial" lines (output strings that don't end in newline)
+                let renderLimit = history.length
+                const partialItems: string[] = []
 
-                // Render all items EXCEPT the last one if it's going to be inline with input
-                const itemsToRender = isPartialLine ? history.slice(0, -1) : history
+                if (isWaitingForTerminalInput) {
+                  for (let i = history.length - 1; i >= 0; i--) {
+                    const item = history[i]
+                    if (
+                      item.type === "output" &&
+                      typeof item.content === "string" &&
+                      !/[\r\n]$/.test(item.content)
+                    ) {
+                      partialItems.unshift(item.content)
+                      renderLimit = i
+                    } else {
+                      break // Stop at first full line or non-string
+                    }
+                  }
+                }
 
-                // If partial, the content acts as the prefix for the input
-                const partialPrefix = isPartialLine ? (lastItem.content as string) : ""
+                const itemsToRender = history.slice(0, renderLimit)
+                const partialPrefix = partialItems.join("")
 
                 return (
                   <>
@@ -743,22 +754,27 @@ export function TerminalPane({
                     {isWaitingForTerminalInput && (
                       <div className="mt-1 flex items-center">
                         {/* Show the last output as inline prompt prefix */}
+                        {/* Show the last output as inline prompt prefix */}
                         {partialPrefix && <span className="whitespace-pre">{partialPrefix}</span>}
+                        {/* Show the input() prompt inline */}
+                        {terminalInputPrompt && (
+                          <span className="whitespace-pre">{terminalInputPrompt}</span>
+                        )}
                         <form
                           onSubmit={(e) => {
                             e.preventDefault()
                             if (onTerminalInputSubmit) {
-                              // REPLACE the last history item with combined line (prompt + input)
-                              // This prevents showing the prompt twice
+                              // Combine partial prefix, prompt, and input into a single history line
+                              const combinedContent = `${partialPrefix}${terminalInputPrompt}${terminalInput}`
+
                               setHistory((prev) => {
-                                const newHistory = [...prev]
-                                // Replace the last item (the prompt) with combined line
-                                if (newHistory.length > 0) {
-                                  newHistory[newHistory.length - 1] = {
-                                    type: "output",
-                                    content: `${partialPrefix}${terminalInput}`,
-                                  }
-                                }
+                                // Keep only the full lines (remove any partials we merged visually)
+                                const newHistory = prev.slice(0, renderLimit)
+                                // Add the consolidated line
+                                newHistory.push({
+                                  type: "output",
+                                  content: combinedContent,
+                                })
                                 return newHistory
                               })
                               onTerminalInputSubmit(terminalInput)
