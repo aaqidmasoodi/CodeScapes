@@ -58,7 +58,16 @@ Guidelines:
 6. After creating or editing code, use run_file to verify it works (if available)
 ${environmentGuidance[environment.id] || ""}
 
-When you're done with a task, provide a brief summary of what was created or changed.`
+**OUTPUT FORMAT**:
+When done, provide a brief, clean summary. Use this format:
+- Use ✓ emoji for completed actions (e.g., "✓ Updated main.py to use uppercase")
+- NO XML tags like <summary>, <changes>, etc.
+- Keep it to 1-3 bullet points max
+- Be direct: "Changed X to do Y" not "I have made changes to X..."
+
+Example good summary:
+✓ Updated main.py: band names now display in UPPERCASE
+✓ Added .upper() to all format strings in generate_name()`
 }
 
 // --- Conversation Memory ---
@@ -220,7 +229,28 @@ async function executeToolCall(
   const result = await executeTool(toolName, args, ctx)
 
   if (result.success) {
-    onProgress({ type: "result", message: `✓ ${result.output}` })
+    // Format progress message based on tool type
+    let progressMessage = result.output
+
+    // For read_file, show compact summary instead of full content
+    if (toolName === "read_file") {
+      const lineCount = result.output.split("\n").length
+      progressMessage = `📄 Analyzed ${args.path} (${lineCount} lines)`
+    }
+    // For list_files, show count instead of full list if many files
+    else if (toolName === "list_files" && result.output.split("\n").length > 5) {
+      const fileCount = result.output.split("\n").length
+      progressMessage = `📁 Found ${fileCount} files in project`
+    }
+    // For search_files, show match count
+    else if (toolName === "search_files") {
+      const matchCount = (result.output.match(/\n/g) || []).length + 1
+      if (matchCount > 5) {
+        progressMessage = `🔍 Found ${matchCount} matches for "${args.query}"`
+      }
+    }
+
+    onProgress({ type: "result", message: `✓ ${progressMessage}` })
   } else {
     onProgress({ type: "error", message: `✗ ${result.error}` })
   }

@@ -334,15 +334,17 @@ async function executeCreateFile(
   // Detect language from extension
   const language = getLanguageFromFilename(path) as ScapeFile["language"]
 
-  // Create fake file object for local context update
+  // Call the actual createFile callback FIRST
+  await ctx.createFile(path, language, content)
+
+  // Create file object for local context update AFTER callback succeeds
+  // This prevents race condition where handleCreateFile sees file already exists
   const newFile: ScapeFile = {
     name: path,
     language,
     content,
   }
   ctx.files.push(newFile)
-
-  await ctx.createFile(path, language, content)
 
   const lines = content.split("\n").length
   return { success: true, output: `Created ${path} (${lines} lines)` }
