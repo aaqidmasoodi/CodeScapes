@@ -497,7 +497,15 @@ async function executeInstallPackage(name: string, ctx: ToolContext): Promise<To
   }
 
   try {
-    const result = await ctx.installPackage(name)
+    // Longer timeout for package installs (120 seconds) - some packages like matplotlib are large
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`Package installation timed out after 120 seconds`)),
+        120000
+      )
+    })
+
+    const result = await Promise.race([ctx.installPackage(name), timeoutPromise])
 
     if (result.success) {
       return {
