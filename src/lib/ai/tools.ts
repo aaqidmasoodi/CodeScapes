@@ -272,7 +272,8 @@ export interface ToolResult {
 export async function executeTool(
   toolName: string,
   args: Record<string, string>,
-  ctx: ToolContext
+  ctx: ToolContext,
+  onProgress?: (message: string) => void
 ): Promise<ToolResult> {
   try {
     switch (toolName) {
@@ -301,7 +302,7 @@ export async function executeTool(
         return await executeRunFile(args.path, ctx)
 
       case "install_package":
-        return await executeInstallPackage(args.name, ctx)
+        return await executeInstallPackage(args.name, ctx, onProgress)
 
       default:
         return { success: false, output: "", error: `Unknown tool: ${toolName}` }
@@ -342,7 +343,16 @@ function executeReadFile(path: string, ctx: ToolContext): ToolResult {
     return { success: false, output: "", error: `Cannot read binary file: ${path}` }
   }
 
-  return { success: true, output: file.content }
+  // Smart Truncation: Cap at 4000 characters (~1000 tokens)
+  const MAX_CHARS = 4000
+  let content = file.content
+  if (content.length > MAX_CHARS) {
+    content =
+      content.slice(0, MAX_CHARS) +
+      `\n\n[...File truncated. Displaying first ${MAX_CHARS} of ${file.content.length} characters. Use chunked reading if needed.]`
+  }
+
+  return { success: true, output: content }
 }
 
 async function executeCreateFile(
@@ -547,7 +557,11 @@ async function executeRunFile(path: string, ctx: ToolContext): Promise<ToolResul
   }
 }
 
-async function executeInstallPackage(names: string, ctx: ToolContext): Promise<ToolResult> {
+async function executeInstallPackage(
+  names: string,
+  ctx: ToolContext,
+  onProgress?: (message: string) => void
+): Promise<ToolResult> {
   if (!ctx.installPackage) {
     return {
       success: false,
@@ -576,6 +590,8 @@ async function executeInstallPackage(names: string, ctx: ToolContext): Promise<T
           120000
         )
       })
+
+      if (onProgress) onProgress(`Installing ${pkg}...`)
 
       const result = await Promise.race([ctx.installPackage(pkg), timeoutPromise])
 

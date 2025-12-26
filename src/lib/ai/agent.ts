@@ -124,11 +124,31 @@ function buildSystemPrompt(ctx: ToolContext): string {
   }
 }
 
-// --- Conversation Memory ---
+// --- History Compression ---
 
-const MAX_HISTORY_MESSAGES = 20 // Keep last 10 user+assistant pairs
+const MAX_HISTORY_MESSAGES = 10 // Keep last 5 user+assistant pairs
 
-// --- Types ---
+function compressHistory(history: GroqMessage[]): GroqMessage[] {
+  // Keep the last 6 messages intact (3 turns)
+  const PRESERVE_COUNT = 6
+  if (history.length <= PRESERVE_COUNT) return history
+
+  return history.map((msg, index) => {
+    // Determine if this message is "old" (outside the preserved window)
+    const isOld = index < history.length - PRESERVE_COUNT
+
+    if (isOld && msg.role === "tool" && typeof msg.content === "string") {
+      // Truncate huge tool outputs (like file reads or long stdout)
+      if (msg.content.length > 200) {
+        return {
+          ...msg,
+          content: `[Output truncated. Original length: ${msg.content.length} chars]`,
+        }
+      }
+    }
+    return msg
+  })
+}
 
 export interface ScapperProgress {
   type: "thinking" | "tool" | "result" | "error" | "done"
@@ -228,7 +248,7 @@ export async function runScapper(
 
       return {
         result: { success: true, message: finalMessage },
-        updatedHistory,
+        updatedHistory: compressHistory(updatedHistory),
       }
     }
 
@@ -239,7 +259,7 @@ export async function runScapper(
         message: "Task incomplete",
         error: "Maximum iterations reached. The task may be too complex.",
       },
-      updatedHistory,
+      updatedHistory: compressHistory(updatedHistory),
     }
   } catch (error) {
     const errorMessage =
@@ -253,7 +273,7 @@ export async function runScapper(
 
     return {
       result: { success: false, message: "", error: errorMessage },
-      updatedHistory,
+      updatedHistory: compressHistory(updatedHistory),
     }
   }
 }
@@ -281,7 +301,9 @@ async function executeToolCall(
 
   onProgress({ type: "tool", message: progressMessages[toolName] || `Running ${toolName}...` })
 
-  const result = await executeTool(toolName, args, ctx)
+  const result = await executeTool(toolName, args, ctx, (msg) => {
+    onProgress({ type: "tool", message: msg })
+  })
 
   if (result.success) {
     // Format progress message based on tool type
