@@ -201,15 +201,35 @@ self.onmessage = async (e: MessageEvent) => {
             const svgContent = svgResult?.values?.[0] || ""
 
             if (svgContent && svgContent.length > 100) {
-              // Make SVG responsive by wrapping with proper CSS
-              // Also set SVG to fill container width
-              const responsiveSvg = svgContent.replace(
+              // Check if SVG has actual plot content (not just empty background)
+              // An empty SVG from R will only have <defs>, <rect> for background, <g> groups
+              // Real plots have <line>, <polyline>, <path>, <polygon>, <circle>, <text> drawing elements
+              const hasPlotContent = /<(line|polyline|path|polygon|circle|text)\b/i.test(svgContent)
+
+              if (!hasPlotContent) {
+                console.log("[R Worker] Skipping empty plot file (no drawing elements)")
+                await r.evalR(`file.remove("${plotFile}")`)
+                continue
+              }
+
+              // Make SVG responsive and remove background border
+              let responsiveSvg = svgContent.replace(
                 /<svg /,
-                '<svg style="width: 100%; height: auto; display: block;" '
+                '<svg style="width: 100%; height: auto; display: block; border: none;" '
+              )
+              // Remove the stroke from any background rect (R adds a border by default)
+              responsiveSvg = responsiveSvg.replace(
+                /(<rect[^>]*style="[^"]*)(stroke:\s*#[0-9A-Fa-f]+;?)/g,
+                "$1stroke: none;"
+              )
+              // Also try removing stroke attribute directly
+              responsiveSvg = responsiveSvg.replace(
+                /(<rect[^>]*width="100%"[^>]*height="100%"[^>]*)(stroke="[^"]*")/g,
+                '$1stroke="none"'
               )
               postMessage({
                 type: "PREVIEW_HTML",
-                payload: `<div style="width: 100%; padding: 16px; box-sizing: border-box;">${responsiveSvg}</div>`,
+                payload: `<div style="width: 100%; max-width: 600px; margin: 0 auto;">${responsiveSvg}</div>`,
               })
             }
 

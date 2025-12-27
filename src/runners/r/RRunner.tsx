@@ -8,7 +8,7 @@ import {
   useCallback,
 } from "react"
 import type { ScapeRunnerHandle, ScapeRunnerProps } from "../types"
-import { Loader2 } from "lucide-react"
+import { Loader2, Box, MonitorPlay } from "lucide-react"
 
 import Worker from "./worker.ts?worker"
 
@@ -21,20 +21,25 @@ export const RRunner = memo(
       []
     )
 
-    // Stable Log Helper
+    // Stable Log Helper - use ref to avoid re-creating worker on every render
+    const onOutputRef = useRef(onOutput)
+    useEffect(() => {
+      onOutputRef.current = onOutput
+    }, [onOutput])
+
     const log = useCallback(
       (type: "stdout" | "stderr" | "system", content: string) => {
-        onOutput?.({
+        onOutputRef.current?.({
           id: crypto.randomUUID(),
           type,
           content,
           timestamp: Date.now(),
         })
       },
-      [onOutput]
+      [] // Empty deps - uses ref
     )
 
-    // Init Worker
+    // Init Worker - dependencies are now stable
     useEffect(() => {
       const worker = new Worker()
       workerRef.current = worker
@@ -68,7 +73,7 @@ export const RRunner = memo(
       return () => {
         worker.terminate()
       }
-    }, [log]) // Re-init if log changes? Ideally log is stable.
+    }, [log]) // log is now stable
 
     // Run Logic
     const runR = useCallback(async () => {
@@ -91,6 +96,17 @@ export const RRunner = memo(
           entryPoint,
         },
       })
+
+      // Failsafe: ensure isBusy is reset even if DidRun is never received
+      setTimeout(() => {
+        setIsBusy((current) => {
+          if (current) {
+            console.warn("[RRunner] Failsafe: resetting isBusy after timeout")
+            return false
+          }
+          return current
+        })
+      }, 30000) // 30 second timeout
     }, [files])
 
     // Auto-run on file change (if Live) or initial load
@@ -129,30 +145,53 @@ export const RRunner = memo(
     }))
 
     return (
-      <div ref={containerRef} className="flex h-full flex-col overflow-auto bg-background p-4">
-        {isBusy && (
-          <div className="absolute right-2 top-2">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+      <div
+        ref={containerRef}
+        className="flex h-full flex-col border-l border-border bg-background text-foreground dark:border-zinc-800"
+      >
+        {/* Header Bar - matches Python preview */}
+        <div className="flex h-10 items-center justify-between border-b border-zinc-200 bg-muted/20 px-2 dark:border-zinc-800 dark:bg-zinc-900/50">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <MonitorPlay className="h-3.5 w-3.5" />
+            <span className="max-w-[200px] truncate">Preview (R)</span>
           </div>
-        )}
+        </div>
 
-        {previewItems.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-muted-foreground opacity-50">
-            R Plots will appear here
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {previewItems.map((item, i) => (
-              <div key={i} className="rounded border p-2">
-                {item.type === "html" ? (
-                  <div dangerouslySetInnerHTML={{ __html: item.content }} />
-                ) : (
-                  <img src={item.content} alt="Plot" />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Content Area */}
+        <div className="flex flex-1 flex-col overflow-auto p-4">
+          {previewItems.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+              {isBusy ? (
+                <>
+                  <Loader2 className="h-8 w-8 animate-spin text-primary opacity-50" />
+                  <p className="mt-2 text-xs">Running code...</p>
+                </>
+              ) : (
+                <>
+                  <Box className="h-8 w-8 opacity-20" />
+                  <p className="mt-2 text-xs">No graphical output generated.</p>
+                  <p className="mt-1 text-[10px] opacity-75">R plots will appear here.</p>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-6">
+              {previewItems.map((item, i) => (
+                <div key={i} className="flex justify-center overflow-auto">
+                  {item.type === "html" ? (
+                    <div dangerouslySetInnerHTML={{ __html: item.content }} />
+                  ) : (
+                    <img
+                      src={item.content}
+                      alt={`Plot ${i + 1}`}
+                      className="max-w-full rounded border border-border shadow-sm"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     )
   })
