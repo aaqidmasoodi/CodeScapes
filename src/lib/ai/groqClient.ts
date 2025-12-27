@@ -94,7 +94,7 @@ export async function chatCompletion(
   }
 
   if (maxTokens) {
-    body.max_tokens = maxTokens
+    body.max_completion_tokens = maxTokens
   }
 
   if (tools && tools.length > 0) {
