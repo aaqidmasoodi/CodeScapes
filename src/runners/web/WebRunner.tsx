@@ -15,6 +15,7 @@ import type { ScapeRunnerHandle } from "@/runners/types"
 import type { LogEntry } from "@/types/log"
 
 import { usePreviewBridge } from "@/hooks/usePreviewBridge"
+import { useSafariPreview, shouldUseSafariPreview } from "@/hooks/useSafariPreview"
 import { useSocketBridge } from "@/hooks/useSocketBridge"
 import { useStablePreviewPayload } from "@/hooks/useStablePreviewPayload"
 import { debug } from "@/lib/debug"
@@ -40,6 +41,9 @@ export const WebRunner = memo(
 
       // Manual Refresh Key (for restart button)
       const [refreshKey, setRefreshKey] = useState(0)
+
+      // Safari/iOS Detection (computed during render, not in effect)
+      const useSafariMode = shouldUseSafariPreview()
 
       // Lazy Socket State (Default: Off to save costs)
       const [socketEnabled, setSocketEnabled] = useState(false)
@@ -167,13 +171,21 @@ export const WebRunner = memo(
           ]
         : []
 
-      // Bridge to the Runtime (only active when payload is ready)
+      // Bridge to the Runtime (SW for Chrome/Firefox, empty for Safari)
       const bridge = usePreviewBridge(
-        filesWithSocket,
+        useSafariMode ? [] : filesWithSocket, // Only use SW bridge for non-Safari
         scapeId,
         socketId,
         iframeRef,
         stablePayload?.env ?? {},
+        refreshKey,
+        handleLog
+      )
+
+      // Safari Preview (compiled server-side for Safari/iOS)
+      const safariPreview = useSafariPreview(
+        useSafariMode ? filesWithSocket : [], // Only compile for Safari
+        scapeId,
         refreshKey,
         handleLog
       )
@@ -233,23 +245,41 @@ export const WebRunner = memo(
 
       // Live Mode: No Chrome
       if (isLive) {
+        // Determine ready states based on mode
+        const isReady = useSafariMode ? safariPreview.ready : bridge.ready
+        const isContentReady = useSafariMode ? safariPreview.contentReady : bridge.contentReady
+
         return (
           <div className="relative h-full w-full bg-white">
             {/* Loading Overlay */}
-            {(!bridge.ready || !bridge.contentReady) && (
+            {(!isReady || !isContentReady) && (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-background text-muted-foreground">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
             )}
-            <iframe
-              key={refreshKey}
-              ref={iframeRef}
-              title="preview-live"
-              src={bridge.url}
-              className="h-full w-full border-0"
-              sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
-              allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
-            />
+            {useSafariMode ? (
+              // Safari: Compiled blob URL (NO allow-same-origin for security)
+              <iframe
+                key={refreshKey}
+                ref={iframeRef}
+                title="preview-live"
+                src={safariPreview.blobUrl}
+                className="h-full w-full border-0"
+                sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+                allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
+              />
+            ) : (
+              // Chrome/Firefox: Service Worker bridge
+              <iframe
+                key={refreshKey}
+                ref={iframeRef}
+                title="preview-live"
+                src={bridge.url}
+                className="h-full w-full border-0"
+                sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
+                allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
+              />
+            )}
           </div>
         )
       }
@@ -279,22 +309,37 @@ export const WebRunner = memo(
           </div>
           <div className="relative flex-1 bg-white">
             {/* Loading Overlay */}
-            {(!bridge.ready || !bridge.contentReady) && (
+            {(useSafariMode
+              ? !safariPreview.ready || !safariPreview.contentReady
+              : !bridge.ready || !bridge.contentReady) && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
             )}
 
-            <iframe
-              key={refreshKey}
-              ref={iframeRef}
-              title="preview"
-              // Point to the virtual NAMESPACED path intercepted by SW
-              src={bridge.url}
-              className="h-full w-full border-0"
-              sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
-              allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
-            />
+            {useSafariMode ? (
+              // Safari: Compiled blob URL (NO allow-same-origin for security)
+              <iframe
+                key={refreshKey}
+                ref={iframeRef}
+                title="preview"
+                src={safariPreview.blobUrl}
+                className="h-full w-full border-0"
+                sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads"
+                allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
+              />
+            ) : (
+              // Chrome/Firefox: Service Worker bridge
+              <iframe
+                key={refreshKey}
+                ref={iframeRef}
+                title="preview"
+                src={bridge.url}
+                className="h-full w-full border-0"
+                sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
+                allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
+              />
+            )}
           </div>
         </div>
       )
