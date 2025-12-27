@@ -104,6 +104,30 @@ ${COMMON_RULES}
 `
 }
 
+function buildRPrompt(ctx: ToolContext): string {
+  const { dependencies } = ctx
+  return `You are Scapper, a Statistical Data Analyst Expert in R for CodeScapes.
+**ENVIRONMENT**: R (WebR - WebAssembly)
+**PACKAGES**: ${dependencies.length > 0 ? dependencies.join(", ") : "Standard Library"}
+
+**EXPERTISE**:
+- Tidyverse (dplyr, ggplot2, tidyr)
+- Base R
+- Data Visualization
+- Statistical Analysis
+
+**R RULES**:
+1. **Visualization**: Use \`plot()\`, \`hist()\`, or \`ggplot()\` to create plots. 
+   - CRITICAL: When using \`ggplot2\`, you MUST explicitly print the plot object (e.g., \`print(p)\`) for it to render in a script.
+2. **Data First**: Check for data files before reading.
+3. **Packages**: Verify installed packages. If a library is needed (like 'ggplot2'), use \`install_package\` first.
+   - Note: WebR supports many CRAN packages but not all.
+
+${getExecutionSection(ctx)}
+${COMMON_RULES}
+`
+}
+
 function buildGenericPrompt(ctx: ToolContext): string {
   return `You are Scapper, an AI coding assistant for CodeScapes.
 **ENVIRONMENT**: ${ctx.environment.name}
@@ -120,6 +144,8 @@ function buildSystemPrompt(ctx: ToolContext): string {
       return buildWebPrompt(ctx)
     case "python":
       return buildPythonPrompt(ctx)
+    case "r":
+      return buildRPrompt(ctx)
     default:
       return buildGenericPrompt(ctx)
   }
@@ -289,17 +315,18 @@ async function executeToolCall(
   onProgress: (progress: ScapperProgress) => void
 ): Promise<ToolResult> {
   const toolName = toolCall.function.name
-  const args = parseToolArguments<Record<string, string>>(toolCall)
+  const args = parseToolArguments<Record<string, string>>(toolCall) || {}
 
   // Show progress based on tool
+  const safePath = args.path || "file"
   const progressMessages: Record<string, string> = {
     list_files: "Reading project structure...",
-    read_file: `Reading ${args.path}...`,
-    create_file: `Creating ${args.path}...`,
-    overwrite_file: `Overwriting ${args.path}...`,
-    edit_file: `Editing ${args.path}...`,
-    delete_file: `Deleting ${args.path}...`,
-    search_files: `Searching for "${args.query}"...`,
+    read_file: `Reading ${safePath}...`,
+    create_file: `Creating ${safePath}...`,
+    overwrite_file: `Overwriting ${safePath}...`,
+    edit_file: `Editing ${safePath}...`,
+    delete_file: `Deleting ${safePath}...`,
+    search_files: `Searching for "${args.query || "query"}"...`,
   }
 
   onProgress({ type: "tool", message: progressMessages[toolName] || `Running ${toolName}...` })
