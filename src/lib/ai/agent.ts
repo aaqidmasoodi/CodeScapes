@@ -20,6 +20,7 @@ const COMMON_RULES = `
    (Tip: For small files, just use overwrite_file instead - it's safer)
 3. NEVER use create_file on a file that already exists - it will fail
 4. If you need packages, INSTALL THEM FIRST. Verify via \`list_packages\` and install via \`install_package\`.
+5. **CODE DELIVERY**: ALWAYS put generated code into a file using \`create_file\` or \`overwrite_file\`. NEVER just dump code blocks in the chat. Use the main entry point if the user doesn't specify a file name.
 
 
 **WORKFLOW for rewriting an existing file**:
