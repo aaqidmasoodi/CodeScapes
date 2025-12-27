@@ -189,6 +189,7 @@ export default function Dashboard() {
                     python: "Python",
                     flowscape: "FlowScape",
                     node: "Node",
+                    r: "R Language",
                   }[scape.environment] || scape.environment
 
                 return (
@@ -261,6 +262,7 @@ export default function Dashboard() {
                     python: "Python",
                     flowscape: "FlowScape",
                     node: "Node",
+                    r: "R Language",
                   }[scape.environment] || scape.environment
 
                 const hasThumbnail = scape.thumbnail && scape.thumbnail.length > 100
