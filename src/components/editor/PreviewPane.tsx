@@ -8,6 +8,7 @@ import type { EnvironmentId } from "@/types/environment"
 import { PythonRunner } from "@/runners/python/PythonRunner"
 import { WebRunner } from "@/runners/web/WebRunner"
 import { FlowRunner } from "@/runners/flow/FlowRunner"
+import { RRunner } from "@/runners/r/RRunner"
 import type { LogEntry } from "@/types/log"
 import type { ScapeRunnerHandle } from "@/runners/types"
 
@@ -130,6 +131,7 @@ export const PreviewPane = memo(
 
     if (config?.runner === "python-runner") RunnerComponent = PythonRunner
     if (config?.runner === "flow-runner") RunnerComponent = FlowRunner
+    if (config?.runner === "r-runner") RunnerComponent = RRunner
 
     return (
       <RunnerComponent

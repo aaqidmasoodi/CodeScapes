@@ -325,7 +325,7 @@ export default function ScapeEditor() {
             window.addEventListener("message", handler)
           })
 
-          const thumb = await previewRef.current.captureThumbnail()
+          const thumb = await previewRef.current?.captureThumbnail?.()
           if (thumb) {
             await updateScape({ thumbnail: thumb })
             lastCaptureRef.current = Date.now()

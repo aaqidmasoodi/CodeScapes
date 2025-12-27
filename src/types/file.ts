@@ -10,6 +10,7 @@ export type FileType =
   | "binary"
   | "csv"
   | "plaintext"
+  | "r"
 
 export interface ScapeFile {
   id?: string // Changed from number to string (UUID)

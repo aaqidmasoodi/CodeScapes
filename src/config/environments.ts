@@ -442,4 +442,49 @@ df`,
       },
     ],
   },
+  r: {
+    id: "r",
+    name: "R Language",
+    description: "Statistical computing and graphics",
+    icon: Terminal,
+    entryPoint: "main.R",
+    allowedExtensions: [".R", ".txt", ".csv", ".json"],
+    defaultLayout: "terminal",
+    runner: "r-runner",
+    capabilities: {
+      packages: true,
+      terminal: true,
+    },
+    templates: [
+      {
+        id: "blank",
+        name: "Empty Project",
+        description: "A blank R script",
+        files: [
+          {
+            name: "main.R",
+            language: "r",
+            content: `print("Hello from R!")`,
+          },
+        ],
+      },
+      {
+        id: "plotting",
+        name: "Base Plotting",
+        description: "Standard R graphics",
+        files: [
+          {
+            name: "main.R",
+            language: "r",
+            content: `x <- seq(0, 2*pi, length.out=100)
+y <- sin(x)
+
+plot(x, y, type="l", col="blue", main="Sine Wave", lwd=2)
+grid()
+`,
+          },
+        ],
+      },
+    ],
+  },
 }
