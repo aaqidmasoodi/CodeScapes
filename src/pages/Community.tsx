@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 
+import { optimizeSupabaseImage } from "@/lib/utils"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import { type Scape } from "@/lib/db"
 
@@ -207,7 +208,7 @@ export default function CommunityPage() {
                     <div className="relative aspect-video bg-muted">
                       {scape.thumbnail ? (
                         <img
-                          src={scape.thumbnail}
+                          src={optimizeSupabaseImage(scape.thumbnail, 600)}
                           alt={scape.name}
                           className="h-full w-full object-cover"
                         />
@@ -238,7 +239,7 @@ export default function CommunityPage() {
                       <div className="flex items-center gap-1.5 overflow-hidden">
                         {scape.author?.avatar ? (
                           <img
-                            src={scape.author.avatar}
+                            src={optimizeSupabaseImage(scape.author.avatar, 64, 64)}
                             alt="Author"
                             className="h-3.5 w-3.5 rounded-full"
                           />

@@ -432,7 +432,19 @@ export class CloudRepository implements IScapeRepository {
       .from("scapes")
       .select(
         `
-        *,
+        id,
+        name,
+        environment,
+        template,
+        thumbnail,
+        description,
+        parent_id,
+        author_id,
+        created_at,
+        updated_at,
+        is_public,
+        published_version_id,
+        dependencies,
         profiles (
           full_name,
           username,
