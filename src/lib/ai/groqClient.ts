@@ -85,13 +85,16 @@ export async function chatCompletion(
     )
   }
 
-  const { model = "llama-3.3-70b-versatile", maxTokens = 4096, temperature = 0.3 } = options || {}
+  const { model = "llama-3.3-70b-versatile", maxTokens, temperature = 0.3 } = options || {}
 
   const body: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: maxTokens,
     temperature,
+  }
+
+  if (maxTokens) {
+    body.max_tokens = maxTokens
   }
 
   if (tools && tools.length > 0) {
@@ -124,6 +127,7 @@ export async function chatCompletion(
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
+        console.error("[Groq API Error]", response.status, errorData) // Log actual error
 
         // Check if rate limited or generation failed (e.g. invalid tool call hallucination)
         if (
