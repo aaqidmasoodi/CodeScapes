@@ -315,17 +315,18 @@ async function executeToolCall(
   onProgress: (progress: ScapperProgress) => void
 ): Promise<ToolResult> {
   const toolName = toolCall.function.name
-  const args = parseToolArguments<Record<string, string>>(toolCall)
+  const args = parseToolArguments<Record<string, string>>(toolCall) || {}
 
   // Show progress based on tool
+  const safePath = args.path || "file"
   const progressMessages: Record<string, string> = {
     list_files: "Reading project structure...",
-    read_file: `Reading ${args.path}...`,
-    create_file: `Creating ${args.path}...`,
-    overwrite_file: `Overwriting ${args.path}...`,
-    edit_file: `Editing ${args.path}...`,
-    delete_file: `Deleting ${args.path}...`,
-    search_files: `Searching for "${args.query}"...`,
+    read_file: `Reading ${safePath}...`,
+    create_file: `Creating ${safePath}...`,
+    overwrite_file: `Overwriting ${safePath}...`,
+    edit_file: `Editing ${safePath}...`,
+    delete_file: `Deleting ${safePath}...`,
+    search_files: `Searching for "${args.query || "query"}"...`,
   }
 
   onProgress({ type: "tool", message: progressMessages[toolName] || `Running ${toolName}...` })
