@@ -253,7 +253,7 @@ export default function Dashboard() {
             </div>
           ) : (
             /* Grid View - Masonry */
-            <div className="columns-1 gap-4 space-y-4 md:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5">
+            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {filteredScapes.map((scape) => {
                 // Determine Environment Label
                 const envLabel =
@@ -277,7 +277,7 @@ export default function Dashboard() {
                 return (
                   <Card
                     key={scape.id}
-                    className="group relative mb-4 flex cursor-pointer break-inside-avoid flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
+                    className="group relative flex cursor-pointer flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
                     onClick={() =>
                       navigate(`/scape/${scape.id}`, { state: { from: location.pathname } })
                     }
@@ -335,7 +335,7 @@ export default function Dashboard() {
                       </div>
                     </CardHeader>
 
-                    <CardContent className="relative flex-1 px-5 pb-4">
+                    <CardContent className="relative px-5 pb-4">
                       <div className="mt-2 flex flex-wrap gap-2">
                         <span className="inline-flex items-center rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground ring-1 ring-inset ring-gray-500/10">
                           {envLabel}
