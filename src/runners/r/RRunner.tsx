@@ -13,7 +13,7 @@ import { Loader2, Box, MonitorPlay } from "lucide-react"
 import Worker from "./worker.ts?worker"
 
 export const RRunner = memo(
-  forwardRef<ScapeRunnerHandle, ScapeRunnerProps>(({ files, onOutput }, ref) => {
+  forwardRef<ScapeRunnerHandle, ScapeRunnerProps>(({ files, onOutput, dependencies = [] }, ref) => {
     const workerRef = useRef<Worker | null>(null)
     const containerRef = useRef<HTMLDivElement>(null)
     const [isBusy, setIsBusy] = useState(false)
@@ -48,8 +48,9 @@ export const RRunner = memo(
         const { type, payload } = e.data
 
         if (type === "STATUS") {
-          log("system", payload)
-          console.log("[R Worker]", payload)
+          // User requested silence for system logs
+          // log("system", payload)
+          console.log("[R Worker Status]", payload)
         } else if (type === "OUTPUT") {
           log("stdout", payload)
         } else if (type === "ERROR") {
@@ -68,7 +69,7 @@ export const RRunner = memo(
         setIsBusy(false)
       }
 
-      worker.postMessage({ type: "INIT", payload: {} })
+      worker.postMessage({ type: "INIT", payload: { dependencies } })
 
       return () => {
         worker.terminate()
@@ -139,7 +140,31 @@ export const RRunner = memo(
       restart: async () => {
         runR()
       },
-      installPackage: async () => ({ success: false, error: "Not implemented" }),
+      installPackage: async (pkg: string) => {
+        if (!workerRef.current) return { success: false, error: "Worker not ready" }
+
+        setIsBusy(true)
+
+        return new Promise((resolve) => {
+          const handler = (e: MessageEvent) => {
+            const { type, payload } = e.data
+            if (type === "INSTALL_COMPLETE") {
+              workerRef.current?.removeEventListener("message", handler)
+              setIsBusy(false)
+              if (payload.success) {
+                resolve({ success: true })
+              } else {
+                resolve({ success: false, error: payload.error })
+              }
+            }
+          }
+          workerRef.current?.addEventListener("message", handler)
+          workerRef.current?.postMessage({
+            type: "INSTALL",
+            payload: { pkg },
+          })
+        })
+      },
       runFile: async () => {},
       provideInput: async () => {},
     }))

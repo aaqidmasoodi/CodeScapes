@@ -26,7 +26,7 @@ const loadWebR = async (): Promise<any> => {
 
   loadPromise = (async () => {
     console.log("[R Worker] Starting init...")
-    postMessage({ type: "STATUS", payload: "Loading WebR..." })
+    // postMessage({ type: "STATUS", payload: "Loading WebR..." })
 
     try {
       console.log("[R Worker] Importing WebR from CDN...")
@@ -40,7 +40,7 @@ const loadWebR = async (): Promise<any> => {
       })
       await webr!.init()
 
-      postMessage({ type: "STATUS", payload: "Ready (Automatic)" })
+      // postMessage({ type: "STATUS", payload: "Ready (Automatic)" })
       return webr!
     } catch (e) {
       console.warn("[R Worker] WebR init failed (Automatic), retrying with PostMessage...", e)
@@ -54,7 +54,7 @@ const loadWebR = async (): Promise<any> => {
           channelType: ChannelType.PostMessage,
         })
         await webr!.init()
-        postMessage({ type: "STATUS", payload: "Ready (PostMessage)" })
+        // postMessage({ type: "STATUS", payload: "Ready (PostMessage)" })
         return webr!
       } catch (error: any) {
         console.error("[R Worker] Fatal Error", error)
@@ -76,7 +76,24 @@ self.onmessage = async (e: MessageEvent) => {
   if (type === "INIT") {
     const runInit = async () => {
       try {
-        await loadWebR()
+        const r = await loadWebR()
+
+        // Auto-install dependencies from scape
+        const deps = payload.dependencies || []
+        if (deps.length > 0) {
+          console.log("[R Worker] Auto-installing dependencies:", deps)
+          for (const pkg of deps) {
+            try {
+              console.log(`[R Worker] Installing ${pkg}...`)
+              await r.installPackages([pkg])
+              console.log(`[R Worker] ${pkg} installed`)
+            } catch (e: any) {
+              console.warn(`[R Worker] Failed to install ${pkg}:`, e.message)
+            }
+          }
+          console.log("[R Worker] Dependencies installed")
+        }
+
         postMessage({ type: "DidRun" })
       } catch {
         // Error already reported via postMessage
@@ -84,6 +101,22 @@ self.onmessage = async (e: MessageEvent) => {
     }
     readyPromise = readyPromise.then(runInit)
     await readyPromise
+  }
+  if (type === "INSTALL") {
+    try {
+      console.log("[R Worker] Installing package:", payload.pkg)
+      await readyPromise
+      const r = await loadWebR()
+      await r.installPackages([payload.pkg])
+      console.log("[R Worker] Installation complete")
+      postMessage({ type: "INSTALL_COMPLETE", payload: { success: true } })
+    } catch (e: any) {
+      console.error("[R Worker] Install failed:", e)
+      postMessage({
+        type: "INSTALL_COMPLETE",
+        payload: { success: false, error: e.message },
+      })
+    }
   }
 
   if (type === "RUN") {
@@ -147,24 +180,50 @@ self.onmessage = async (e: MessageEvent) => {
       }
 
       // 3. Run Entry Point
-      postMessage({ type: "STATUS", payload: `Running ${entryPoint}...` })
+      // postMessage({ type: "STATUS", payload: `Running ${entryPoint}...` })
       const mainFile = files.find((f: any) => f.name === entryPoint)
       if (!mainFile) throw new Error(`Entry point ${entryPoint} not found`)
 
       // Simple eval with SVG plot capture wrapper
       const shelter = await new r.Shelter()
       try {
-        // Wrap execution with SVG device setup (more portable than PNG in WebR)
+        // Wrap execution with SVG device setup
+        // Key fix: Capture the LAST expression and print it if it's a ggplot
         const wrappedCode = `
-                    # Setup SVG device to capture plots
-                    svg("__plot_%d.svg", width = 8, height = 6)
-                    tryCatch({
-                        ${mainFile.content}
-                    }, finally = {
-                        # Close all graphics devices
-                        graphics.off()
-                    })
-                `
+          # Clean slate: Remove all user-defined variables from global environment
+          rm(list = ls(all.names = TRUE, envir = .GlobalEnv), envir = .GlobalEnv)
+          
+          # Close any open graphics devices from previous runs
+          graphics.off()
+          
+          # Setup SVG device to capture plots
+          svg("__plot_%d.svg", width = 8, height = 6)
+          
+          # Use tryCatch for safety
+          .codescape_result <- tryCatch({
+            # User code - capture last expression
+            ${mainFile.content}
+          }, error = function(e) {
+            cat("Error:", conditionMessage(e), "\\n", file = stderr())
+            NULL
+          }, warning = function(w) {
+            cat("Warning:", conditionMessage(w), "\\n", file = stderr())
+            invokeRestart("muffleWarning")
+          })
+          
+          # If the result is a ggplot, explicitly print it to render
+          if (!is.null(.codescape_result)) {
+            if (inherits(.codescape_result, "ggplot") || 
+                inherits(.codescape_result, "gg") ||
+                inherits(.codescape_result, "grob") ||
+                inherits(.codescape_result, "gtable")) {
+              print(.codescape_result)
+            }
+          }
+          
+          # Close all graphics devices  
+          graphics.off()
+        `
 
         const result = await shelter.captureR(wrappedCode, {
           withAutoprint: true,
@@ -176,7 +235,22 @@ self.onmessage = async (e: MessageEvent) => {
         result.output.forEach((line: any) => {
           if (line.type === "stdout") postMessage({ type: "OUTPUT", payload: line.data + "\n" })
           if (line.type === "stderr") postMessage({ type: "ERROR", payload: line.data + "\n" })
+          if (line.type === "message") postMessage({ type: "ERROR", payload: line.data + "\n" })
         })
+
+        // Also capture conditions (warnings, messages, errors)
+        if (result.conditions && Array.isArray(result.conditions)) {
+          result.conditions.forEach((cond: any) => {
+            const condMsg = cond.message || cond.data || String(cond)
+            if (cond.type === "error") {
+              postMessage({ type: "ERROR", payload: `Error: ${condMsg}\n` })
+            } else if (cond.type === "warning") {
+              postMessage({ type: "ERROR", payload: `Warning: ${condMsg}\n` })
+            } else if (cond.type === "message") {
+              postMessage({ type: "OUTPUT", payload: condMsg })
+            }
+          })
+        }
       } finally {
         await shelter.purge()
 

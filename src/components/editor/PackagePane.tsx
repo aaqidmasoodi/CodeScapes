@@ -1,12 +1,35 @@
-import { Package, Trash2, Box } from "lucide-react"
+import { Package, Trash2, Box, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { useState } from "react"
 
 interface PackagePaneProps {
   dependencies: string[]
   onDeletePackage: (pkg: string) => void
+  onInstallPackage?: (pkg: string) => void
+  language?: string
 }
 
-export function PackagePane({ dependencies, onDeletePackage }: PackagePaneProps) {
+export function PackagePane({
+  dependencies,
+  onDeletePackage,
+  onInstallPackage,
+  language,
+}: PackagePaneProps) {
+  const [newPackage, setNewPackage] = useState("")
+  const [isInstalling, setIsInstalling] = useState(false)
+
+  const handleInstall = async () => {
+    if (!newPackage.trim() || !onInstallPackage) return
+    setIsInstalling(true)
+    try {
+      await onInstallPackage(newPackage)
+      setNewPackage("")
+    } finally {
+      setIsInstalling(false)
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-3 text-sm font-semibold text-muted-foreground">
@@ -18,14 +41,41 @@ export function PackagePane({ dependencies, onDeletePackage }: PackagePaneProps)
       </div>
 
       <div className="flex-1 overflow-auto p-2">
+        {language === "r" && (
+          <div className="mb-4 border-b px-2 pb-4 pt-2">
+            <div className="flex gap-2">
+              <Input
+                value={newPackage}
+                onChange={(e) => setNewPackage(e.target.value)}
+                placeholder="Package name..."
+                className="h-8 text-xs"
+                onKeyDown={(e) => e.key === "Enter" && handleInstall()}
+              />
+              <Button
+                size="sm"
+                onClick={handleInstall}
+                disabled={isInstalling || !newPackage}
+                className="h-8 px-3 text-xs"
+              >
+                {isInstalling ? <Loader2 className="h-3 w-3 animate-spin" /> : "Install"}
+              </Button>
+            </div>
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              Installs binary from r-wasm (CRAN mirror).
+            </p>
+          </div>
+        )}
+
         {dependencies.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 pt-10 text-center text-xs text-muted-foreground">
             <Package className="h-8 w-8 opacity-20" />
             <p>No packages install yet.</p>
-            <p className="mt-2 px-4 opacity-75">
-              Use <code className="rounded bg-muted px-1 py-0.5">pip install &lt;name&gt;</code> in
-              the terminal to add packages.
-            </p>
+            {language !== "r" && (
+              <p className="mt-2 px-4 opacity-75">
+                Use <code className="rounded bg-muted px-1 py-0.5">pip install &lt;name&gt;</code>{" "}
+                in the terminal to add packages.
+              </p>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-1">
