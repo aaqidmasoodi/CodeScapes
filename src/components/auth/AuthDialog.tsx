@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,11 +22,18 @@ export function AuthDialog({
   open?: boolean
   onOpenChange?: (open: boolean) => void
 }) {
-  const { signInWithGithub, signInWithGoogle, signInWithEmail, signUpWithEmail, loading } =
+  const { signInWithGithub, signInWithGoogle, signInWithEmail, signUpWithEmail, loading, user } =
     useAuth()
   const [isGithubLoading, setIsGithubLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const [isEmailLoading, setIsEmailLoading] = useState(false)
+
+  // Auto-close on auth
+  useEffect(() => {
+    if (user && open && onOpenChange) {
+      onOpenChange(false)
+    }
+  }, [user, open, onOpenChange])
 
   // Email Auth State
   const [email, setEmail] = useState("")

@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,11 +15,18 @@ import {
 import { Github, Loader2, Mail } from "lucide-react"
 
 export default function AuthPage() {
-  const { signInWithGithub, signInWithGoogle, signInWithEmail, signUpWithEmail, loading } =
+  const navigate = useNavigate()
+  const { signInWithGithub, signInWithGoogle, signInWithEmail, signUpWithEmail, loading, user } =
     useAuth()
   const [isGithubLoading, setIsGithubLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const [isEmailLoading, setIsEmailLoading] = useState(false)
+
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard")
+    }
+  }, [user, navigate])
 
   // Email Auth State
   const [email, setEmail] = useState("")
