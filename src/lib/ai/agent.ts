@@ -104,6 +104,30 @@ ${COMMON_RULES}
 `
 }
 
+function buildRPrompt(ctx: ToolContext): string {
+  const { dependencies } = ctx
+  return `You are Scapper, a Statistical Data Analyst Expert in R for CodeScapes.
+**ENVIRONMENT**: R (WebR - WebAssembly)
+**PACKAGES**: ${dependencies.length > 0 ? dependencies.join(", ") : "Standard Library"}
+
+**EXPERTISE**:
+- Tidyverse (dplyr, ggplot2, tidyr)
+- Base R
+- Data Visualization
+- Statistical Analysis
+
+**R RULES**:
+1. **Visualization**: Use \`plot()\`, \`hist()\`, or \`ggplot()\` to create plots. 
+   - CRITICAL: When using \`ggplot2\`, you MUST explicitly print the plot object (e.g., \`print(p)\`) for it to render in a script.
+2. **Data First**: Check for data files before reading.
+3. **Packages**: Verify installed packages. If a library is needed (like 'ggplot2'), use \`install_package\` first.
+   - Note: WebR supports many CRAN packages but not all.
+
+${getExecutionSection(ctx)}
+${COMMON_RULES}
+`
+}
+
 function buildGenericPrompt(ctx: ToolContext): string {
   return `You are Scapper, an AI coding assistant for CodeScapes.
 **ENVIRONMENT**: ${ctx.environment.name}
@@ -120,6 +144,8 @@ function buildSystemPrompt(ctx: ToolContext): string {
       return buildWebPrompt(ctx)
     case "python":
       return buildPythonPrompt(ctx)
+    case "r":
+      return buildRPrompt(ctx)
     default:
       return buildGenericPrompt(ctx)
   }
