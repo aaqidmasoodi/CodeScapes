@@ -12,6 +12,7 @@ import { PreviewPane, type PreviewPaneHandle } from "@/components/editor/Preview
 import { PackagePane } from "@/components/editor/PackagePane"
 import { TerminalPane, type TerminalTab } from "@/components/editor/TerminalPane"
 import { SearchPane } from "@/components/editor/SearchPane"
+import { useToast } from "@/components/ui/use-toast"
 
 import { EditorActivityBar } from "@/components/layout/EditorActivityBar"
 import { SecretsPanel } from "@/components/secrets/SecretsPanel"
@@ -139,6 +140,15 @@ export default function ScapeEditor() {
 
   // Optimistic UI for Dependencies
   const [optimisticDependencies, setOptimisticDependencies] = useState<string[] | null>(null)
+  const [installedRPackages, setInstalledRPackages] = useState<string[]>([])
+  const { toast } = useToast()
+
+  // Sync installedRPackages with scape.dependencies for R environments on load
+  useEffect(() => {
+    if (scape?.environment === "r" && scape?.dependencies) {
+      setInstalledRPackages(scape.dependencies)
+    }
+  }, [scape?.environment, scape?.dependencies])
 
   const [debouncedFiles, setDebouncedFiles] = useState<ScapeFile[]>([])
   const [initialPreviewSynced, setInitialPreviewSynced] = useState(false)
@@ -372,6 +382,60 @@ export default function ScapeEditor() {
     }
   }, [setIsTerminalOpen, setTerminalTab])
 
+  const handleInstallPackage = useCallback(
+    async (pkg: string, language?: string) => {
+      // Only R supports our custom install flow for now
+      if (language !== "r" && language !== "python") return
+
+      // For Python, we just show the help text (handled by component), but if we ever support pip...
+      if (language === "python") {
+        return
+      }
+
+      if (!previewRef.current?.installPackage) {
+        toast({
+          title: "Error",
+          description: "Package installation not supported in this environment",
+          variant: "destructive",
+        })
+        return
+      }
+
+      toast({ title: "Installing...", description: `Installing ${pkg}, this may take a moment.` })
+      try {
+        const result = await previewRef.current.installPackage(pkg)
+        if (!result.success) {
+          toast({
+            title: "Install Failed",
+            description: result.error || "Failed to install package",
+            variant: "destructive",
+          })
+        } else {
+          toast({ title: "Success", description: `Package ${pkg} installed successfully` })
+
+          // Update local state
+          setInstalledRPackages((prev) => [...prev, pkg])
+
+          // Persist to scape.dependencies (like Python)
+          const currentDeps = scape?.dependencies || []
+          if (!currentDeps.includes(pkg)) {
+            const newDeps = [...currentDeps, pkg]
+            setOptimisticDependencies(newDeps)
+            await updateScape({ dependencies: newDeps })
+          }
+        }
+      } catch (err) {
+        console.error("Install failed", err)
+        toast({
+          title: "Install Failed",
+          description: "An unexpected error occurred",
+          variant: "destructive",
+        })
+      }
+    },
+    [toast, scape?.dependencies, updateScape]
+  )
+
   const handleRun = useCallback(() => {
     if (!isRunning) setIsRunning(true)
     handleManualRefresh()
@@ -559,9 +623,25 @@ export default function ScapeEditor() {
 
   const handleDeletePackage = useCallback(
     async (pkg: string) => {
+      // For R, remove from local state AND scape.dependencies
+      if (scape?.environment === "r") {
+        setInstalledRPackages((prev) => prev.filter((p) => p !== pkg))
+
+        // Also remove from scape.dependencies for persistence
+        const currentDeps = scape?.dependencies || []
+        if (currentDeps.includes(pkg)) {
+          const newDeps = currentDeps.filter((d) => d !== pkg)
+          setOptimisticDependencies(newDeps)
+          await updateScape({ dependencies: newDeps })
+        }
+
+        toast({ title: "Removed", description: `${pkg} removed` })
+        return
+      }
+      // For Python, use pip uninstall
       await handleExecCommand("pip-uninstall", pkg)
     },
-    [handleExecCommand]
+    [handleExecCommand, scape?.environment, scape?.dependencies, toast, updateScape]
   )
 
   const handleInputRequest = useCallback(
@@ -1189,8 +1269,14 @@ export default function ScapeEditor() {
                   scape &&
                   ENVIRONMENTS[scape.environment]?.capabilities.packages && (
                     <PackagePane
-                      dependencies={optimisticDependencies ?? (scape?.dependencies || [])}
+                      dependencies={
+                        scape?.environment === "r"
+                          ? installedRPackages
+                          : (optimisticDependencies ?? (scape?.dependencies || []))
+                      }
                       onDeletePackage={handleDeletePackage}
+                      onInstallPackage={(pkg) => handleInstallPackage(pkg, scape?.environment)}
+                      language={scape?.environment}
                     />
                   )}
                 {activeTool === "secrets" && (
