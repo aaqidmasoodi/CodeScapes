@@ -85,7 +85,7 @@ export async function chatCompletion(
     )
   }
 
-  const { model = "llama-3.3-70b-versatile", maxTokens = 8192, temperature = 0.3 } = options || {}
+  const { model = "llama-3.3-70b-versatile", maxTokens = 4096, temperature = 0.3 } = options || {}
 
   const body: Record<string, unknown> = {
     model,
