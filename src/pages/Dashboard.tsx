@@ -13,6 +13,8 @@ import {
   Cloud,
 } from "lucide-react"
 
+import { useMediaQuery } from "@/hooks/useMediaQuery"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -62,6 +64,14 @@ export default function Dashboard() {
 
   const activeTabValidated = ["local", "cloud"].includes(activeTab) ? activeTab : "local"
 
+  // Responsive column count for Masonry
+  const is2xl = useMediaQuery("(min-width: 1536px)")
+  const isXl = useMediaQuery("(min-width: 1280px)")
+  const isLg = useMediaQuery("(min-width: 1024px)")
+  const isMd = useMediaQuery("(min-width: 768px)")
+
+  const numColumns = is2xl ? 5 : isXl ? 4 : isLg ? 3 : isMd ? 2 : 1
+
   // Redirect if trying to access cloud without auth
   if (activeTabValidated === "cloud" && !user) {
     navigate("/dashboard/local", { replace: true })
@@ -79,6 +89,14 @@ export default function Dashboard() {
 
     return true
   })
+
+  // Distribute scapes into columns (Masonry Grid)
+  const columns = Array.from({ length: numColumns }, () => [] as Scape[])
+  if (filteredScapes) {
+    filteredScapes.forEach((scape, index) => {
+      columns[index % numColumns].push(scape)
+    })
+  }
 
   const handleDeleteClick = (e: React.MouseEvent, scape: Scape) => {
     e.stopPropagation()
@@ -190,7 +208,7 @@ export default function Dashboard() {
                     flowscape: "FlowScape",
                     node: "Node",
                     r: "R Language",
-                  }[scape.environment] || scape.environment
+                  }[scape.environment as string] || scape.environment
 
                 return (
                   <div
@@ -252,103 +270,107 @@ export default function Dashboard() {
               })}
             </div>
           ) : (
-            /* Grid View - Masonry */
-            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {filteredScapes.map((scape) => {
-                // Determine Environment Label
-                const envLabel =
-                  {
-                    web: "Web",
-                    python: "Python",
-                    flowscape: "FlowScape",
-                    node: "Node",
-                    r: "R Language",
-                  }[scape.environment] || scape.environment
+            /* Masonry Grid View */
+            <div className="flex items-start gap-4">
+              {columns.map((col, colIndex) => (
+                <div key={colIndex} className="flex flex-1 flex-col gap-4">
+                  {col.map((scape) => {
+                    // Determine Environment Label
+                    const envLabel =
+                      {
+                        web: "Web",
+                        python: "Python",
+                        flowscape: "FlowScape",
+                        node: "Node",
+                        r: "R Language",
+                      }[scape.environment as string] || scape.environment
 
-                const hasThumbnail = scape.thumbnail && scape.thumbnail.length > 100
+                    const hasThumbnail = scape.thumbnail && scape.thumbnail.length > 100
 
-                // Normalize thumbnail - ensure it has data: prefix
-                const thumbnailSrc = hasThumbnail
-                  ? scape.thumbnail?.startsWith("data:")
-                    ? scape.thumbnail
-                    : `data:image/jpeg;base64,${scape.thumbnail}`
-                  : null
+                    // Normalize thumbnail - ensure it has data: prefix
+                    const thumbnailSrc = hasThumbnail
+                      ? scape.thumbnail?.startsWith("data:")
+                        ? scape.thumbnail
+                        : `data:image/jpeg;base64,${scape.thumbnail}`
+                      : null
 
-                return (
-                  <Card
-                    key={scape.id}
-                    className="group relative flex cursor-pointer flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
-                    onClick={() =>
-                      navigate(`/scape/${scape.id}`, { state: { from: location.pathname } })
-                    }
-                  >
-                    {/* Thumbnail (only if valid) */}
-                    {thumbnailSrc && (
-                      <div className="max-h-48 w-full overflow-hidden border-b bg-muted/20">
-                        <img
-                          src={thumbnailSrc}
-                          alt="Scape Preview"
-                          className="h-full w-full transform-gpu object-cover object-center transition-transform duration-300 will-change-transform group-hover:scale-[1.02]"
-                        />
-                      </div>
-                    )}
+                    return (
+                      <Card
+                        key={scape.id}
+                        className="group relative flex cursor-pointer flex-col overflow-hidden border-muted transition-all hover:border-primary/50 hover:shadow-lg"
+                        onClick={() =>
+                          navigate(`/scape/${scape.id}`, { state: { from: location.pathname } })
+                        }
+                      >
+                        {/* Thumbnail (only if valid) */}
+                        {thumbnailSrc && (
+                          <div className="max-h-48 w-full overflow-hidden border-b bg-muted/20">
+                            <img
+                              src={thumbnailSrc}
+                              alt="Scape Preview"
+                              className="h-full w-full transform-gpu object-cover object-center transition-transform duration-300 will-change-transform group-hover:scale-[1.02]"
+                            />
+                          </div>
+                        )}
 
-                    <CardHeader className="px-4 pb-2 pt-4">
-                      <div className="flex items-start justify-between">
-                        <div className="space-y-1">
-                          <CardTitle className="line-clamp-1 text-lg leading-tight transition-colors group-hover:text-primary">
-                            {scape.name}
-                          </CardTitle>
-                          <CardDescription className="flex items-center gap-2">
-                            {scape.source === "cloud" ? (
-                              <span title="Cloud Scape">
-                                <Cloud className="h-4 w-4 text-blue-500" />
-                              </span>
-                            ) : (
-                              <span title="Local File">
-                                <Database className="h-4 w-4 text-muted-foreground" />
-                              </span>
-                            )}
-                          </CardDescription>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="-mr-2 h-8 w-8 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
-                              onClick={(e) => handleDeleteClick(e, scape)}
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </CardHeader>
+                        <CardHeader className="px-4 pb-2 pt-4">
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-1">
+                              <CardTitle className="line-clamp-1 text-lg leading-tight transition-colors group-hover:text-primary">
+                                {scape.name}
+                              </CardTitle>
+                              <CardDescription className="flex items-center gap-2">
+                                {scape.source === "cloud" ? (
+                                  <span title="Cloud Scape">
+                                    <Cloud className="h-4 w-4 text-blue-500" />
+                                  </span>
+                                ) : (
+                                  <span title="Local File">
+                                    <Database className="h-4 w-4 text-muted-foreground" />
+                                  </span>
+                                )}
+                              </CardDescription>
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="-mr-2 h-8 w-8 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
+                                  onClick={(e) => handleDeleteClick(e, scape)}
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </CardHeader>
 
-                    <CardContent className="relative px-5 pb-4">
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <span className="inline-flex items-center rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground ring-1 ring-inset ring-gray-500/10">
-                          {envLabel}
-                        </span>
-                        <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {new Date(scape.updatedAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
+                        <CardContent className="relative px-5 pb-4">
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <span className="inline-flex items-center rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground ring-1 ring-inset ring-gray-500/10">
+                              {envLabel}
+                            </span>
+                            <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {new Date(scape.updatedAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
