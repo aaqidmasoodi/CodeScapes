@@ -10,6 +10,7 @@ import {
 import { MonitorPlay, PanelRightClose, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { CodeScapeLogo } from "@/components/brand/Logo"
 import type { ScapeFile } from "@/types/file"
 import type { ScapeRunnerHandle } from "@/runners/types"
 import type { LogEntry } from "@/types/log"
@@ -150,6 +151,24 @@ export const WebRunner = memo(
         [onOutput]
       )
 
+      // --- BROWSER DETECTION (Safari/iOS) ---
+      // --- BROWSER DETECTION (Safari/iOS) ---
+      const [isUnsupported] = useState(() => {
+        if (typeof window === "undefined") return false
+
+        const ua = navigator.userAgent
+
+        // 1. Detect iOS
+        const isIOS =
+          /iPad|iPhone|iPod/.test(ua) ||
+          (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+
+        // 2. Detect Desktop Safari
+        const isDesktopSafari = /Safari/.test(ua) && !/Chrome/.test(ua) && !/Chromium/.test(ua)
+
+        return isIOS || isDesktopSafari
+      })
+
       // --- EARLY RETURN: Wait for stable payload ---
       // This is critical: usePreviewBridge should NOT be called until payload is ready.
       // But hooks must be called unconditionally. So we call it, but with empty files.
@@ -211,6 +230,49 @@ export const WebRunner = memo(
           error: "Not supported in Web environment",
         }),
       }))
+
+      if (isUnsupported) {
+        return (
+          <div className="flex h-full flex-col border-l border-border bg-background dark:border-zinc-800">
+            <div className="flex h-10 items-center justify-between border-b border-border bg-muted/20 px-2 dark:border-zinc-800">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <MonitorPlay className="h-3.5 w-3.5" />
+                <span>Preview (Web)</span>
+              </div>
+              {onCollapse && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                  onClick={onCollapse}
+                  title="Collapse Preview"
+                >
+                  <PanelRightClose className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+              <div className="mb-6">
+                <CodeScapeLogo size={64} />
+              </div>
+
+              <h3 className="mb-2 text-lg font-semibold text-foreground">Browser Not Supported</h3>
+
+              <p className="max-w-[280px] text-sm text-muted-foreground">
+                Web Previews are currently optimized for Desktop Chrome. Please try a supported
+                browser.
+              </p>
+
+              <div className="mt-8 rounded-lg border border-border bg-muted/30 px-4 py-3">
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Note:</span> Python Scapes run
+                  natively and are fully supported on this device.
+                </p>
+              </div>
+            </div>
+          </div>
+        )
+      }
 
       // --- EARLY RETURN: Wait for stable payload ---
       // Critical: Do NOT render the iframe until payload is ready.

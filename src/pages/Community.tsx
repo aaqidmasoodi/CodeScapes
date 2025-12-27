@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 
+import { optimizeSupabaseImage } from "@/lib/utils"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import { type Scape } from "@/lib/db"
 
@@ -24,6 +25,26 @@ export default function CommunityPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [filter, setFilter] = useState<"all" | "web" | "python" | "flow">("all")
 
+  // Browser Detection
+  const [isRestrictedBrowser, setIsRestrictedBrowser] = useState(false)
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined") {
+      const isIOS =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+      const isSafariRaw =
+        /Safari/.test(navigator.userAgent) &&
+        !/Chrome/.test(navigator.userAgent) &&
+        !/Chromium/.test(navigator.userAgent)
+
+      if (isIOS || isSafariRaw) {
+        setIsRestrictedBrowser(true)
+        setFilter("python")
+      }
+    }
+  }, [])
+
   useEffect(() => {
     async function load() {
       setLoading(true)
@@ -36,12 +57,19 @@ export default function CommunityPage() {
         setLoading(false)
       }
     }
+    // Dont reload if we are just setting the restricted filter initially to avoid double fetch if possible,
+    // but here simplicity is fine.
     load()
   }, [filter])
 
-  const filteredScapes = scapes.filter((s) =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredScapes = scapes.filter((s) => {
+    const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase())
+    // Hard filter for restricted browsers (Safari/iOS)
+    if (isRestrictedBrowser) {
+      return matchesSearch && s.environment === "python"
+    }
+    return matchesSearch
+  })
 
   const getIcon = (env: string) => {
     switch (env) {
@@ -133,19 +161,21 @@ export default function CommunityPage() {
                   />
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {["all", "web", "python"].map((f) => (
-                    <Button
-                      key={f}
-                      variant={filter === f ? "secondary" : "outline"}
-                      size="sm"
-                      onClick={() => setFilter(f as "all" | "web" | "python" | "flow")}
-                      className="capitalize"
-                    >
-                      {f}
-                    </Button>
-                  ))}
-                </div>
+                {!isRestrictedBrowser && (
+                  <div className="flex items-center gap-2">
+                    {["all", "web", "python"].map((f) => (
+                      <Button
+                        key={f}
+                        variant={filter === f ? "secondary" : "outline"}
+                        size="sm"
+                        onClick={() => setFilter(f as "all" | "web" | "python" | "flow")}
+                        className="capitalize"
+                      >
+                        {f}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -178,7 +208,7 @@ export default function CommunityPage() {
                     <div className="relative aspect-video bg-muted">
                       {scape.thumbnail ? (
                         <img
-                          src={scape.thumbnail}
+                          src={optimizeSupabaseImage(scape.thumbnail, 600)}
                           alt={scape.name}
                           className="h-full w-full object-cover"
                         />
@@ -209,7 +239,7 @@ export default function CommunityPage() {
                       <div className="flex items-center gap-1.5 overflow-hidden">
                         {scape.author?.avatar ? (
                           <img
-                            src={scape.author.avatar}
+                            src={optimizeSupabaseImage(scape.author.avatar, 64, 64)}
                             alt="Author"
                             className="h-3.5 w-3.5 rounded-full"
                           />
