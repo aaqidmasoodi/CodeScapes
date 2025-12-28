@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react"
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react"
 
 interface TurtleCanvasProps {
   width?: number
@@ -62,56 +62,63 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     const coordsRef = useRef<{ llx: number; lly: number; urx: number; ury: number } | null>(null)
     const fillPathRef = useRef<Map<number, Point[]>>(new Map())
 
-    // Transform Logic
-    const toCanvasX = useCallback(
-      (x: number) => {
-        if (coordsRef.current) {
-          const { llx, urx } = coordsRef.current
-          return ((x - llx) / (urx - llx)) * width
-        }
-        return width / 2 + x
-      },
-      [width]
-    )
+    // Logical canvas size (set by INIT/SETUP, never changes on pane resize)
+    // Using BOTH ref (for callbacks) and state (for render) to avoid stale closures
+    const logicalSizeRef = useRef<{ width: number; height: number }>({ width: 800, height: 600 })
+    const [logicalSize, setLogicalSize] = useState<{ width: number; height: number }>({
+      width: 800,
+      height: 600,
+    })
 
-    const toCanvasY = useCallback(
-      (y: number) => {
-        if (coordsRef.current) {
-          const { lly, ury } = coordsRef.current
-          return height - ((y - lly) / (ury - lly)) * height
-        }
-        return height / 2 - y
-      },
-      [height]
-    )
+    // Helper to update both ref and state
+    const updateLogicalSize = useCallback((newSize: { width: number; height: number }) => {
+      logicalSizeRef.current = newSize
+      setLogicalSize(newSize)
+    }, [])
+
+    // Transform Logic - uses ref for stable coordinates in callbacks
+    const toCanvasX = useCallback((x: number) => {
+      const lw = logicalSizeRef.current.width
+      if (coordsRef.current) {
+        const { llx, urx } = coordsRef.current
+        return ((x - llx) / (urx - llx)) * lw
+      }
+      return lw / 2 + x
+    }, [])
+
+    const toCanvasY = useCallback((y: number) => {
+      const lh = logicalSizeRef.current.height
+      if (coordsRef.current) {
+        const { lly, ury } = coordsRef.current
+        return lh - ((y - lly) / (ury - lly)) * lh
+      }
+      return lh / 2 - y
+    }, [])
 
     // Inverse Transform for Mouse Events
-    const toWorldX = useCallback(
-      (cx: number) => {
-        if (coordsRef.current) {
-          const { llx, urx } = coordsRef.current
-          return llx + (cx / width) * (urx - llx)
-        }
-        return cx - width / 2
-      },
-      [width]
-    )
+    const toWorldX = useCallback((cx: number) => {
+      const lw = logicalSizeRef.current.width
+      if (coordsRef.current) {
+        const { llx, urx } = coordsRef.current
+        return llx + (cx / lw) * (urx - llx)
+      }
+      return cx - lw / 2
+    }, [])
 
-    const toWorldY = useCallback(
-      (cy: number) => {
-        if (coordsRef.current) {
-          const { lly, ury } = coordsRef.current
-          return lly + ((height - cy) / height) * (ury - lly)
-        }
-        return height / 2 - cy
-      },
-      [height]
-    )
+    const toWorldY = useCallback((cy: number) => {
+      const lh = logicalSizeRef.current.height
+      if (coordsRef.current) {
+        const { lly, ury } = coordsRef.current
+        return lly + ((lh - cy) / lh) * (ury - lly)
+      }
+      return lh / 2 - cy
+    }, [])
 
     const getScaleX = useCallback(() => {
-      if (coordsRef.current) return width / (coordsRef.current.urx - coordsRef.current.llx)
+      const lw = logicalSizeRef.current.width
+      if (coordsRef.current) return lw / (coordsRef.current.urx - coordsRef.current.llx)
       return 1.0
-    }, [width])
+    }, [])
 
     useEffect(() => {
       if (canvasInstance && containerRef.current) {
@@ -126,23 +133,27 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         }
         canvasRef.current = canvasInstance
 
-        if (canvasInstance.getAttribute("width") !== String(width))
-          canvasInstance.setAttribute("width", String(width))
-        if (canvasInstance.getAttribute("height") !== String(height))
-          canvasInstance.setAttribute("height", String(height))
+        // Use logical size for canvas dimensions (fixed, never changes on pane resize)
+        const lw = logicalSize.width
+        const lh = logicalSize.height
+
+        if (canvasInstance.getAttribute("width") !== String(lw))
+          canvasInstance.setAttribute("width", String(lw))
+        if (canvasInstance.getAttribute("height") !== String(lh))
+          canvasInstance.setAttribute("height", String(lh))
 
         if (overlayRef.current) {
-          if (overlayRef.current.getAttribute("width") !== String(width))
-            overlayRef.current.setAttribute("width", String(width))
-          if (overlayRef.current.getAttribute("height") !== String(height))
-            overlayRef.current.setAttribute("height", String(height))
+          if (overlayRef.current.getAttribute("width") !== String(lw))
+            overlayRef.current.setAttribute("width", String(lw))
+          if (overlayRef.current.getAttribute("height") !== String(lh))
+            overlayRef.current.setAttribute("height", String(lh))
         }
 
         const ctx = canvasInstance.getContext("2d")
         if (ctx) {
           if (bgColorRef.current && bgColorRef.current !== "white") {
             ctx.fillStyle = bgColorRef.current
-            ctx.fillRect(0, 0, width, height)
+            ctx.fillRect(0, 0, lw, lh)
           }
         }
       }
@@ -205,11 +216,12 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     const redrawOverlay = useCallback(() => {
       const ctx = overlayRef.current?.getContext("2d")
       if (!ctx) return
-      ctx.clearRect(0, 0, width, height)
+      const { width: lw, height: lh } = logicalSizeRef.current
+      ctx.clearRect(0, 0, lw, lh)
 
       stampsRef.current.forEach((stamp) => drawShape(ctx, stamp))
       turtlesRef.current.forEach((turtle) => drawShape(ctx, turtle))
-    }, [width, height, drawShape])
+    }, [drawShape])
 
     const handleCommand = useCallback(
       (command: DrawCommand) => {
@@ -229,14 +241,16 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         switch (cmd) {
           case "INIT":
           case "INIT_SCREEN": {
+            const newW = (command.width as number) || 800
+            const newH = (command.height as number) || 600
+            // Store logical size for stable coordinate transforms
+            updateLogicalSize({ width: newW, height: newH })
             if (onResize) {
-              const newW = (command.width as number) || 800
-              const newH = (command.height as number) || 600
               if (newW !== width || newH !== height) onResize(newW, newH)
             }
             bgColorRef.current = (command.bgcolor as string) || "white"
             ctx.fillStyle = bgColorRef.current
-            ctx.fillRect(0, 0, width, height)
+            ctx.fillRect(0, 0, newW, newH)
             turtlesRef.current.clear()
             fillPathRef.current.clear()
             stampsRef.current.clear()
@@ -248,11 +262,13 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
           case "SETUP": {
             const w = command.width as number
             const h = command.height as number
+            // Store logical size for stable coordinate transforms
+            updateLogicalSize({ width: w, height: h })
             if (onResize && (w !== width || h !== height)) onResize(w, h)
             if (command.bgcolor) {
               bgColorRef.current = command.bgcolor as string
               ctx.fillStyle = bgColorRef.current
-              ctx.fillRect(0, 0, width, height)
+              ctx.fillRect(0, 0, w, h)
             }
             break
           }
@@ -534,18 +550,19 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       const canvas =
         canvasRef.current ||
         (containerRef.current?.querySelector("canvas:not(.absolute)") as HTMLCanvasElement)
+      const { width: lw, height: lh } = logicalSizeRef.current
       if (canvas) {
         const ctx = canvas.getContext("2d")
         if (ctx) {
           ctx.fillStyle = bgColorRef.current
-          ctx.fillRect(0, 0, width, height)
+          ctx.fillRect(0, 0, lw, lh)
         }
       }
       turtlesRef.current.clear()
       const overlayCtx = overlayRef.current?.getContext("2d")
-      overlayCtx?.clearRect(0, 0, width, height)
+      overlayCtx?.clearRect(0, 0, lw, lh)
       commandQueueRef.current = []
-    }, [width, height])
+    }, [])
 
     const processQueue = useCallback(() => {
       const commands = [...commandQueueRef.current]
@@ -653,20 +670,22 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       [toWorldX, toWorldY, toCanvasX, toCanvasY, pushEvent]
     )
 
+    // Use logical size for the container and overlay (fixed pixel size)
+    const containerWidth = logicalSize.width
+    const containerHeight = logicalSize.height
+
     return (
       <div
         ref={containerRef}
-        className="relative flex justify-center overflow-hidden rounded border border-border bg-white shadow-sm dark:bg-zinc-900"
-        style={{ width, height }}
+        className="relative overflow-hidden rounded border border-border bg-white shadow-sm dark:bg-zinc-900"
+        style={{ width: containerWidth, height: containerHeight }}
         onClick={handleCanvasClick}
       >
         <canvas
           ref={overlayRef}
-          width={width}
-          height={height}
-          className="absolute left-0 top-0" // Removed pointer-events-none to allow clicking?
-          // Actually DIV handles click. Canvas processes events bubble?
-          // Yes, div onClick works.
+          width={containerWidth}
+          height={containerHeight}
+          className="pointer-events-none absolute left-0 top-0"
         />
       </div>
     )

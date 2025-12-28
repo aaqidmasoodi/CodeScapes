@@ -610,12 +610,30 @@ export const PythonRunner = memo(
         c.width = 800
         c.height = 600
         c.className = "rounded border bg-white shadow-sm"
+        // Absolute positioning to align with overlay canvas in TurtleCanvas
+        c.style.position = "absolute"
+        c.style.left = "0"
+        c.style.top = "0"
         return c
       })
       const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({
         width: 800,
         height: 600,
       })
+
+      // Flush pending turtle commands when canvas becomes available (Bug 3 fix)
+      useEffect(() => {
+        if (isTurtleActive && turtleCanvasRef.current && pendingTurtleCommands.current.length > 0) {
+          console.log(
+            "[PythonRunner] useEffect flushing pending commands:",
+            pendingTurtleCommands.current.length
+          )
+          pendingTurtleCommands.current.forEach((cmd) =>
+            turtleCanvasRef.current?.handleCommand(cmd)
+          )
+          pendingTurtleCommands.current = []
+        }
+      }, [isTurtleActive])
 
       // 2. Run whenever files change (and secrets are ready, if needed)
       useEffect(() => {

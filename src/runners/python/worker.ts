@@ -601,37 +601,14 @@ except ImportError:
       await py.runPythonAsync(preamble)
 
       // Inject turtle graphics shim
-      // We write the shim to the FS and load it manually to bypass Pyodide's "Module Removed" check
-      // and avoid string escaping issues with exec().
+      // We write the shim to the FS ONLY. Python's import system will find it
+      // when the user actually writes `import turtle`. This prevents the canvas
+      // from appearing for non-turtle scripts.
       try {
         py.FS.writeFile("turtle.py", turtleShimCode)
-
-        await py.runPythonAsync(`
-          import sys
-          import importlib.util
-          
-          # Force reload turtle
-          if 'turtle' in sys.modules:
-              del sys.modules['turtle']
-              
-          try:
-              # Load from file
-              spec = importlib.util.spec_from_file_location("turtle", "turtle.py")
-              if spec and spec.loader:
-                  module = importlib.util.module_from_spec(spec)
-                  # Register BEFORE exec to support recursive imports if needed (though shim is flat)
-                  sys.modules["turtle"] = module
-                  spec.loader.exec_module(module)
-              else:
-                  print("Could not create spec for turtle.py")
-          except Exception as e:
-              print(f"Failed to load turtle shim: {e}")
-              if 'turtle' in sys.modules:
-                  del sys.modules['turtle']
-        `)
-        console.log("[Worker] Turtle shim loaded via FS")
+        console.log("[Worker] Turtle shim written to FS (lazy load)")
       } catch (e) {
-        console.warn("[Worker] Failed to inject turtle shim:", e)
+        console.warn("[Worker] Failed to write turtle shim:", e)
       }
 
       // Execute User Code
