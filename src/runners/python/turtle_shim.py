@@ -110,8 +110,8 @@ class _Screen(TurtleScreenBase):
         self._height = 600
         self._bgcolor = "white"
         self._bgpic = None
-        self._tracer_n = 1
-        self._tracer_delay = 10
+        self._tracer_n = 1       # Default: animate every command
+        self._tracer_delay = 10  # Default delay in ms
         self._key_handlers = {}
         self._onclick_handler = None
         self._mode = "standard"
@@ -119,6 +119,7 @@ class _Screen(TurtleScreenBase):
         self._turtles = {}
         self._timers = [] 
         self._shapes = ["classic", "arrow", "turtle", "circle", "square", "triangle"]
+        self._cmd_count = 0      # Command counter for tracer
         
         # Send INIT (Defaults)
         _send_cmd("INIT", {
@@ -126,6 +127,44 @@ class _Screen(TurtleScreenBase):
             "height": self._height,
             "mode": self._mode
         })
+    
+    def _auto_update(self, turtle_speed=None):
+        """Handle automatic update based on tracer settings.
+        
+        Called after each drawing command. If tracer > 0, updates every N commands
+        with a delay based on turtle speed and screen delay settings.
+        """
+        if self._tracer_n == 0:
+            # Manual mode - no auto update
+            return
+        
+        self._cmd_count += 1
+        
+        if self._cmd_count >= self._tracer_n:
+            self._cmd_count = 0
+            
+            # Calculate delay based on speed
+            # Speed 0 = fastest (no delay)
+            # Speed 1 = slowest, Speed 10 = fast
+            # Standard turtle delay formula
+            if turtle_speed is None or turtle_speed == 0:
+                delay_ms = 0
+            elif turtle_speed == 1:
+                delay_ms = 200
+            elif turtle_speed <= 10:
+                # Scale: speed 1=200ms, speed 10=10ms
+                delay_ms = max(10, 200 - (turtle_speed - 1) * 21)
+            else:
+                delay_ms = 0
+            
+            # Add screen delay
+            total_delay = delay_ms + self._tracer_delay
+            
+            if total_delay > 0:
+                time.sleep(total_delay / 1000.0)
+            
+            # Poll events during animation
+            _poll_events()
 
     def _check_timers(self):
         if not self._timers: return
@@ -329,17 +368,63 @@ class Turtle:
     # --- Motion ---
 
     def forward(self, distance):
+        screen = getattr(_Screen, '_instance', None)
+        tracer_n = screen._tracer_n if screen else 1
+        
+        # If tracer is 0, do instant move (no animation)
+        if tracer_n == 0:
+            deg = math.radians(self._heading)
+            self._x += distance * math.cos(deg)
+            self._y += distance * math.sin(deg)
+            _send_cmd("MOVE", {
+                "id": self._id, 
+                "x": self._x, 
+                "y": self._y,
+                "pen_down": self._pen_down,
+                "color": self._pencolor,
+                "width": self._pensize
+            })
+            return
+        
+        # Animated movement - break into steps
+        # Number of steps based on distance and speed
+        # Speed 0 = instant (1 step), Speed 1 = slow (many steps), Speed 10 = fast (fewer steps)
+        speed = self._speed if self._speed is not None else 3
+        
+        if speed == 0:
+            # Fastest - single step, no animation
+            steps = 1
+            step_delay = 0
+        else:
+            # Calculate steps: more steps = smoother but slower
+            # Speed 1 = 1 pixel per step, Speed 10 = 10 pixels per step
+            pixels_per_step = max(1, speed)
+            steps = max(1, int(abs(distance) / pixels_per_step))
+            
+            # Delay per step: speed 1 = 15ms, speed 10 = 1ms
+            step_delay = max(1, 16 - speed) / 1000.0
+        
+        # Calculate step size
         deg = math.radians(self._heading)
-        self._x += distance * math.cos(deg)
-        self._y += distance * math.sin(deg)
-        _send_cmd("MOVE", {
-            "id": self._id, 
-            "x": self._x, 
-            "y": self._y,
-            "pen_down": self._pen_down,
-            "color": self._pencolor,
-            "width": self._pensize
-        })
+        dx = distance * math.cos(deg) / steps
+        dy = distance * math.sin(deg) / steps
+        
+        # Animate each step
+        for i in range(steps):
+            self._x += dx
+            self._y += dy
+            _send_cmd("MOVE", {
+                "id": self._id, 
+                "x": self._x, 
+                "y": self._y,
+                "pen_down": self._pen_down,
+                "color": self._pencolor,
+                "width": self._pensize
+            })
+            
+            if step_delay > 0 and i < steps - 1:
+                time.sleep(step_delay)
+                _poll_events()  # Stay responsive during animation
     fd = forward
 
     def back(self, distance):
@@ -348,16 +433,66 @@ class Turtle:
 
     def goto(self, x, y=None):
         if y is None: x, y = x
-        self._x = float(x)
-        self._y = float(y)
-        _send_cmd("MOVE", {
-            "id": self._id, 
-            "x": self._x, 
-            "y": self._y,
-            "pen_down": self._pen_down,
-            "color": self._pencolor,
-            "width": self._pensize
-        })
+        target_x = float(x)
+        target_y = float(y)
+        
+        screen = getattr(_Screen, '_instance', None)
+        tracer_n = screen._tracer_n if screen else 1
+        
+        # Calculate distance
+        dx = target_x - self._x
+        dy = target_y - self._y
+        distance = math.sqrt(dx * dx + dy * dy)
+        
+        # If tracer is 0 or very short distance, do instant move
+        if tracer_n == 0 or distance < 1:
+            self._x = target_x
+            self._y = target_y
+            _send_cmd("MOVE", {
+                "id": self._id, 
+                "x": self._x, 
+                "y": self._y,
+                "pen_down": self._pen_down,
+                "color": self._pencolor,
+                "width": self._pensize
+            })
+            return
+        
+        # Animated movement - break into steps
+        speed = self._speed if self._speed is not None else 3
+        
+        if speed == 0:
+            steps = 1
+            step_delay = 0
+        else:
+            pixels_per_step = max(1, speed)
+            steps = max(1, int(distance / pixels_per_step))
+            step_delay = max(1, 16 - speed) / 1000.0
+        
+        # Calculate step size
+        step_dx = dx / steps
+        step_dy = dy / steps
+        
+        # Animate each step
+        for i in range(steps):
+            self._x += step_dx
+            self._y += step_dy
+            _send_cmd("MOVE", {
+                "id": self._id, 
+                "x": self._x, 
+                "y": self._y,
+                "pen_down": self._pen_down,
+                "color": self._pencolor,
+                "width": self._pensize
+            })
+            
+            if step_delay > 0 and i < steps - 1:
+                time.sleep(step_delay)
+                _poll_events()
+        
+        # Ensure we end exactly at target
+        self._x = target_x
+        self._y = target_y
     setpos = setposition = goto
     
     def setx(self, x): self.goto(x, self._y)
@@ -371,20 +506,70 @@ class Turtle:
 
     def right(self, angle):
         deg = self._to_degrees(angle)
-        self._heading = (self._heading - deg) % 360
-        _send_cmd("ROTATE", {"id": self._id, "heading": self._heading})
+        
+        screen = getattr(_Screen, '_instance', None)
+        tracer_n = screen._tracer_n if screen else 1
+        speed = self._speed if self._speed is not None else 3
+        
+        # If tracer is 0 or speed is 0, instant rotation
+        if tracer_n == 0 or speed == 0:
+            self._heading = (self._heading - deg) % 360
+            _send_cmd("ROTATE", {"id": self._id, "heading": self._heading})
+            return
+        
+        # Animated rotation - break into steps
+        # Speed 1 = 1 degree per step, Speed 10 = 10 degrees per step
+        degrees_per_step = max(1, speed * 2)
+        steps = max(1, int(abs(deg) / degrees_per_step))
+        step_delay = max(1, 16 - speed) / 1000.0
+        
+        step_angle = deg / steps
+        
+        for i in range(steps):
+            self._heading = (self._heading - step_angle) % 360
+            _send_cmd("ROTATE", {"id": self._id, "heading": self._heading})
+            
+            if step_delay > 0 and i < steps - 1:
+                time.sleep(step_delay)
     rt = right
     
     def left(self, angle):
         deg = self._to_degrees(angle)
-        self._heading = (self._heading + deg) % 360
-        _send_cmd("ROTATE", {"id": self._id, "heading": self._heading})
+        
+        screen = getattr(_Screen, '_instance', None)
+        tracer_n = screen._tracer_n if screen else 1
+        speed = self._speed if self._speed is not None else 3
+        
+        # If tracer is 0 or speed is 0, instant rotation
+        if tracer_n == 0 or speed == 0:
+            self._heading = (self._heading + deg) % 360
+            _send_cmd("ROTATE", {"id": self._id, "heading": self._heading})
+            return
+        
+        # Animated rotation - break into steps
+        degrees_per_step = max(1, speed * 2)
+        steps = max(1, int(abs(deg) / degrees_per_step))
+        step_delay = max(1, 16 - speed) / 1000.0
+        
+        step_angle = deg / steps
+        
+        for i in range(steps):
+            self._heading = (self._heading + step_angle) % 360
+            _send_cmd("ROTATE", {"id": self._id, "heading": self._heading})
+            
+            if step_delay > 0 and i < steps - 1:
+                time.sleep(step_delay)
     lt = left
     
     def setheading(self, to_angle):
         deg = self._to_degrees(to_angle)
         self._heading = deg % 360
         _send_cmd("ROTATE", {"id": self._id, "heading": self._heading})
+        # Small delay for visual feedback if tracer > 0
+        screen = getattr(_Screen, '_instance', None)
+        if screen and screen._tracer_n > 0 and self._speed != 0:
+            delay = max(1, 16 - (self._speed or 3)) / 1000.0
+            time.sleep(delay)
     seth = setheading
     
     def heading(self):
@@ -458,6 +643,12 @@ class Turtle:
             self._heading = (self._heading + ext_deg) % 360
         else:
             self._heading = (self._heading - ext_deg) % 360
+        
+        # Small delay for visual feedback if tracer > 0
+        screen = getattr(_Screen, '_instance', None)
+        if screen and screen._tracer_n > 0 and self._speed != 0:
+            delay = max(1, 16 - (self._speed or 3)) / 1000.0
+            time.sleep(delay)
 
     def stamp(self):
         stamp_id = int(self._id * 10000 + (self._x + self._y) % 10000)
