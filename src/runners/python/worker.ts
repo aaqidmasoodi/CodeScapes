@@ -3,6 +3,9 @@
 
 // Pyodide Worker
 
+// Import turtle shim as raw string for injection
+import turtleShimCode from "./turtle_shim.py?raw"
+
 interface PyodideInterface {
   runPythonAsync: (code: string) => Promise<any>
   loadPackage: (packages: string[]) => Promise<void>
@@ -346,6 +349,9 @@ self.onmessage = async (e: MessageEvent) => {
         # Get current working directory (virtual fs root)
         cwd = os.getcwd()
         
+        # Modules to preserve (internal shims that should persist but reset state)
+        preserve_modules = {'turtle'}
+        
         # Iterate over all loaded modules
         for name, module in list(sys.modules.items()):
             # Check if the module has a file path
@@ -357,11 +363,23 @@ self.onmessage = async (e: MessageEvent) => {
                 # Pyodide places stdlib and site-packages in /lib.
                 # User code is in /home/pyodide or .
                 
-                if not fpath.startswith('/lib'):
+                if not fpath.startswith('/lib') and name not in preserve_modules:
                    to_delete.append(name)
                    
         for name in to_delete:
             del sys.modules[name]
+        
+        # Reset turtle module state if it exists
+        if 'turtle' in sys.modules:
+            turtle_mod = sys.modules['turtle']
+            # Reset singletons for a fresh start
+            turtle_mod._default_turtle = None
+            if hasattr(turtle_mod, '_ScreenClass'):
+                turtle_mod._ScreenClass._instance = None
+            # Reset turtle ID counter
+            if hasattr(turtle_mod, 'Turtle'):
+                turtle_mod.Turtle._id_counter = 0
+                turtle_mod.Turtle._all_turtles = []
             
         importlib.invalidate_caches()
 
@@ -581,6 +599,33 @@ except ImportError:
     pass
 `
       await py.runPythonAsync(preamble)
+
+      // Inject turtle graphics shim
+      // Write to /lib/python/ so it's hidden from user's file explorer
+      // but still importable via Python's sys.path
+      try {
+        // Ensure the directory exists
+        try {
+          py.FS.mkdir("/lib")
+        } catch {
+          /* already exists */
+        }
+        try {
+          py.FS.mkdir("/lib/python")
+        } catch {
+          /* already exists */
+        }
+        py.FS.writeFile("/lib/python/turtle.py", turtleShimCode)
+        // Add to Python path if not already there
+        await py.runPythonAsync(`
+import sys
+if '/lib/python' not in sys.path:
+    sys.path.insert(0, '/lib/python')
+`)
+        console.log("[Worker] Turtle shim written to /lib/python/ (hidden)")
+      } catch (e) {
+        console.warn("[Worker] Failed to write turtle shim:", e)
+      }
 
       // Execute User Code
       const result = await py.runPythonAsync(mainFile.content)
