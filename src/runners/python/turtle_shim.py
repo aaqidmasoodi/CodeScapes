@@ -436,16 +436,30 @@ class Turtle:
         target_x = float(x)
         target_y = float(y)
         
-        screen = getattr(_Screen, '_instance', None)
-        tracer_n = screen._tracer_n if screen else 1
+        # Fast path: check tracer directly (avoid getattr overhead on hot path)
+        tracer_n = _Screen._instance._tracer_n if _Screen._instance else 1
         
-        # Calculate distance
+        # tracer(0) = instant mode, minimal overhead
+        if tracer_n == 0:
+            self._x = target_x
+            self._y = target_y
+            _send_cmd("MOVE", {
+                "id": self._id, 
+                "x": self._x, 
+                "y": self._y,
+                "pen_down": self._pen_down,
+                "color": self._pencolor,
+                "width": self._pensize
+            })
+            return
+        
+        # Calculate distance (only for animated mode)
         dx = target_x - self._x
         dy = target_y - self._y
         distance = math.sqrt(dx * dx + dy * dy)
         
-        # If tracer is 0 or very short distance, do instant move
-        if tracer_n == 0 or distance < 1:
+        # Very short distance - instant move
+        if distance < 1:
             self._x = target_x
             self._y = target_y
             _send_cmd("MOVE", {
