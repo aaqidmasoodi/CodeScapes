@@ -46,8 +46,8 @@ def _poll_events():
             text = xhr.responseText
             if text and text.strip():
                 events = json.loads(text)
-                screen = Screen._instance
-                if screen:
+                screen = getattr(_Screen, '_instance', None)
+                if screen and hasattr(screen, '_key_handlers'):
                     for event in events:
                         etype = event.get("type", "keydown")
                         if etype == "keydown":
@@ -59,15 +59,14 @@ def _poll_events():
                              pass 
                         elif etype == "click":
                              x, y, tid = event.get("x"), event.get("y"), event.get("id")
-                             if tid is not None and tid in screen._turtles:
+                             if tid is not None and hasattr(screen, '_turtles') and tid in screen._turtles:
                                  t = screen._turtles[tid]
-                                 if t._onclick_handler:
+                                 if hasattr(t, '_onclick_handler') and t._onclick_handler:
                                      try: t._onclick_handler(x, y)
                                      except: pass
-                             else:
-                                 if screen._onclick_handler:
-                                     try: screen._onclick_handler(x, y)
-                                     except: pass
+                             elif hasattr(screen, '_onclick_handler') and screen._onclick_handler:
+                                 try: screen._onclick_handler(x, y)
+                                 except: pass
     except Exception:
         pass
 
