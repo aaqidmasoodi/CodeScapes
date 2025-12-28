@@ -247,9 +247,11 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
           ctx.lineTo(-5, 0)
           ctx.closePath()
         } else {
-          ctx.moveTo(-10, -6)
-          ctx.lineTo(10, 0)
-          ctx.lineTo(-10, 6)
+          // "Classic" Turtle Shape (Arrowhead) - Smaller & Sharp
+          ctx.moveTo(6, 0) // Tip
+          ctx.lineTo(-4, 4) // Back Left
+          ctx.lineTo(-1, 0) // Indent (Base Center)
+          ctx.lineTo(-4, -4) // Back Right
           ctx.closePath()
         }
 
