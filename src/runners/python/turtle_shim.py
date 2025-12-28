@@ -375,18 +375,69 @@ class Turtle:
         self.setheading(0)
     
     def circle(self, radius, extent=None, steps=None):
+        """Draw a circle or arc with the given radius.
+        
+        The circle is drawn to the left of the turtle (counterclockwise for positive radius).
+        After the arc, the turtle's position and heading are updated.
+        """
+        import math
+        
+        if extent is None:
+            extent = 360
+        
+        # Convert extent to degrees (internal storage is in degrees)
+        ext_deg = float(extent)
+        ext_rad = math.radians(ext_deg)
+        
+        # Calculate the center of the circle
+        # For positive radius, center is to the left of the turtle
+        heading_rad = math.radians(self._heading)
+        if radius >= 0:
+            center_angle = heading_rad + math.pi / 2  # 90 degrees left
+        else:
+            center_angle = heading_rad - math.pi / 2  # 90 degrees right
+        
+        cx = self._x + abs(radius) * math.cos(center_angle)
+        cy = self._y + abs(radius) * math.sin(center_angle)
+        
+        # Calculate the end position after the arc
+        # Start angle from center to turtle
+        start_angle = math.atan2(self._y - cy, self._x - cx)
+        
+        # End angle depends on direction (positive radius = counterclockwise)
+        if radius >= 0:
+            end_angle = start_angle + ext_rad
+        else:
+            end_angle = start_angle - ext_rad
+        
+        # New position
+        new_x = cx + abs(radius) * math.cos(end_angle)
+        new_y = cy + abs(radius) * math.sin(end_angle)
+        
+        # Send command with fill info
         _send_cmd("CIRCLE", {
             "id": self._id,
             "radius": float(radius),
-            "extent": float(extent) if extent is not None else None,
+            "extent": ext_deg,
             "steps": int(steps) if steps is not None else None,
-            "pen_down": self._pen_down 
+            "pen_down": self._pen_down,
+            "filling": self._filling,
+            "fillcolor": self._fillcolor,
+            "start_x": self._x,
+            "start_y": self._y,
+            "end_x": new_x,
+            "end_y": new_y
         })
-        # Simplified state update
-        if extent is None: extent = 360
-        # self.right(extent)? Depends on radius sign.
-        # For parity, we assume left turn if positive radius.
-        self._heading = (self._heading + extent) % 360
+        
+        # Update turtle state
+        self._x = new_x
+        self._y = new_y
+        
+        # Update heading: turtle turns by the extent angle
+        if radius >= 0:
+            self._heading = (self._heading + ext_deg) % 360
+        else:
+            self._heading = (self._heading - ext_deg) % 360
 
     def stamp(self):
         stamp_id = int(self._id * 10000 + (self._x + self._y) % 10000)

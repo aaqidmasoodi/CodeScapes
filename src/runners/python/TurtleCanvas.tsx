@@ -394,36 +394,84 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             const id = command.id as number
             const t = turtlesRef.current.get(id)
             if (!t) break
+
             const r = command.radius as number
             const extent = (command.extent as number) || 360
             const steps = command.steps as number | undefined
-            const rad = t.heading * (Math.PI / 180)
-            const cx = t.x + r * Math.cos(rad + Math.PI / 2)
-            const cy = t.y + r * Math.sin(rad + Math.PI / 2)
-            const startAngle = rad - Math.PI / 2
-            const endAngle = startAngle + extent * (Math.PI / 180)
+            const filling = command.filling as boolean
+            const fillcolor = command.fillcolor as string
+            const endX = command.end_x as number
+            const endY = command.end_y as number
+
+            // Calculate circle center and angles
+            const headingRad = t.heading * (Math.PI / 180)
+            const centerAngle = r >= 0 ? headingRad + Math.PI / 2 : headingRad - Math.PI / 2
+            const cx = t.x + Math.abs(r) * Math.cos(centerAngle)
+            const cy = t.y + Math.abs(r) * Math.sin(centerAngle)
+
+            const startAngle = Math.atan2(t.y - cy, t.x - cx)
+            const extentRad = extent * (Math.PI / 180)
+            const endAngle = r >= 0 ? startAngle + extentRad : startAngle - extentRad
+
             const canvasCX = toCanvasX(cx)
             const canvasCY = toCanvasY(cy)
             const canvasR = Math.abs(r * getScaleX())
+
+            // Generate arc points for fill path
+            const numPoints = steps || Math.max(12, Math.ceil(Math.abs(extent) / 10))
+            const arcPoints: Point[] = []
+            for (let i = 0; i <= numPoints; i++) {
+              const angle = startAngle + (endAngle - startAngle) * (i / numPoints)
+              arcPoints.push({
+                x: cx + Math.abs(r) * Math.cos(angle),
+                y: cy + Math.abs(r) * Math.sin(angle),
+              })
+            }
+
+            // If filling, add arc points to fill path
+            if (filling) {
+              const path = fillPathRef.current.get(id)
+              if (path) {
+                path.push(...arcPoints)
+              }
+            }
+
+            // Draw the arc stroke if pen is down
             if (command.pen_down !== false) {
               ctx.beginPath()
               if (steps) {
-                const totalSweep = extent * (Math.PI / 180)
-                const stepSweep = totalSweep / steps
-                ctx.moveTo(
-                  canvasCX + canvasR * Math.cos(-startAngle),
-                  canvasCY + canvasR * Math.sin(-startAngle)
-                )
-                for (let i = 1; i <= steps; i++) {
-                  const a = -startAngle - i * stepSweep
-                  ctx.lineTo(canvasCX + canvasR * Math.cos(a), canvasCY + canvasR * Math.sin(a))
+                ctx.moveTo(toCanvasX(arcPoints[0].x), toCanvasY(arcPoints[0].y))
+                for (let i = 1; i < arcPoints.length; i++) {
+                  ctx.lineTo(toCanvasX(arcPoints[i].x), toCanvasY(arcPoints[i].y))
                 }
               } else {
-                ctx.arc(canvasCX, canvasCY, canvasR, -startAngle, -endAngle, true)
+                // Use native arc for smooth curves
+                ctx.arc(canvasCX, canvasCY, canvasR, -startAngle, -endAngle, r >= 0)
               }
               ctx.strokeStyle = t.color
               ctx.stroke()
             }
+
+            // If this is a filled standalone circle (360 degree, filling active)
+            if (filling && extent === 360) {
+              ctx.beginPath()
+              ctx.arc(canvasCX, canvasCY, canvasR, 0, Math.PI * 2)
+              ctx.fillStyle = fillcolor || t.fillColor || t.color
+              ctx.fill()
+              ctx.strokeStyle = t.color
+              ctx.stroke()
+            }
+
+            // Update turtle position
+            t.x = endX
+            t.y = endY
+            if (r >= 0) {
+              t.heading = (t.heading + extent) % 360
+            } else {
+              t.heading = (t.heading - extent + 360) % 360
+            }
+
+            needOverlayUpdate = true
             break
           }
           case "BEGIN_FILL": {
@@ -435,6 +483,7 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
           case "END_FILL": {
             const id = command.id as number
             const path = fillPathRef.current.get(id)
+            const t = turtlesRef.current.get(id)
             if (path && path.length > 2) {
               ctx.beginPath()
               const start = toCanvasX(path[0].x)
@@ -445,7 +494,8 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               ctx.closePath()
               ctx.fillStyle = (command.color as string) || "black"
               ctx.fill()
-              ctx.strokeStyle = "black"
+              // Use turtle's pen color for stroke, fallback to fill color
+              ctx.strokeStyle = t?.color || (command.color as string) || "black"
               ctx.stroke()
             }
             fillPathRef.current.delete(id)
