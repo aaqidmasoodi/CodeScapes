@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { debug } from "@/lib/debug"
 
 interface TurtleCanvasProps {
   width?: number
@@ -325,7 +326,7 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
           case "LISTEN": {
             // New
             listeningRef.current = true
-            console.log("[Turtle] Listen Enabled")
+            debug.log("[Turtle] Listen Enabled")
             break
           }
           case "UPDATE": {
@@ -925,7 +926,7 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
           }
         }
 
-        console.log(`[Turtle] Click at (${wx.toFixed(1)}, ${wy.toFixed(1)}) Hit: ${hitId}`)
+        debug.log(`[Turtle] Click at (${wx.toFixed(1)}, ${wy.toFixed(1)}) Hit: ${hitId}`)
         pushEvent({ type: "click", x: wx, y: wy, id: hitId }) // Send hitId if any
       },
       [toWorldX, toWorldY, toCanvasX, toCanvasY, pushEvent]

@@ -253,31 +253,31 @@ export const PythonRunner = memo(
               break
             case "TURTLE_CMD":
               // Forward turtle command to canvas
-              console.log("[PythonRunner] TURTLE_CMD received:", JSON.stringify(payload))
+              debug.log("[PythonRunner] TURTLE_CMD received:", JSON.stringify(payload))
               if (payload?.cmd) {
-                console.log(
+                debug.log(
                   `[PythonRunner] Processing cmd: ${payload.cmd}, isTurtleActive(ref): ${isTurtleActiveRef.current}`
                 )
                 // Mark turtle as active on first command
                 if (!isTurtleActiveRef.current) {
-                  console.log("[PythonRunner] Setting isTurtleActive = true")
+                  debug.log("[PythonRunner] Setting isTurtleActive = true")
                   // Update ref immediately to prevent subsequent commands from triggering state update
                   isTurtleActiveRef.current = true
                   setIsTurtleActive(true)
                 }
                 // Queue command if canvas not ready yet, otherwise execute immediately
                 if (turtleCanvasRef.current) {
-                  console.log("[PythonRunner] Canvas ref available, calling handleCommand")
+                  debug.log("[PythonRunner] Canvas ref available, calling handleCommand")
                   turtleCanvasRef.current.handleCommand(payload)
                 } else {
-                  console.log(
+                  debug.log(
                     "[PythonRunner] Canvas ref NOT available, queueing command. Queue size:",
                     pendingTurtleCommands.current.length + 1
                   )
                   pendingTurtleCommands.current.push(payload)
                 }
               } else {
-                console.log("[PythonRunner] TURTLE_CMD has no cmd property:", payload)
+                debug.log("[PythonRunner] TURTLE_CMD has no cmd property:", payload)
               }
               break
             case "DidRun":
@@ -622,7 +622,7 @@ export const PythonRunner = memo(
       // Flush pending turtle commands when canvas becomes available (Bug 3 fix)
       useEffect(() => {
         if (isTurtleActive && turtleCanvasRef.current && pendingTurtleCommands.current.length > 0) {
-          console.log(
+          debug.log(
             "[PythonRunner] useEffect flushing pending commands:",
             pendingTurtleCommands.current.length
           )
@@ -794,7 +794,7 @@ export const PythonRunner = memo(
                   width={canvasSize.width}
                   height={canvasSize.height}
                   onResize={(w, h) => {
-                    console.log(`[PythonRunner] onResize: ${w}x${h}`)
+                    debug.log(`[PythonRunner] onResize: ${w}x${h}`)
                     setCanvasSize({ width: w, height: h })
                   }}
                   canvasInstance={persistentCanvas}
