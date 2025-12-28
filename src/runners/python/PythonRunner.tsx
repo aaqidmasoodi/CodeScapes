@@ -602,8 +602,6 @@ export const PythonRunner = memo(
         }
       }, [depsString, initWorker])
 
-      const prevFilesHashRef = useRef<string>("")
-      const forceRunRef = useRef(false)
       const pendingInputIdRef = useRef<string | null>(null)
       const [persistentCanvas] = useState<HTMLCanvasElement>(() => {
         const c = document.createElement("canvas")
@@ -641,15 +639,6 @@ export const PythonRunner = memo(
         if (isExplicitRunRef.current) {
           return
         }
-
-        // Deep compare files to prevent loops, unless forced
-        const filesHash = JSON.stringify(files.map((f) => ({ name: f.name, content: f.content })))
-        if (filesHash === prevFilesHashRef.current && !forceRunRef.current) {
-          return
-        }
-        prevFilesHashRef.current = filesHash
-        forceRunRef.current = false
-
         // Defer execution to avoid synchronous state update during render
         const t = setTimeout(() => {
           runPython()
@@ -664,11 +653,13 @@ export const PythonRunner = memo(
         stop: async () => {
           // Explicit Force Stop (Kill Worker)
           initWorker()
+          // Reset busy state - the new worker isn't running code yet
+          // This prevents the next run from thinking it needs to restart again
+          setBusy(false)
         },
         restart: async () => {
           // Soft Restart: We rely on the parent updating props (files),
           // which triggers the useEffect above (calling runPython).
-          forceRunRef.current = true
           debug.log("[PythonRunner] Soft restart initiated via prop update")
         },
         runFile: async (path: string, opts?: import("../types").RunFileOptions) => {
