@@ -106,6 +106,9 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     // Strict initialization tracking
     const isReadyRef = useRef(false)
 
+    // Batching support: If false, overlay updates are skipped until explicit UPDATE command
+    const autoUpdateRef = useRef(true)
+
     // Helper to update both ref and state
     const updateLogicalSize = useCallback((newSize: { width: number; height: number }) => {
       logicalSizeRef.current = newSize
@@ -788,8 +791,19 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             needOverlayUpdate = true
             break
           }
+          case "SET_AUTO_UPDATE": {
+            autoUpdateRef.current = command.value as boolean
+            if (autoUpdateRef.current) needOverlayUpdate = true
+            break
+          }
         }
-        if (needOverlayUpdate) redrawOverlay()
+
+        if (needOverlayUpdate) {
+          // If autoUpdate is enabled OR it's an explicit UPDATE command -> redraw
+          if (autoUpdateRef.current || cmd === "UPDATE") {
+            redrawOverlay()
+          }
+        }
       },
       [width, height, toCanvasX, toCanvasY, redrawOverlay, onResize, getScaleX]
     )

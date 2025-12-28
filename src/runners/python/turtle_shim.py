@@ -120,6 +120,7 @@ class _Screen(TurtleScreenBase):
         self._timers = [] 
         self._shapes = ["classic", "arrow", "turtle", "circle", "square", "triangle"]
         self._cmd_count = 0      # Command counter for tracer
+        self._stamp_counter = 0  # Global monotonic counter for stamp IDs
         
         # Send INIT (Defaults)
         _send_cmd("INIT", {
@@ -219,6 +220,11 @@ class _Screen(TurtleScreenBase):
     def tracer(self, n=None, delay=None):
         if n is None: return self._tracer_n
         self._tracer_n = int(n)
+        
+        # Performance: tracer(0) disables auto-redraws in frontend (batching)
+        # tracer(>0) or tracer(1) enables auto-redraws (standard behavior)
+        _send_cmd("SET_AUTO_UPDATE", {"value": self._tracer_n > 0})
+        
         if delay is not None: self._tracer_delay = int(delay)
 
     def update(self):
@@ -666,7 +672,14 @@ class Turtle:
             time.sleep(delay)
 
     def stamp(self):
-        stamp_id = int(self._id * 10000 + (self._x + self._y) % 10000)
+        screen = getattr(_Screen, '_instance', None)
+        if screen:
+            screen._stamp_counter += 1
+            stamp_id = screen._stamp_counter
+        else:
+            # Fallback if screen missing (unlikely)
+            stamp_id = int(time.time() * 1000)
+            
         _send_cmd("STAMP", {
             "id": self._id, 
             "stampId": stamp_id,
