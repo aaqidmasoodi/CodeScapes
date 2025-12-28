@@ -12,6 +12,7 @@ interface TurtleCanvasProps {
 export interface TurtleCanvasHandle {
   handleCommand: (command: DrawCommand) => void
   clear: () => void
+  getCanvasDataURL: () => string | null
 }
 
 interface TurtleState {
@@ -847,6 +848,30 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
           }
         },
         clear,
+        getCanvasDataURL: () => {
+          if (!canvasRef.current || !overlayRef.current) return null
+
+          try {
+            // Create a temporary canvas to composite both layers
+            const tempCanvas = document.createElement("canvas")
+            tempCanvas.width = canvasRef.current.width
+            tempCanvas.height = canvasRef.current.height
+            const ctx = tempCanvas.getContext("2d")
+
+            if (!ctx) return null
+
+            // Draw main canvas (background + static drawings)
+            ctx.drawImage(canvasRef.current, 0, 0)
+
+            // Draw overlay (sprites + stamps)
+            ctx.drawImage(overlayRef.current, 0, 0)
+
+            return tempCanvas.toDataURL("image/png")
+          } catch (e) {
+            debug.error("Failed to capture turtle canvas thumbnail", e)
+            return null
+          }
+        },
       }),
       [handleCommand, clear]
     )

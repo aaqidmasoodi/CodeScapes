@@ -648,8 +648,17 @@ export const PythonRunner = memo(
 
       // --- Handle ---
       useImperativeHandle(ref, () => ({
-        captureThumbnail: async () =>
-          lastFigureRef.current ? `data:image/png;base64,${lastFigureRef.current}` : null,
+        captureThumbnail: async () => {
+          // Priority 1: Matplotlib/Pandas plots
+          if (lastFigureRef.current) {
+            return `data:image/png;base64,${lastFigureRef.current}`
+          }
+          // Priority 2: Turtle Canvas
+          if (isTurtleActiveRef.current && turtleCanvasRef.current) {
+            return turtleCanvasRef.current.getCanvasDataURL()
+          }
+          return null
+        },
         stop: async () => {
           // Explicit Force Stop (Kill Worker)
           initWorker()
