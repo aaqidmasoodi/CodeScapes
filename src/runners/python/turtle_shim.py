@@ -606,46 +606,83 @@ class Turtle:
         The circle is drawn to the left of the turtle (counterclockwise for positive radius).
         After the arc, the turtle's position and heading are updated.
         """
-        import math
         
         if extent is None:
             extent = 360
         
-        # Convert extent to degrees (internal storage is in degrees)
+        # Convert extent to degrees
         ext_deg = float(extent)
-        ext_rad = math.radians(ext_deg)
         
-        # Calculate the center of the circle
-        # For positive radius, center is to the left of the turtle
+        # Determine if we should animate
+        screen = getattr(_Screen, '_instance', None)
+        tracer_n = screen._tracer_n if screen else 1
+        speed = self._speed if self._speed is not None else 3
+        
+        # FAST PATH: Instant drawing
+        if tracer_n == 0 or speed == 0:
+            self._draw_arc_segment(radius, ext_deg)
+            return
+
+        # ANIMATED PATH: Break into small chunks
+        # Chunk size depends on speed (slower = smaller chunks = smoother)
+        # speed 1 = 2 degrees/step, speed 6 = 10 degrees/step, speed 10 = 20 degrees/step
+        degrees_per_step = max(2, speed * 2) 
+        
+        # Determine number of steps
+        num_segments = int(abs(ext_deg) / degrees_per_step)
+        if num_segments < 1: num_segments = 1
+        
+        # Remainder
+        remainder = abs(ext_deg) % degrees_per_step
+        
+        # Step value (preserve sign of extent)
+        step_angle = degrees_per_step if ext_deg >= 0 else -degrees_per_step
+        
+        # Animation delay
+        step_delay = max(1, 16 - speed) / 1000.0
+
+        for _ in range(num_segments):
+            self._draw_arc_segment(radius, step_angle)
+            time.sleep(step_delay)
+            _poll_events()
+            
+        # Draw remainder if any
+        if remainder > 0.001:
+            rem_angle = remainder if ext_deg >= 0 else -remainder
+            self._draw_arc_segment(radius, rem_angle)
+
+    def _draw_arc_segment(self, radius, extent):
+        """Helper to draw a single arc segment and update state"""
+        import math
+        
+        ext_rad = math.radians(extent)
         heading_rad = math.radians(self._heading)
-        if radius >= 0:
-            center_angle = heading_rad + math.pi / 2  # 90 degrees left
-        else:
-            center_angle = heading_rad - math.pi / 2  # 90 degrees right
         
+        # Center calculation (same as before)
+        if radius >= 0:
+            center_angle = heading_rad + math.pi / 2
+        else:
+            center_angle = heading_rad - math.pi / 2
+            
         cx = self._x + abs(radius) * math.cos(center_angle)
         cy = self._y + abs(radius) * math.sin(center_angle)
         
-        # Calculate the end position after the arc
-        # Start angle from center to turtle
+        # End position calculation
         start_angle = math.atan2(self._y - cy, self._x - cx)
         
-        # End angle depends on direction (positive radius = counterclockwise)
         if radius >= 0:
             end_angle = start_angle + ext_rad
         else:
             end_angle = start_angle - ext_rad
-        
-        # New position
+            
         new_x = cx + abs(radius) * math.cos(end_angle)
         new_y = cy + abs(radius) * math.sin(end_angle)
         
-        # Send command with fill info
         _send_cmd("CIRCLE", {
             "id": self._id,
             "radius": float(radius),
-            "extent": ext_deg,
-            "steps": int(steps) if steps is not None else None,
+            "extent": extent,
+            "steps": 0, # Steps only used for polygons, not smooth circles
             "pen_down": self._pen_down,
             "filling": self._filling,
             "fillcolor": self._fillcolor,
@@ -655,21 +692,13 @@ class Turtle:
             "end_y": new_y
         })
         
-        # Update turtle state
         self._x = new_x
         self._y = new_y
         
-        # Update heading: turtle turns by the extent angle
         if radius >= 0:
-            self._heading = (self._heading + ext_deg) % 360
+            self._heading = (self._heading + extent) % 360
         else:
-            self._heading = (self._heading - ext_deg) % 360
-        
-        # Small delay for visual feedback if tracer > 0
-        screen = getattr(_Screen, '_instance', None)
-        if screen and screen._tracer_n > 0 and self._speed != 0:
-            delay = max(1, 16 - (self._speed or 3)) / 1000.0
-            time.sleep(delay)
+            self._heading = (self._heading - extent) % 360
 
     def stamp(self):
         screen = getattr(_Screen, '_instance', None)
