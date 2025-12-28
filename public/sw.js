@@ -172,6 +172,14 @@ self.addEventListener("message", (event) => {
 const pendingInputs = new Map()
 
 // =============================================================================
+// TURTLE GRAPHICS EVENT QUEUE
+// =============================================================================
+
+// Event queue for turtle keyboard events
+// Worker polls this via sync XHR during screen.update()
+const turtleEvents = []
+
+// =============================================================================
 // FETCH INTERCEPTION
 // =============================================================================
 
@@ -232,7 +240,39 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // 2. Preview Filesystem - Scope: /preview-v3/<scapeId>/<filePath>
+  // 3. Turtle Graphics Event Queue
+  // Worker polls this to get keyboard events
+  if (url.pathname === "/_turtle_events") {
+    // Return all queued events and clear the queue
+    const events = [...turtleEvents]
+    turtleEvents.length = 0 // Clear queue
+    event.respondWith(
+      new Response(JSON.stringify(events), {
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    return
+  }
+
+  // Main thread pushes events here (Keyboard, Mouse, etc.)
+  if (url.pathname === "/_turtle_push_event" || url.pathname === "/_turtle_keydown") {
+    event.respondWith(
+      (async () => {
+        try {
+          const data = await event.request.json()
+          log(`Turtle Event Pushed:`, data)
+          turtleEvents.push(data)
+          return new Response("OK", { status: 200 })
+        } catch (e) {
+          console.error(e)
+          return new Response("Error processing turtle event", { status: 500 })
+        }
+      })()
+    )
+    return
+  }
+
+  // 4. Preview Filesystem - Scope: /preview-v3/<scapeId>/<filePath>
   if (url.pathname.startsWith("/preview-v3/")) {
     const parts = url.pathname.split("/")
     if (parts.length < 4) {

@@ -3,6 +3,9 @@
 
 // Pyodide Worker
 
+// Import turtle shim as raw string for injection
+import turtleShimCode from "./turtle_shim.py?raw"
+
 interface PyodideInterface {
   runPythonAsync: (code: string) => Promise<any>
   loadPackage: (packages: string[]) => Promise<void>
@@ -346,6 +349,9 @@ self.onmessage = async (e: MessageEvent) => {
         # Get current working directory (virtual fs root)
         cwd = os.getcwd()
         
+        # Modules to preserve (internal shims that should persist but reset state)
+        preserve_modules = {'turtle'}
+        
         # Iterate over all loaded modules
         for name, module in list(sys.modules.items()):
             # Check if the module has a file path
@@ -357,11 +363,23 @@ self.onmessage = async (e: MessageEvent) => {
                 # Pyodide places stdlib and site-packages in /lib.
                 # User code is in /home/pyodide or .
                 
-                if not fpath.startswith('/lib'):
+                if not fpath.startswith('/lib') and name not in preserve_modules:
                    to_delete.append(name)
                    
         for name in to_delete:
             del sys.modules[name]
+        
+        # Reset turtle module state if it exists
+        if 'turtle' in sys.modules:
+            turtle_mod = sys.modules['turtle']
+            # Reset singletons for a fresh start
+            turtle_mod._default_turtle = None
+            if hasattr(turtle_mod, '_ScreenClass'):
+                turtle_mod._ScreenClass._instance = None
+            # Reset turtle ID counter
+            if hasattr(turtle_mod, 'Turtle'):
+                turtle_mod.Turtle._id_counter = 0
+                turtle_mod.Turtle._all_turtles = []
             
         importlib.invalidate_caches()
 
@@ -581,6 +599,40 @@ except ImportError:
     pass
 `
       await py.runPythonAsync(preamble)
+
+      // Inject turtle graphics shim
+      // We write the shim to the FS and load it manually to bypass Pyodide's "Module Removed" check
+      // and avoid string escaping issues with exec().
+      try {
+        py.FS.writeFile("turtle.py", turtleShimCode)
+
+        await py.runPythonAsync(`
+          import sys
+          import importlib.util
+          
+          # Force reload turtle
+          if 'turtle' in sys.modules:
+              del sys.modules['turtle']
+              
+          try:
+              # Load from file
+              spec = importlib.util.spec_from_file_location("turtle", "turtle.py")
+              if spec and spec.loader:
+                  module = importlib.util.module_from_spec(spec)
+                  # Register BEFORE exec to support recursive imports if needed (though shim is flat)
+                  sys.modules["turtle"] = module
+                  spec.loader.exec_module(module)
+              else:
+                  print("Could not create spec for turtle.py")
+          except Exception as e:
+              print(f"Failed to load turtle shim: {e}")
+              if 'turtle' in sys.modules:
+                  del sys.modules['turtle']
+        `)
+        console.log("[Worker] Turtle shim loaded via FS")
+      } catch (e) {
+        console.warn("[Worker] Failed to inject turtle shim:", e)
+      }
 
       // Execute User Code
       const result = await py.runPythonAsync(mainFile.content)

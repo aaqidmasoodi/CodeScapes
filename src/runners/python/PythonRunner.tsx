@@ -15,6 +15,7 @@ import type { LogEntry } from "@/types/log"
 import { secretsService } from "@/services/secrets"
 import { useSocketBridge } from "@/hooks/useSocketBridge"
 import { debug } from "@/lib/debug"
+import { TurtleCanvas, type TurtleCanvasHandle } from "./TurtleCanvas"
 
 interface PythonRunnerProps {
   files: ScapeFile[]
@@ -60,6 +61,12 @@ export const PythonRunner = memo(
         { type: "image" | "html"; content: string }[]
       >([])
       const lastFigureRef = useRef<string | null>(null)
+
+      // Turtle graphics support
+      const turtleCanvasRef = useRef<TurtleCanvasHandle>(null)
+      const [isTurtleActive, setIsTurtleActive] = useState(false)
+      const pendingTurtleCommands = useRef<Array<{ cmd: string; [key: string]: unknown }>>([])
+
       const pendingInstalls = useRef<
         Map<
           string,
@@ -137,6 +144,7 @@ export const PythonRunner = memo(
 
       // Forward declaration for initWorker to use
       const runPythonRef = useRef<() => Promise<void>>(async () => {})
+      const isTurtleActiveRef = useRef(false)
 
       // --- Stable Helpers ---
 
@@ -243,8 +251,38 @@ export const PythonRunner = memo(
                 lastFigureRef.current = payload
               }
               break
+            case "TURTLE_CMD":
+              // Forward turtle command to canvas
+              console.log("[PythonRunner] TURTLE_CMD received:", JSON.stringify(payload))
+              if (payload?.cmd) {
+                console.log(
+                  `[PythonRunner] Processing cmd: ${payload.cmd}, isTurtleActive(ref): ${isTurtleActiveRef.current}`
+                )
+                // Mark turtle as active on first command
+                if (!isTurtleActiveRef.current) {
+                  console.log("[PythonRunner] Setting isTurtleActive = true")
+                  // Update ref immediately to prevent subsequent commands from triggering state update
+                  isTurtleActiveRef.current = true
+                  setIsTurtleActive(true)
+                }
+                // Queue command if canvas not ready yet, otherwise execute immediately
+                if (turtleCanvasRef.current) {
+                  console.log("[PythonRunner] Canvas ref available, calling handleCommand")
+                  turtleCanvasRef.current.handleCommand(payload)
+                } else {
+                  console.log(
+                    "[PythonRunner] Canvas ref NOT available, queueing command. Queue size:",
+                    pendingTurtleCommands.current.length + 1
+                  )
+                  pendingTurtleCommands.current.push(payload)
+                }
+              } else {
+                console.log("[PythonRunner] TURTLE_CMD has no cmd property:", payload)
+              }
+              break
             case "DidRun":
               setBusy(false)
+              if (!isTurtleActiveRef.current) setIsTurtleActive(false) // Clean up if no graphics used
               if (!isReadyRef.current) {
                 isReadyRef.current = true
                 // Check for pending file run first (terminal-initiated)
@@ -261,6 +299,9 @@ export const PythonRunner = memo(
                   const entryPoint = path
                   if (currentFiles.some((f) => f.name === entryPoint)) {
                     setPreviewItems([])
+                    setIsTurtleActive(false)
+                    isTurtleActiveRef.current = false
+                    turtleCanvasRef.current?.clear()
                     setBusy(true)
                     workerRef.current?.postMessage({
                       type: "RUN",
@@ -493,6 +534,11 @@ export const PythonRunner = memo(
 
             setPreviewItems([])
 
+            // Reset turtle state
+            // setIsTurtleActive(false) // FLICKER FIX: Keep mounted to avoid flash
+            isTurtleActiveRef.current = false
+            turtleCanvasRef.current?.clear()
+
             // Clear shared buffer if still used for other things, but not vital for input anymore
             if (sharedArrayRef.current) {
               Atomics.store(sharedArrayRef.current, 0, 0)
@@ -502,6 +548,9 @@ export const PythonRunner = memo(
 
             // Set resolving ref (will be called by DidRun)
             runResolveRef.current = resolve
+
+            // Reset canvas size to defaults for a fresh run
+            // setCanvasSize({ width: 800, height: 600 }) // REMOVED: Causes jitter if script uses different size
 
             workerRef.current.postMessage({
               type: "RUN",
@@ -553,7 +602,20 @@ export const PythonRunner = memo(
         }
       }, [depsString, initWorker])
 
+      const prevFilesHashRef = useRef<string>("")
+      const forceRunRef = useRef(false)
       const pendingInputIdRef = useRef<string | null>(null)
+      const [persistentCanvas] = useState<HTMLCanvasElement>(() => {
+        const c = document.createElement("canvas")
+        c.width = 800
+        c.height = 600
+        c.className = "rounded border bg-white shadow-sm"
+        return c
+      })
+      const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({
+        width: 800,
+        height: 600,
+      })
 
       // 2. Run whenever files change (and secrets are ready, if needed)
       useEffect(() => {
@@ -561,6 +623,15 @@ export const PythonRunner = memo(
         if (isExplicitRunRef.current) {
           return
         }
+
+        // Deep compare files to prevent loops, unless forced
+        const filesHash = JSON.stringify(files.map((f) => ({ name: f.name, content: f.content })))
+        if (filesHash === prevFilesHashRef.current && !forceRunRef.current) {
+          return
+        }
+        prevFilesHashRef.current = filesHash
+        forceRunRef.current = false
+
         // Defer execution to avoid synchronous state update during render
         const t = setTimeout(() => {
           runPython()
@@ -579,7 +650,7 @@ export const PythonRunner = memo(
         restart: async () => {
           // Soft Restart: We rely on the parent updating props (files),
           // which triggers the useEffect above (calling runPython).
-          // We don't need to do anything here except maybe log.
+          forceRunRef.current = true
           debug.log("[PythonRunner] Soft restart initiated via prop update")
         },
         runFile: async (path: string, opts?: import("../types").RunFileOptions) => {
@@ -698,7 +769,31 @@ export const PythonRunner = memo(
             </div>
           )}
           <div className="flex flex-1 flex-col overflow-auto p-4">
-            {previewItems.length === 0 ? (
+            {/* Turtle Graphics Canvas */}
+            {isTurtleActive && (
+              <div className="mb-4 flex justify-center">
+                <TurtleCanvas
+                  ref={(handle) => {
+                    // Store ref
+                    turtleCanvasRef.current = handle
+                    // Flush pending commands when canvas becomes available
+                    if (handle && pendingTurtleCommands.current.length > 0) {
+                      pendingTurtleCommands.current.forEach((cmd) => handle.handleCommand(cmd))
+                      pendingTurtleCommands.current = []
+                    }
+                  }}
+                  width={canvasSize.width}
+                  height={canvasSize.height}
+                  onResize={(w, h) => {
+                    console.log(`[PythonRunner] onResize: ${w}x${h}`)
+                    setCanvasSize({ width: w, height: h })
+                  }}
+                  canvasInstance={persistentCanvas}
+                />
+              </div>
+            )}
+
+            {previewItems.length === 0 && !isTurtleActive ? (
               <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
                 {isBusy ? (
                   <>
@@ -710,12 +805,12 @@ export const PythonRunner = memo(
                     <Box className="h-8 w-8 opacity-20" />
                     <p className="mt-2 text-xs">No graphical output generated.</p>
                     <p className="mt-1 text-[10px] opacity-75">
-                      Plots (matplotlib) and DataFrames (pandas) will appear here.
+                      Plots (matplotlib), Turtle graphics, and DataFrames (pandas) will appear here.
                     </p>
                   </>
                 )}
               </div>
-            ) : (
+            ) : previewItems.length > 0 ? (
               <div className="flex flex-col gap-6">
                 {previewItems.map((item, i) => (
                   <div key={i} className="flex justify-center overflow-auto">
@@ -737,7 +832,7 @@ export const PythonRunner = memo(
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
           {/* Styles for Pandas */}
           <style>{`
