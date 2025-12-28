@@ -601,12 +601,28 @@ except ImportError:
       await py.runPythonAsync(preamble)
 
       // Inject turtle graphics shim
-      // We write the shim to the FS ONLY. Python's import system will find it
-      // when the user actually writes `import turtle`. This prevents the canvas
-      // from appearing for non-turtle scripts.
+      // Write to /lib/python/ so it's hidden from user's file explorer
+      // but still importable via Python's sys.path
       try {
-        py.FS.writeFile("turtle.py", turtleShimCode)
-        console.log("[Worker] Turtle shim written to FS (lazy load)")
+        // Ensure the directory exists
+        try {
+          py.FS.mkdir("/lib")
+        } catch {
+          /* already exists */
+        }
+        try {
+          py.FS.mkdir("/lib/python")
+        } catch {
+          /* already exists */
+        }
+        py.FS.writeFile("/lib/python/turtle.py", turtleShimCode)
+        // Add to Python path if not already there
+        await py.runPythonAsync(`
+import sys
+if '/lib/python' not in sys.path:
+    sys.path.insert(0, '/lib/python')
+`)
+        console.log("[Worker] Turtle shim written to /lib/python/ (hidden)")
       } catch (e) {
         console.warn("[Worker] Failed to write turtle shim:", e)
       }
