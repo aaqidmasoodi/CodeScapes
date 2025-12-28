@@ -222,6 +222,7 @@ class _Screen(TurtleScreenBase):
         if delay is not None: self._tracer_delay = int(delay)
 
     def update(self):
+        _send_cmd("UPDATE", {})
         _poll_events()
         
     def delay(self, delay=None):

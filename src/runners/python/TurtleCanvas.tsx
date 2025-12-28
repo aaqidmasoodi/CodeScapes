@@ -102,6 +102,9 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       height: 600,
     })
 
+    // Strict initialization tracking
+    const isReadyRef = useRef(false)
+
     // Helper to update both ref and state
     const updateLogicalSize = useCallback((newSize: { width: number; height: number }) => {
       logicalSizeRef.current = newSize
@@ -165,6 +168,10 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         }
         canvasRef.current = canvasInstance
 
+        // CRITICAL: Mark canvas as ready - queue will be processed by the interval
+        // The interval at line 826+ will pick up any pending commands
+        // We trigger an immediate first check by not relying on the 100ms delay
+
         // Use logical size for canvas dimensions (fixed, never changes on pane resize)
         const lw = logicalSize.width
         const lh = logicalSize.height
@@ -188,6 +195,9 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             ctx.fillRect(0, 0, lw, lh)
           }
         }
+
+        // Mark as fully ready to process commands
+        isReadyRef.current = true
       }
     }, [canvasInstance, width, height])
 
@@ -316,6 +326,11 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             // New
             listeningRef.current = true
             console.log("[Turtle] Listen Enabled")
+            break
+          }
+          case "UPDATE": {
+            // Force overlay repaint when screen.update() is called
+            needOverlayUpdate = true
             break
           }
           case "SET_COORDS": {
@@ -797,6 +812,9 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     }, [])
 
     const processQueue = useCallback(() => {
+      // Only process when ready
+      if (!isReadyRef.current) return
+
       const commands = [...commandQueueRef.current]
       commandQueueRef.current = []
       commands.forEach((cmd) => handleCommand(cmd))
@@ -806,25 +824,36 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       ref,
       () => ({
         handleCommand: (cmd) => {
-          const canvas =
-            canvasRef.current ||
-            (containerRef.current?.querySelector("canvas:not(.absolute)") as HTMLCanvasElement)
-          if (canvas) handleCommand(cmd)
-          else commandQueueRef.current.push(cmd)
+          // STRICT check: Only bypassing queue if ready AND canvas available
+          if (isReadyRef.current && canvasRef.current) {
+            handleCommand(cmd)
+          } else {
+            commandQueueRef.current.push(cmd)
+          }
         },
         clear,
       }),
       [handleCommand, clear]
     )
 
+    // Immediate flush when canvas becomes ready (Fixes First-Load & Stop->Run race conditions)
     useEffect(() => {
+      // Since effects run in order, the top useEffect has already set isReadyRef=true
+      if (isReadyRef.current && commandQueueRef.current.length > 0) {
+        processQueue()
+      }
+    }, [canvasInstance, processQueue]) // Run when canvasInstance is created (mount/remount)
+
+    useEffect(() => {
+      // Process queue frequently (16ms ≈ 60fps) to ensure commands are processed quickly on first load
       const interval = setInterval(() => {
         if (
+          isReadyRef.current &&
           (canvasRef.current || containerRef.current?.querySelector("canvas:not(.absolute)")) &&
           commandQueueRef.current.length > 0
         )
           processQueue()
-      }, 100)
+      }, 16)
       return () => clearInterval(interval)
     }, [processQueue])
 

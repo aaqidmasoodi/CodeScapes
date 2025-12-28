@@ -783,7 +783,7 @@ export const PythonRunner = memo(
               <div className="mb-4 flex justify-center">
                 <TurtleCanvas
                   ref={(handle) => {
-                    // Store ref
+                    // Store ref immediately
                     turtleCanvasRef.current = handle
                     // Flush pending commands when canvas becomes available
                     if (handle && pendingTurtleCommands.current.length > 0) {
