@@ -39,9 +39,37 @@ interface StampState {
   stretchLen: number
 }
 
-type DrawCommand = {
-  cmd: string
-  [key: string]: unknown
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DrawCommand = { cmd: string; [key: string]: any }
+
+// Drawable primitive that can be replayed
+interface DrawPrimitive {
+  type: "line" | "arc" | "dot" | "fill" | "text"
+  turtleId: number
+  color: string
+  // Line: from (x1,y1) to (x2,y2)
+  x1?: number
+  y1?: number
+  x2?: number
+  y2?: number
+  // Arc: center (cx, cy), radius, startAngle, endAngle
+  cx?: number
+  cy?: number
+  radius?: number
+  startAngle?: number
+  endAngle?: number
+  counterclockwise?: boolean
+  // Dot: position (x, y), size
+  x?: number
+  y?: number
+  size?: number
+  // Fill: path points
+  path?: Point[]
+  fillColor?: string
+  // Text: position (x, y), content
+  text?: string
+  font?: string
+  align?: string
 }
 
 type Point = { x: number; y: number }
@@ -61,6 +89,10 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
 
     const coordsRef = useRef<{ llx: number; lly: number; urx: number; ury: number } | null>(null)
     const fillPathRef = useRef<Map<number, Point[]>>(new Map())
+
+    // Track all draw primitives per turtle for clear() support
+    // Key is turtle ID, value is array of drawable primitives
+    const drawHistoryRef = useRef<Map<number, DrawPrimitive[]>>(new Map())
 
     // Logical canvas size (set by INIT/SETUP, never changes on pane resize)
     // Using BOTH ref (for callbacks) and state (for render) to avoid stale closures
@@ -223,6 +255,14 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       turtlesRef.current.forEach((turtle) => drawShape(ctx, turtle))
     }, [drawShape])
 
+    // Helper to add a draw primitive to a turtle's history
+    const addPrimitive = useCallback((turtleId: number, primitive: DrawPrimitive) => {
+      if (!drawHistoryRef.current.has(turtleId)) {
+        drawHistoryRef.current.set(turtleId, [])
+      }
+      drawHistoryRef.current.get(turtleId)!.push(primitive)
+    }, [])
+
     const handleCommand = useCallback(
       (command: DrawCommand) => {
         const canvas =
@@ -360,6 +400,8 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             const t = turtlesRef.current.get(id)
             if (!t) break
 
+            const oldX = t.x
+            const oldY = t.y
             if (fillPathRef.current.has(id)) {
               fillPathRef.current.get(id)?.push({ x: command.x as number, y: command.y as number })
             }
@@ -377,6 +419,17 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               ctx.lineWidth = ((command.width as number) || 1) * getScaleX()
               ctx.lineCap = "round"
               ctx.stroke()
+
+              // Store line primitive for clear() support
+              addPrimitive(id, {
+                type: "line",
+                turtleId: id,
+                color: (command.color as string) || "black",
+                x1: oldX,
+                y1: oldY,
+                x2: t.x,
+                y2: t.y,
+              })
             }
             needOverlayUpdate = true
             break
@@ -497,6 +550,15 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               // Use turtle's pen color for stroke, fallback to fill color
               ctx.strokeStyle = t?.color || (command.color as string) || "black"
               ctx.stroke()
+
+              // Store fill primitive for clear() support
+              addPrimitive(id, {
+                type: "fill",
+                turtleId: id,
+                color: t?.color || (command.color as string) || "black",
+                fillColor: (command.color as string) || "black",
+                path: [...path], // Clone the path
+              })
             }
             fillPathRef.current.delete(id)
             break
@@ -516,18 +578,126 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             ctx.fillRect(0, 0, width, height)
             break
           }
+          case "CLEAR": {
+            // Clear only this turtle's drawings, keep other turtles' drawings
+            const turtleId = command.id as number
+
+            // Remove this turtle's draw history
+            drawHistoryRef.current.delete(turtleId)
+
+            // Clear stamps for this turtle
+            stampsRef.current.forEach((_, id) => {
+              if (Math.floor(id / 10000) === turtleId) {
+                stampsRef.current.delete(id)
+              }
+            })
+
+            // Re-render the canvas: clear and redraw all remaining drawings
+            const { width: lw, height: lh } = logicalSizeRef.current
+            ctx.fillStyle = bgColorRef.current || "white"
+            ctx.fillRect(0, 0, lw, lh)
+
+            // Replay all other turtles' draw primitives
+            drawHistoryRef.current.forEach((primitives) => {
+              primitives.forEach((prim) => {
+                switch (prim.type) {
+                  case "line":
+                    if (
+                      prim.x1 !== undefined &&
+                      prim.y1 !== undefined &&
+                      prim.x2 !== undefined &&
+                      prim.y2 !== undefined
+                    ) {
+                      ctx.beginPath()
+                      ctx.moveTo(toCanvasX(prim.x1), toCanvasY(prim.y1))
+                      ctx.lineTo(toCanvasX(prim.x2), toCanvasY(prim.y2))
+                      ctx.strokeStyle = prim.color
+                      ctx.stroke()
+                    }
+                    break
+                  case "arc":
+                    if (
+                      prim.cx !== undefined &&
+                      prim.cy !== undefined &&
+                      prim.radius !== undefined
+                    ) {
+                      ctx.beginPath()
+                      ctx.arc(
+                        toCanvasX(prim.cx),
+                        toCanvasY(prim.cy),
+                        Math.abs(prim.radius * getScaleX()),
+                        -(prim.startAngle || 0),
+                        -(prim.endAngle || 0),
+                        prim.counterclockwise ?? false
+                      )
+                      ctx.strokeStyle = prim.color
+                      ctx.stroke()
+                    }
+                    break
+                  case "dot":
+                    if (prim.x !== undefined && prim.y !== undefined) {
+                      ctx.beginPath()
+                      ctx.arc(
+                        toCanvasX(prim.x),
+                        toCanvasY(prim.y),
+                        (prim.size || 2) * getScaleX(),
+                        0,
+                        Math.PI * 2
+                      )
+                      ctx.fillStyle = prim.color
+                      ctx.fill()
+                    }
+                    break
+                  case "fill":
+                    if (prim.path && prim.path.length > 2) {
+                      ctx.beginPath()
+                      ctx.moveTo(toCanvasX(prim.path[0].x), toCanvasY(prim.path[0].y))
+                      for (let i = 1; i < prim.path.length; i++) {
+                        ctx.lineTo(toCanvasX(prim.path[i].x), toCanvasY(prim.path[i].y))
+                      }
+                      ctx.closePath()
+                      ctx.fillStyle = prim.fillColor || prim.color
+                      ctx.fill()
+                      ctx.strokeStyle = prim.color
+                      ctx.stroke()
+                    }
+                    break
+                  case "text":
+                    if (prim.x !== undefined && prim.y !== undefined && prim.text) {
+                      ctx.font = prim.font || "12px Arial"
+                      ctx.textAlign = (prim.align as CanvasTextAlign) || "left"
+                      ctx.fillStyle = prim.color
+                      ctx.fillText(prim.text, toCanvasX(prim.x), toCanvasY(prim.y))
+                    }
+                    break
+                }
+              })
+            })
+
+            needOverlayUpdate = true
+            break
+          }
           case "DOT": {
-            const x = toCanvasX(
-              (command.x || turtlesRef.current.get(command.id as number)?.x) as number
-            )
-            const y = toCanvasY(
-              (command.y || turtlesRef.current.get(command.id as number)?.y) as number
-            )
+            const id = command.id as number
+            const worldX = (command.x || turtlesRef.current.get(id)?.x) as number
+            const worldY = (command.y || turtlesRef.current.get(id)?.y) as number
+            const x = toCanvasX(worldX)
+            const y = toCanvasY(worldY)
             const size = (command.size as number) || 2
             ctx.beginPath()
             ctx.arc(x, y, size * getScaleX(), 0, Math.PI * 2)
             ctx.fillStyle = (command.color as string) || "black"
             ctx.fill()
+
+            // Store dot primitive for clear() support
+            addPrimitive(id, {
+              type: "dot",
+              turtleId: id,
+              color: (command.color as string) || "black",
+              x: worldX,
+              y: worldY,
+              size: size,
+            })
             break
           }
           case "WRITE": {
@@ -574,6 +744,18 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               t.x = wx + (align === "left" ? width : align === "center" ? width / 2 : 0)
               needOverlayUpdate = true
             }
+
+            // Store text primitive for clear() support
+            addPrimitive(id, {
+              type: "text",
+              turtleId: id,
+              color: (command.color as string) || t?.color || "black",
+              x: wx,
+              y: wy,
+              text: text,
+              font: `${fontStyle} ${fontSize}px ${fontFamily}`,
+              align: align,
+            })
 
             ctx.restore()
             break

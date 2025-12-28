@@ -629,9 +629,11 @@ class Turtle:
         self.clear()
         
     def clear(self):
-        # Clears current drawings. 
-        # In current protocol, we don't support per-turtle clear except via timestamps/ids?
-        pass
+        """Clear the turtle's drawings from the screen.
+        
+        The turtle itself is not affected (position, heading, visibility remain unchanged).
+        """
+        _send_cmd("CLEAR", {"id": self._id})
         
     def clone(self):
         t = Turtle(shape=self._shape, visible=self._visible)
