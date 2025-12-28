@@ -38,6 +38,21 @@ def _send_cmd(cmd_type: str, args: dict):
 def _poll_events():
     """Poll for events using sync XHR."""
     if not _HAS_JS: return
+    
+    # Map browser key names to standard turtle key names
+    KEY_MAP = {
+        'ArrowUp': 'Up',
+        'ArrowDown': 'Down',
+        'ArrowLeft': 'Left',
+        'ArrowRight': 'Right',
+        'Escape': 'Escape',
+        'Return': 'Return',
+        'Enter': 'Return',
+        'Backspace': 'BackSpace',
+        ' ': 'space',
+        'Tab': 'Tab',
+    }
+    
     try:
         xhr = js.XMLHttpRequest.new()
         xhr.open("GET", "/_turtle_events", False)  # Synchronous
@@ -51,9 +66,15 @@ def _poll_events():
                     for event in events:
                         etype = event.get("type", "keydown")
                         if etype == "keydown":
-                            key = event.get("key")
-                            if key in screen._key_handlers:
-                                try: screen._key_handlers[key]()
+                            browser_key = event.get("key")
+                            # Try browser key first, then mapped key
+                            turtle_key = KEY_MAP.get(browser_key, browser_key)
+                            # Check both browser key and turtle key
+                            if browser_key in screen._key_handlers:
+                                try: screen._key_handlers[browser_key]()
+                                except: pass
+                            elif turtle_key in screen._key_handlers:
+                                try: screen._key_handlers[turtle_key]()
                                 except: pass
                         elif etype == "keyup":
                              pass 
