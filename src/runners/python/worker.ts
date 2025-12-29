@@ -14,6 +14,11 @@ interface PyodideInterface {
     writeFile: (path: string, content: string | Uint8Array, options?: any) => void
     mkdir: (path: string) => void
     readdir: (path: string) => string[]
+    stat: (path: string) => { mode: number; size: number }
+    readFile: (path: string, options?: { encoding?: "utf8" | "binary" }) => any
+    isDir: (mode: number) => boolean
+    isFile: (mode: number) => boolean
+    unlink: (path: string) => void
   }
   setStdout: (options: { batched: (msg: string) => void }) => void
   setStderr: (options: { batched: (msg: string) => void }) => void
@@ -628,6 +633,7 @@ if '/lib/python' not in sys.path:
       }
 
       // Execute User Code
+      postMessage({ type: "STATUS", payload: "Running code..." })
       const result = await py.runPythonAsync(mainFile.content)
 
       // Rich Output Check
@@ -644,85 +650,103 @@ if '/lib/python' not in sys.path:
         }
       }
     } catch (error: any) {
-      postMessage({ type: "ERROR", payload: error.message || String(error) })
+      if (error.name === "PythonError" && error.message.includes("KeyboardInterrupt")) {
+        console.log("[Worker] Script interrupted by user")
+      } else {
+        postMessage({ type: "ERROR", payload: error.message || String(error) })
+      }
     } finally {
       // 3. Sync Filesystem Back to Main Thread
-      if (py) {
-        try {
-          // Recursive scan of the virtual filesystem
-          const filesProxy = await py.runPythonAsync(`
-            import os
-            import base64
-            import js
-
-            def _serialize_fs(path='.'):
-                files = []
-                # Skip system and hidden directories
-                SKIP_DIRS = {'.', '..', 'lib', 'tmp', 'home', 'dev', 'proc', 'sys'}
-                
-                try:
-                    for item in os.listdir(path):
-                        if item in SKIP_DIRS and path == '.': continue
-                        if item.startswith('.'): continue # Skip hidden files
-
-                        full_path = os.path.join(path, item)
-                        
-                        if os.path.isdir(full_path):
-                            # Recurse
-                            files.extend(_serialize_fs(full_path))
-                        else:
-                            # Read File
-                            try:
-                                with open(full_path, 'rb') as f:
-                                    content = f.read()
-                                    # Detect binary? For now treat mostly as text or base64?
-                                    # Passing binary to JS via Pyodide is cleaner if we use specific API
-                                    # But simplistic approach: Text if valid utf-8, else Base64?
-                                    
-                                    try:
-                                        text_content = content.decode('utf-8')
-                                        files.append({
-                                            'name': full_path.replace('./', ''),
-                                            'content': text_content,
-                                            'is_binary': False
-                                        })
-                                    except UnicodeDecodeError:
-                                        # Binary fallback (encode as Base64)
-                                        b64_content = base64.b64encode(content).decode('ascii')
-                                        files.append({
-                                            'name': full_path.replace('./', ''),
-                                            'content': b64_content,
-                                            'encoding': 'base64'
-                                        })
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-                return files
-
-            _files = _serialize_fs()
-            _files
-          `)
-          // Convert Python Proxy to JS Object
-          // We use the `toJs` method which comes with Pyodide proxies.
-          // Map/Dict will be converted to Map by default, we want Object.
-          // List will be converted to Array.
-          const localFiles = filesProxy.toJs({
-            dict_converter: Object.fromEntries,
-          })
-
-          // Cleanup proxy
-          filesProxy.destroy()
-
-          postMessage({ type: "FS_UPDATE", payload: localFiles })
-        } catch (e) {
-          console.warn("[Worker] FS Sync failed", e)
-        }
-      }
-
+      syncFileSystem()
       postMessage({ type: "DidRun" })
     }
   }
+}
+
+/**
+ * Scans the virtual filesystem and sends updates to the main thread.
+ * USES Synchronous FS API (Does not require Python instance to be free)
+ */
+function syncFileSystem() {
+  if (!pyodide || !pyodide.FS) return
+
+  try {
+    const files: any[] = []
+    const SKIP_DIRS = new Set([
+      ".",
+      "..",
+      "lib",
+      "tmp",
+      "home",
+      "dev",
+      "proc",
+      "sys",
+      "__pycache__",
+    ])
+
+    function scan(path: string) {
+      try {
+        const items = pyodide!.FS.readdir(path)
+        for (const item of items) {
+          if (path === "." && SKIP_DIRS.has(item)) continue
+          if (item.startsWith(".")) continue
+
+          const fullPath = path === "." ? item : `${path}/${item}`
+          const stat = pyodide!.FS.stat(fullPath)
+
+          if (pyodide!.FS.isDir(stat.mode)) {
+            scan(fullPath)
+          } else {
+            try {
+              // Read as Uint8Array (binary)
+              const content = pyodide!.FS.readFile(fullPath, { encoding: "binary" })
+
+              // Try to decode as UTF-8
+              try {
+                const decoder = new TextDecoder("utf-8", { fatal: true })
+                const text = decoder.decode(content)
+                files.push({
+                  name: fullPath,
+                  content: text,
+                  is_binary: false,
+                })
+              } catch {
+                // Binary fallback (Base64)
+                let binary = ""
+                const bytes = content
+                const len = bytes.byteLength
+                for (let i = 0; i < len; i++) {
+                  binary += String.fromCharCode(bytes[i])
+                }
+                const b64 = btoa(binary)
+                files.push({
+                  name: fullPath,
+                  content: b64,
+                  encoding: "base64",
+                  is_binary: true,
+                })
+              }
+            } catch (err: any) {
+              console.warn(`[Worker] Failed to sync file ${fullPath}: ${err.message}`)
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[Worker] Failed to scan path ${path}: ${err.message}`)
+      }
+    }
+
+    scan(".")
+    postMessage({ type: "FS_UPDATE", payload: files })
+  } catch (e) {
+    console.warn("[Worker] FS Sync failed", e)
+  }
+}
+
+// Expose sync function to JS global for Python access
+;(self as any).sync_fs = () => {
+  // Fire and forget sync
+  syncFileSystem()
 }
 
 export {}

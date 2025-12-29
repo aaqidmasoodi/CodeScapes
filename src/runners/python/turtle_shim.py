@@ -16,6 +16,8 @@ except ImportError:
     Point = collections.namedtuple('Point', ['x', 'y'])
     _HAS_JS = False
 
+_last_sync_time = 0
+
 # ===== Protocol Utilities =====
 
 def _send_cmd(cmd_type: str, args: dict):
@@ -34,6 +36,21 @@ def _send_cmd(cmd_type: str, args: dict):
         js.postMessage(js.JSON.parse(payload))
     except Exception as e:
         print(f"[turtle] Error sending {cmd_type}: {e}", file=sys.stderr)
+
+def _sync_fs(force=False):
+    """Notify the worker to scan the filesystem for changes."""
+    global _last_sync_time
+    if not _HAS_JS: return
+    
+    now = time.time()
+    # Throttled sync (every 2 seconds) or if forced
+    if force or (now - _last_sync_time > 2.0):
+        _last_sync_time = now
+        try:
+            # We call the globally exposed sync_fs function in JS
+            js.sync_fs()
+        except Exception:
+            pass
 
 def _poll_events():
     """Poll for events using sync XHR."""
@@ -230,6 +247,7 @@ class _Screen(TurtleScreenBase):
     def update(self):
         _send_cmd("UPDATE", {})
         _poll_events()
+        _sync_fs()
         
     def delay(self, delay=None):
         if delay is None: return self._tracer_delay
@@ -273,6 +291,7 @@ class _Screen(TurtleScreenBase):
         while True:
             _poll_events()
             self._check_timers()
+            _sync_fs()
             time.sleep(0.01) 
     
     def done(self): self.mainloop()

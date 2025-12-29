@@ -436,9 +436,8 @@ export const PythonRunner = memo(
         worker.postMessage({
           type: "INIT",
           payload: {
-            // dependencies: propsRef.current.dependencies, // Removed check for now, can add back
             dependencies: propsRef.current.dependencies,
-            // sharedBuffer: sab, // No longer vital, but can keep if needed for other things? No.
+            sharedBuffer: sab,
           },
         })
       }, [log, setBusy, envVars])
@@ -557,7 +556,7 @@ export const PythonRunner = memo(
               payload: {
                 files: currentFiles.map((f) => ({
                   name: f.name,
-                  content: f.content,
+                  content: f.content as string | Uint8Array,
                   language: f.language,
                 })),
                 entryPoint,
@@ -660,10 +659,22 @@ export const PythonRunner = memo(
           return null
         },
         stop: async () => {
-          // Explicit Force Stop (Kill Worker)
+          // 1. Try Graceful Stop (KeyboardInterrupt)
+          if (sharedArrayRef.current) {
+            log("system", "Saving files and stopping...")
+            // 2 is standard for SIGINT in Pyodide/Emscripten context
+            Atomics.store(sharedArrayRef.current, 0, 2)
+
+            // Give the worker a chance to catch interrupt, run 'finally', and sync FS
+            await new Promise((r) => setTimeout(r, 1000))
+          }
+
+          // 2. Hard Kill & Restart Worker
+          // This ensures a fresh environment for the next run
+          debug.log("[PythonRunner] Force terminating worker")
           initWorker()
-          // Reset busy state - the new worker isn't running code yet
-          // This prevents the next run from thinking it needs to restart again
+
+          // Reset busy state
           setBusy(false)
         },
         restart: async () => {
