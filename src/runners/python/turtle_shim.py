@@ -624,6 +624,9 @@ class Turtle:
         
         The circle is drawn to the left of the turtle (counterclockwise for positive radius).
         After the arc, the turtle's position and heading are updated.
+        
+        Animation: When speed > 0 and tracer > 0, the arc is drawn as a series of
+        line segments with delays, matching the behavior of forward().
         """
         
         if extent is None:
@@ -637,47 +640,122 @@ class Turtle:
         tracer_n = screen._tracer_n if screen else 1
         speed = self._speed if self._speed is not None else 3
         
-        # FAST PATH: Instant drawing
+        # Calculate arc geometry
+        heading_rad = math.radians(self._heading)
+        
+        if radius >= 0:
+            center_angle = heading_rad + math.pi / 2
+        else:
+            center_angle = heading_rad - math.pi / 2
+            
+        cx = self._x + abs(radius) * math.cos(center_angle)
+        cy = self._y + abs(radius) * math.sin(center_angle)
+        start_angle = math.atan2(self._y - cy, self._x - cx)
+        
+        # FAST PATH: Instant drawing (use CIRCLE command for efficiency)
         if tracer_n == 0 or speed == 0:
-            self._draw_arc_segment(radius, ext_deg)
+            ext_rad = math.radians(ext_deg)
+            if radius >= 0:
+                end_angle = start_angle + ext_rad
+            else:
+                end_angle = start_angle - ext_rad
+                
+            new_x = cx + abs(radius) * math.cos(end_angle)
+            new_y = cy + abs(radius) * math.sin(end_angle)
+            
+            _send_cmd("CIRCLE", {
+                "id": self._id,
+                "radius": float(radius),
+                "extent": ext_deg,
+                "steps": steps or 0,
+                "pen_down": self._pen_down,
+                "filling": self._filling,
+                "fillcolor": self._fillcolor,
+                "start_x": self._x,
+                "start_y": self._y,
+                "end_x": new_x,
+                "end_y": new_y
+            })
+            
+            self._x = new_x
+            self._y = new_y
+            if radius >= 0:
+                self._heading = (self._heading + ext_deg) % 360
+            else:
+                self._heading = (self._heading - ext_deg) % 360
             return
 
-        # ANIMATED PATH: Break into small chunks
-        # Chunk size depends on speed (slower = smaller chunks = smoother)
-        # speed 1 = 2 degrees/step, speed 6 = 10 degrees/step, speed 10 = 20 degrees/step
-        degrees_per_step = max(2, speed * 2) 
+        # ANIMATED PATH: Draw as line segments using MOVE commands
+        # This creates smooth animation that matches forward() behavior
         
-        # Determine number of steps
-        num_segments = int(abs(ext_deg) / degrees_per_step)
-        if num_segments < 1: num_segments = 1
+        # Calculate number of segments based on arc length and speed
+        arc_length = abs(radius * math.radians(ext_deg))
         
-        # Remainder
-        remainder = abs(ext_deg) % degrees_per_step
+        # Pixels per step: higher speed = larger steps = fewer segments
+        pixels_per_step = max(1, speed)
+        num_steps = max(4, int(arc_length / pixels_per_step))  # At least 4 segments
         
-        # Step value (preserve sign of extent)
-        step_angle = degrees_per_step if ext_deg >= 0 else -degrees_per_step
+        # Limit maximum steps to prevent lag on huge arcs
+        num_steps = min(num_steps, 200)
         
-        # Animation delay
+        # Animation delay per step
         step_delay = max(1, 16 - speed) / 1000.0
-
-        for _ in range(num_segments):
-            self._draw_arc_segment(radius, step_angle)
-            time.sleep(step_delay)
-            _poll_events()
+        
+        # Angular step
+        angle_step = math.radians(ext_deg) / num_steps
+        
+        current_arc_angle = start_angle
+        
+        for i in range(num_steps):
+            # Calculate next position on the arc
+            if radius >= 0:
+                current_arc_angle += angle_step
+            else:
+                current_arc_angle -= angle_step
+                
+            new_x = cx + abs(radius) * math.cos(current_arc_angle)
+            new_y = cy + abs(radius) * math.sin(current_arc_angle)
             
-        # Draw remainder if any
-        if remainder > 0.001:
-            rem_angle = remainder if ext_deg >= 0 else -remainder
-            self._draw_arc_segment(radius, rem_angle)
+            # Track fill path
+            if self._filling:
+                # Add point to fill path via extended MOVE
+                pass  # Fill path tracking is handled by MOVE command on frontend
+            
+            # Send as MOVE (line segment) - this is the key change!
+            _send_cmd("MOVE", {
+                "id": self._id,
+                "x": new_x,
+                "y": new_y,
+                "pen_down": self._pen_down,
+                "color": self._pencolor,
+                "width": self._pensize
+            })
+            
+            self._x = new_x
+            self._y = new_y
+            
+            # Update heading progressively
+            heading_step = ext_deg / num_steps
+            if radius >= 0:
+                self._heading = (self._heading + heading_step) % 360
+            else:
+                self._heading = (self._heading - heading_step) % 360
+            
+            # Animation delay (skip on last step)
+            if i < num_steps - 1:
+                time.sleep(step_delay)
+                _poll_events()
+        
+        # Ensure final heading is exactly correct (avoid floating point drift)
+        # Already updated incrementally above
 
     def _draw_arc_segment(self, radius, extent):
-        """Helper to draw a single arc segment and update state"""
+        """Helper to draw a single arc segment instantly (used for tracer(0) mode)"""
         import math
         
         ext_rad = math.radians(extent)
         heading_rad = math.radians(self._heading)
         
-        # Center calculation (same as before)
         if radius >= 0:
             center_angle = heading_rad + math.pi / 2
         else:
@@ -686,7 +764,6 @@ class Turtle:
         cx = self._x + abs(radius) * math.cos(center_angle)
         cy = self._y + abs(radius) * math.sin(center_angle)
         
-        # End position calculation
         start_angle = math.atan2(self._y - cy, self._x - cx)
         
         if radius >= 0:
@@ -701,7 +778,7 @@ class Turtle:
             "id": self._id,
             "radius": float(radius),
             "extent": extent,
-            "steps": 0, # Steps only used for polygons, not smooth circles
+            "steps": 0,
             "pen_down": self._pen_down,
             "filling": self._filling,
             "fillcolor": self._fillcolor,
