@@ -16,6 +16,7 @@ import { type Scape } from "@/lib/db"
 // Components
 import { CommentsSection } from "@/components/community/CommentsSection"
 import { CodeViewer } from "@/components/community/CodeViewer"
+import { AuthDialog } from "@/components/auth/AuthDialog"
 
 const repo = new CloudRepository()
 
@@ -30,6 +31,7 @@ export default function ScapeDetailPage() {
   const [isLiked, setIsLiked] = useState(false)
   const [isForking, setIsForking] = useState(false)
   const [showPreview, setShowPreview] = useState(true)
+  const [showAuthDialog, setShowAuthDialog] = useState(false)
 
   const viewIncrementedRef = useRef(false)
 
@@ -70,12 +72,19 @@ export default function ScapeDetailPage() {
     if (!scapeId) return
 
     if (!user) {
-      toast({
+      const { dismiss: dismissToast } = toast({
         title: "Sign in required",
         description: "You must be logged in to like a project.",
         variant: "destructive",
         action: (
-          <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              dismissToast()
+              setShowAuthDialog(true)
+            }}
+          >
             Sign In
           </Button>
         ),
@@ -120,12 +129,19 @@ export default function ScapeDetailPage() {
     if (!scapeId) return
 
     if (!user) {
-      toast({
+      const { dismiss: dismissToast } = toast({
         title: "Sign in required",
         description: "You must be logged in to fork a project.",
         variant: "destructive",
         action: (
-          <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              dismissToast()
+              setShowAuthDialog(true)
+            }}
+          >
             Sign In
           </Button>
         ),
@@ -174,171 +190,178 @@ export default function ScapeDetailPage() {
   const isOwner = user?.id === scape.authorId
 
   return (
-    <DashboardLayout activeTab="community">
-      <div className="h-full w-full overflow-y-auto bg-background p-4 md:p-6">
-        <div className="mx-auto flex max-w-[1800px] flex-col gap-8">
-          {/* Top Section: Preview & Metadata */}
-          <div className="grid min-h-[500px] grid-cols-1 gap-6 lg:h-[750px] lg:grid-cols-4">
-            {/* Visual Preview (3/4) */}
-            <div className="flex h-[60vh] flex-col overflow-hidden rounded-xl border bg-secondary/5 shadow-sm lg:col-span-3 lg:h-full">
-              <div className="flex items-center justify-between border-b px-4 py-2">
-                <span className="text-sm font-medium text-muted-foreground">Preview Output</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 gap-2 text-xs"
-                  onClick={() => window.open(`/view/${scape.id}`, "_blank")}
-                >
-                  <Maximize2 className="h-3 w-3" /> Launch Full Screen
-                </Button>
+    <>
+      <DashboardLayout activeTab="community">
+        <div className="h-full w-full overflow-y-auto bg-background p-4 md:p-6">
+          <div className="mx-auto flex max-w-[1800px] flex-col gap-8">
+            {/* Top Section: Preview & Metadata */}
+            <div className="grid min-h-[500px] grid-cols-1 gap-6 lg:h-[750px] lg:grid-cols-4">
+              {/* Visual Preview (3/4) */}
+              <div className="flex h-[60vh] flex-col overflow-hidden rounded-xl border bg-secondary/5 shadow-sm lg:col-span-3 lg:h-full">
+                <div className="flex items-center justify-between border-b px-4 py-2">
+                  <span className="text-sm font-medium text-muted-foreground">Preview Output</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 gap-2 text-xs"
+                    onClick={() => window.open(`/view/${scape.id}`, "_blank")}
+                  >
+                    <Maximize2 className="h-3 w-3" /> Launch Full Screen
+                  </Button>
+                </div>
+                <div className="relative flex-1 overflow-hidden bg-white dark:bg-zinc-950">
+                  {showPreview ? (
+                    <iframe
+                      src={`/view/${scape.id}`}
+                      className="h-full w-full border-0"
+                      title="Preview"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center">
+                      <div className="text-center">
+                        <Button
+                          size="lg"
+                          className="h-20 w-20 rounded-full"
+                          variant="outline"
+                          onClick={() => setShowPreview(true)}
+                        >
+                          <Play className="ml-1 h-10 w-10" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="relative flex-1 overflow-hidden bg-white dark:bg-zinc-950">
-                {showPreview ? (
-                  <iframe
-                    src={`/view/${scape.id}`}
-                    className="h-full w-full border-0"
-                    title="Preview"
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="text-center">
-                      <Button
-                        size="lg"
-                        className="h-20 w-20 rounded-full"
-                        variant="outline"
-                        onClick={() => setShowPreview(true)}
-                      >
-                        <Play className="ml-1 h-10 w-10" />
-                      </Button>
+
+              {/* Metadata Card (1/3) */}
+              <div className="flex flex-col rounded-xl border bg-card p-6 shadow-sm">
+                {/* Header */}
+                <div className="mb-6 flex items-start gap-4">
+                  <Avatar className="h-12 w-12">
+                    <AvatarImage src={scape.author?.avatar} />
+                    <AvatarFallback>{scape.author?.name?.charAt(0) || "U"}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 overflow-hidden">
+                    <h1 className="truncate text-xl font-bold">{scape.name}</h1>
+                    <p className="truncate text-sm text-muted-foreground">
+                      by <span className="text-foreground">{scape.author?.name || "Unknown"}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="mb-6 grid grid-cols-3 gap-4 rounded-lg bg-muted/50 p-4 text-center">
+                  <div>
+                    <div className="text-2xl font-bold">{scape.stats?.views || 0}</div>
+                    <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                      <Eye className="h-3 w-3" /> Views
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Metadata Card (1/3) */}
-            <div className="flex flex-col rounded-xl border bg-card p-6 shadow-sm">
-              {/* Header */}
-              <div className="mb-6 flex items-start gap-4">
-                <Avatar className="h-12 w-12">
-                  <AvatarImage src={scape.author?.avatar} />
-                  <AvatarFallback>{scape.author?.name?.charAt(0) || "U"}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 overflow-hidden">
-                  <h1 className="truncate text-xl font-bold">{scape.name}</h1>
-                  <p className="truncate text-sm text-muted-foreground">
-                    by <span className="text-foreground">{scape.author?.name || "Unknown"}</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Stats Grid */}
-              <div className="mb-6 grid grid-cols-3 gap-4 rounded-lg bg-muted/50 p-4 text-center">
-                <div>
-                  <div className="text-2xl font-bold">{scape.stats?.views || 0}</div>
-                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                    <Eye className="h-3 w-3" /> Views
+                  <div>
+                    <div className="text-2xl font-bold">{scape.stats?.likes || 0}</div>
+                    <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                      <Heart className="h-3 w-3" /> Likes
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{scape.stats?.forks || 0}</div>
+                    <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                      <GitFork className="h-3 w-3" /> Forks
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <div className="text-2xl font-bold">{scape.stats?.likes || 0}</div>
-                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                    <Heart className="h-3 w-3" /> Likes
-                  </div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold">{scape.stats?.forks || 0}</div>
-                  <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                    <GitFork className="h-3 w-3" /> Forks
-                  </div>
-                </div>
-              </div>
 
-              {/* Actions */}
-              <div className="grid grid-cols-2 gap-3">
-                <Button
-                  className="w-full"
-                  variant={isLiked ? "secondary" : "default"}
-                  onClick={handleLike}
-                >
-                  <Heart className={`mr-2 h-4 w-4 ${isLiked ? "fill-current text-red-500" : ""}`} />
-                  {isLiked ? "Liked" : "Like"}
-                </Button>
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  onClick={handleFork}
-                  disabled={isForking}
-                >
-                  <GitFork className="mr-2 h-4 w-4" />
-                  {isForking ? "Forking..." : "Fork"}
-                </Button>
-                <Button className="col-span-2 w-full" variant="outline" onClick={handleShare}>
-                  <Share2 className="mr-2 h-4 w-4" />
-                  Share Project
-                </Button>
-
-                {isOwner && (
+                {/* Actions */}
+                <div className="grid grid-cols-2 gap-3">
                   <Button
-                    className="col-span-2 w-full"
-                    variant="secondary"
-                    onClick={() => navigate(`/scape/${scape.id}`)}
+                    className="w-full"
+                    variant={isLiked ? "secondary" : "default"}
+                    onClick={handleLike}
                   >
-                    <Play className="mr-2 h-4 w-4" />
-                    Open in Editor
+                    <Heart
+                      className={`mr-2 h-4 w-4 ${isLiked ? "fill-current text-red-500" : ""}`}
+                    />
+                    {isLiked ? "Liked" : "Like"}
                   </Button>
-                )}
-              </div>
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    onClick={handleFork}
+                    disabled={isForking}
+                  >
+                    <GitFork className="mr-2 h-4 w-4" />
+                    {isForking ? "Forking..." : "Fork"}
+                  </Button>
+                  <Button className="col-span-2 w-full" variant="outline" onClick={handleShare}>
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Share Project
+                  </Button>
 
-              <Separator className="my-6" />
+                  {isOwner && (
+                    <Button
+                      className="col-span-2 w-full"
+                      variant="secondary"
+                      onClick={() => navigate(`/scape/${scape.id}`)}
+                    >
+                      <Play className="mr-2 h-4 w-4" />
+                      Open in Editor
+                    </Button>
+                  )}
+                </div>
 
-              {/* About */}
-              <div className="flex-1 overflow-y-auto">
-                <h3 className="mb-2 font-semibold">About</h3>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                  {scape.description || "No description provided."}
-                </p>
-                <div className="mt-4">
-                  <Badge variant="secondary" className="capitalize">
-                    {scape.environment}
-                  </Badge>
+                <Separator className="my-6" />
+
+                {/* About */}
+                <div className="flex-1 overflow-y-auto">
+                  <h3 className="mb-2 font-semibold">About</h3>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                    {scape.description || "No description provided."}
+                  </p>
+                  <div className="mt-4">
+                    <Badge variant="secondary" className="capitalize">
+                      {scape.environment}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Bottom Section: Code & Comments */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {/* Source Code */}
-            <div className="flex h-[700px] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
-              <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">Source Code</span>
-                  <Badge variant="outline" className="text-xs font-normal">
-                    Read-only
-                  </Badge>
+            {/* Bottom Section: Code & Comments */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* Source Code */}
+              <div className="flex h-[700px] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+                <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Source Code</span>
+                    <Badge variant="outline" className="text-xs font-normal">
+                      Read-only
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <CodeViewer scapeId={scape.id} />
                 </div>
               </div>
-              <div className="flex-1 overflow-hidden">
-                <CodeViewer scapeId={scape.id} />
+
+              {/* Comments */}
+              <div className="flex h-[700px] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+                <div className="border-b bg-muted/20 px-4 py-3">
+                  <h3 className="font-semibold">Comments & Discussion</h3>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <CommentsSection scapeId={scape.id} onSignIn={() => setShowAuthDialog(true)} />
+                </div>
               </div>
             </div>
 
-            {/* Comments */}
-            <div className="flex h-[700px] flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
-              <div className="border-b bg-muted/20 px-4 py-3">
-                <h3 className="font-semibold">Comments & Discussion</h3>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <CommentsSection scapeId={scape.id} />
-              </div>
-            </div>
+            {/* Bottom Spacer */}
+            <div className="h-12" />
           </div>
-
-          {/* Bottom Spacer */}
-          <div className="h-12" />
         </div>
-      </div>
-    </DashboardLayout>
+      </DashboardLayout>
+
+      {/* Auth Dialog */}
+      <AuthDialog open={showAuthDialog} onOpenChange={setShowAuthDialog} />
+    </>
   )
 }

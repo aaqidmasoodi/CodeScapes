@@ -119,7 +119,7 @@ function CommentItem({
 // Skipping CommentItem definition as it hasn't changed logic-wise, assuming it's above or I can just target CommentsSection.
 // Wait, I am replacing the file content, better be safe and include imports.
 
-export function CommentsSection({ scapeId }: { scapeId: string }) {
+export function CommentsSection({ scapeId, onSignIn }: { scapeId: string; onSignIn?: () => void }) {
   const { user } = useAuth()
   const { toast } = useToast()
   const [comments, setComments] = useState<Comment[]>([])
@@ -281,8 +281,8 @@ export function CommentsSection({ scapeId }: { scapeId: string }) {
         ) : (
           <div className="flex flex-col items-center justify-center gap-2 rounded-lg border bg-muted/20 py-6 text-center">
             <p className="text-sm text-muted-foreground">Log in to join the conversation</p>
-            <Button variant="outline" size="sm" asChild>
-              <span>Sign in</span>
+            <Button variant="outline" size="sm" onClick={onSignIn} className="cursor-pointer">
+              Sign in
             </Button>
           </div>
         )}
