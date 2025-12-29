@@ -35,9 +35,11 @@ export class ErrorBoundary extends Component<Props, State> {
           <p className="mb-4 max-w-md text-center text-muted-foreground">
             The application encountered an unexpected error.
           </p>
-          <div className="w-full max-w-lg overflow-auto rounded-md border bg-muted p-4 font-mono text-xs">
-            {this.state.error?.message}
-          </div>
+          {(import.meta.env.DEV || import.meta.env.VITE_DEBUG === "true") && (
+            <div className="w-full max-w-lg overflow-auto rounded-md border bg-muted p-4 font-mono text-xs">
+              {this.state.error?.message}
+            </div>
+          )}
           <button
             className="mt-6 rounded-md bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
             onClick={() => window.location.reload()}
