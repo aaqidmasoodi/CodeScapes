@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { Heart, GitFork, Share2, Play, Eye, Maximize2 } from "lucide-react"
 
@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/hooks/useAuth"
+import { useTheme } from "@/components/theme-provider"
 
 import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
@@ -34,6 +35,32 @@ export default function ScapeDetailPage() {
   const [showAuthDialog, setShowAuthDialog] = useState(false)
 
   const viewIncrementedRef = useRef(false)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const { resolvedTheme } = useTheme()
+
+  // Sync theme to iframe - robust version with retry
+  const sendThemeToIframe = useCallback(() => {
+    if (iframeRef.current?.contentWindow && resolvedTheme) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "THEME_CHANGE", theme: resolvedTheme },
+        "*"
+      )
+    }
+  }, [resolvedTheme])
+
+  // Effect to send theme when it changes
+  useEffect(() => {
+    sendThemeToIframe()
+    // Also retry after a short delay in case iframe wasn't ready
+    const timeout = setTimeout(sendThemeToIframe, 100)
+    return () => clearTimeout(timeout)
+  }, [resolvedTheme, sendThemeToIframe])
+
+  // Send theme when iframe loads
+  const handleIframeLoad = () => {
+    // Use a small delay to ensure the iframe's document is ready
+    setTimeout(sendThemeToIframe, 50)
+  }
 
   // Load Scape & Update Views
   useEffect(() => {
@@ -212,9 +239,11 @@ export default function ScapeDetailPage() {
                 <div className="relative flex-1 overflow-hidden bg-white dark:bg-zinc-950">
                   {showPreview ? (
                     <iframe
+                      ref={iframeRef}
                       src={`/view/${scape.id}`}
                       className="h-full w-full border-0"
                       title="Preview"
+                      onLoad={handleIframeLoad}
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center">

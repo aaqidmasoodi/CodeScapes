@@ -7,6 +7,7 @@ import { getRunner } from "@/runners/registry"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { debug } from "@/lib/debug"
+import { useTheme } from "@/components/theme-provider"
 
 import type { ScapeFile } from "@/types/file"
 import type { Scape } from "@/lib/db"
@@ -52,6 +53,22 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
       }
     }
   }, [logs, isConsoleOpen, isWaitingForInput])
+
+  // Listen for theme changes from parent window (for embedded previews)
+  const { setTheme } = useTheme()
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === "THEME_CHANGE") {
+        const theme = event.data.theme
+        // Use the ThemeProvider's setTheme to properly update the theme
+        setTheme(theme === "dark" ? "dark" : "light")
+      }
+    }
+
+    window.addEventListener("message", handleMessage)
+    return () => window.removeEventListener("message", handleMessage)
+  }, [setTheme])
 
   // Handle Input Request from Runner
   const handleInputRequest = (): Promise<string> => {
