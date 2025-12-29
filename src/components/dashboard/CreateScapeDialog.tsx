@@ -14,6 +14,7 @@ import {
   Check,
 } from "lucide-react"
 import { Spinner } from "@/components/ui/spinner"
+import { CodeScapeLogo } from "@/components/brand/Logo"
 
 import {
   Dialog,
@@ -218,7 +219,7 @@ export function CreateScapeDialog() {
             </DialogHeader>
             <div className="flex flex-col items-center gap-6 py-8">
               <div className="rounded-full bg-muted p-6">
-                <Lock className="h-12 w-12 text-muted-foreground" />
+                <CodeScapeLogo size={48} />
               </div>
               <div className="text-center">
                 <h3 className="text-lg font-semibold">Join CodeScapes</h3>
@@ -231,7 +232,7 @@ export function CreateScapeDialog() {
                 <Button variant="outline" onClick={() => setOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => navigate("/auth")}>Sign In</Button>
+                <Button onClick={() => navigate("/login")}>Sign In</Button>
               </div>
             </div>
           </>

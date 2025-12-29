@@ -74,6 +74,11 @@ export default function ScapeDetailPage() {
         title: "Sign in required",
         description: "You must be logged in to like a project.",
         variant: "destructive",
+        action: (
+          <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>
+            Sign In
+          </Button>
+        ),
       })
       return
     }
@@ -119,6 +124,11 @@ export default function ScapeDetailPage() {
         title: "Sign in required",
         description: "You must be logged in to fork a project.",
         variant: "destructive",
+        action: (
+          <Button variant="outline" size="sm" onClick={() => navigate("/auth")}>
+            Sign In
+          </Button>
+        ),
       })
       return
     }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { useNavigate, useLocation } from "react-router-dom"
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Menu, Search, Heart, GitFork, User, Code2 } from "lucide-react"
 
@@ -17,13 +17,20 @@ import { type Scape } from "@/lib/db"
 
 const repo = new CloudRepository()
 
+type FilterType = "all" | "web" | "python" | "flow"
+
 export default function CommunityPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const [scapes, setScapes] = useState<Scape[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filter, setFilter] = useState<"all" | "web" | "python" | "flow">("all")
+
+  // Get filter from URL or default to "all"
+  const filterFromUrl = (searchParams.get("filter") as FilterType) || "all"
+  const [filter, setFilter] = useState<FilterType>(filterFromUrl)
 
   // Browser Detection
   const [isRestrictedBrowser, setIsRestrictedBrowser] = useState(false)
@@ -168,7 +175,16 @@ export default function CommunityPage() {
                         key={f}
                         variant={filter === f ? "secondary" : "outline"}
                         size="sm"
-                        onClick={() => setFilter(f as "all" | "web" | "python" | "flow")}
+                        onClick={() => {
+                          const newFilter = f as FilterType
+                          setFilter(newFilter)
+                          // Update URL
+                          if (newFilter === "all") {
+                            setSearchParams({})
+                          } else {
+                            setSearchParams({ filter: newFilter })
+                          }
+                        }}
                         className="capitalize"
                       >
                         {f}

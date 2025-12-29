@@ -4,15 +4,9 @@ import { useAuth } from "@/hooks/useAuth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import { Github, Loader2, Mail } from "lucide-react"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
+import { Github, Loader2, Mail, Sparkles } from "lucide-react"
+import { CodeScapeLogo } from "@/components/brand/Logo"
 
 export default function AuthPage() {
   const navigate = useNavigate()
@@ -82,24 +76,58 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-background p-4">
-      {/* Background Decor */}
-      <div className="absolute -left-[10%] -top-[20%] h-[500px] w-[500px] rounded-full bg-primary/20 blur-[120px]" />
-      <div className="absolute -bottom-[20%] -right-[10%] h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-[120px]" />
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-background via-background to-background p-4">
+      {/* Animated Background Elements */}
+      <div className="absolute -left-[15%] -top-[25%] h-[600px] w-[600px] animate-pulse rounded-full bg-emerald-500/10 blur-[150px]" />
+      <div className="absolute -bottom-[25%] -right-[15%] h-[600px] w-[600px] animate-pulse rounded-full bg-blue-500/10 blur-[150px]" />
+      <div className="absolute left-1/2 top-1/3 h-[400px] w-[400px] -translate-x-1/2 animate-pulse rounded-full bg-primary/5 blur-[100px]" />
 
-      <Card className="z-10 w-full max-w-sm border-border/50 bg-card/50 shadow-2xl backdrop-blur-xl">
-        <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl font-bold tracking-tight">Welcome back</CardTitle>
-          <CardDescription>
-            {isSignUp ? "Create an account to get started" : "Sign in to your CodeScapes account"}
+      {/* Floating decorative elements */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div
+          className="absolute left-[10%] top-[15%] h-2 w-2 animate-bounce rounded-full bg-emerald-400/40"
+          style={{ animationDelay: "0s", animationDuration: "3s" }}
+        />
+        <div
+          className="absolute right-[15%] top-[25%] h-1.5 w-1.5 animate-bounce rounded-full bg-blue-400/40"
+          style={{ animationDelay: "0.5s", animationDuration: "4s" }}
+        />
+        <div
+          className="absolute bottom-[20%] left-[20%] h-1 w-1 animate-bounce rounded-full bg-primary/30"
+          style={{ animationDelay: "1s", animationDuration: "3.5s" }}
+        />
+        <div
+          className="absolute bottom-[30%] right-[10%] h-2 w-2 animate-bounce rounded-full bg-emerald-300/30"
+          style={{ animationDelay: "1.5s", animationDuration: "4.5s" }}
+        />
+      </div>
+
+      {/* Main Card */}
+      <Card className="z-10 w-full max-w-md border-border/40 bg-card/80 shadow-2xl backdrop-blur-xl">
+        <CardHeader className="space-y-4 pb-6 text-center">
+          {/* Logo */}
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="absolute -inset-4 animate-pulse rounded-full bg-primary/10 blur-xl" />
+              <CodeScapeLogo size={64} className="relative" />
+            </div>
+          </div>
+
+          {/* Tagline */}
+          <CardDescription className="flex items-center justify-center gap-1.5 text-sm">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            {isSignUp ? "Create your account to start coding" : "Sign in to continue your journey"}
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+
+        <CardContent className="space-y-5">
+          {/* OAuth Buttons */}
           <div className="grid grid-cols-2 gap-3">
             <Button
               variant="outline"
               onClick={handleGithubLogin}
               disabled={isGithubLoading || isGoogleLoading || loading}
+              className="h-11 border-border/60 bg-background/50 transition-all hover:border-primary/50 hover:bg-primary/5"
             >
               {isGithubLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -112,6 +140,7 @@ export default function AuthPage() {
               variant="outline"
               onClick={handleGoogleLogin}
               disabled={isGithubLoading || isGoogleLoading || loading}
+              className="h-11 border-border/60 bg-background/50 transition-all hover:border-primary/50 hover:bg-primary/5"
             >
               {isGoogleLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -127,72 +156,107 @@ export default function AuthPage() {
             </Button>
           </div>
 
-          <div className="relative">
+          {/* Divider */}
+          <div className="relative py-1">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
+              <span className="w-full border-t border-border/60" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+              <span className="bg-card px-3 text-muted-foreground/70">Or continue with email</span>
             </div>
           </div>
 
+          {/* Email Form */}
           <form onSubmit={handleEmailAuth} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-sm font-medium">
+                Email
+              </Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="m@example.com"
+                placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                className="h-11 border-border/60 bg-background/50 transition-all focus:border-primary/50"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium">
+                Password
+              </Label>
               <Input
                 id="password"
                 type="password"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
+                className="h-11 border-border/60 bg-background/50 transition-all focus:border-primary/50"
               />
             </div>
 
-            {error && <p className="text-xs text-destructive">{error}</p>}
-            {successMsg && <p className="text-xs text-green-500">{successMsg}</p>}
+            {error && (
+              <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+            {successMsg && (
+              <div className="rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-500">
+                {successMsg}
+              </div>
+            )}
 
-            <Button className="w-full" type="submit" disabled={isEmailLoading || loading}>
+            <Button
+              className="h-11 w-full bg-primary text-primary-foreground transition-all hover:bg-primary/90"
+              type="submit"
+              disabled={isEmailLoading || loading}
+            >
               {isEmailLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Mail className="mr-2 h-4 w-4" />
               )}
-              {isSignUp ? "Create Account" : "Sign In with Email"}
+              {isSignUp ? "Create Account" : "Sign In"}
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-2 text-center text-sm text-muted-foreground">
+
+        <CardFooter className="flex flex-col space-y-3 pt-2 text-center">
           <button
             onClick={() => setIsSignUp(!isSignUp)}
-            className="text-primary hover:text-primary/80 hover:underline"
+            className="text-sm text-muted-foreground transition-colors hover:text-primary"
           >
-            {isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
+            {isSignUp ? (
+              <>
+                Already have an account? <span className="font-medium text-primary">Sign In</span>
+              </>
+            ) : (
+              <>
+                Don't have an account? <span className="font-medium text-primary">Sign Up</span>
+              </>
+            )}
           </button>
-          <div className="pt-2 text-xs">
-            By clicking continue, you agree to our{" "}
-            <a href="#" className="underline hover:text-primary">
-              Terms of Service
+          <div className="text-xs text-muted-foreground/60">
+            By continuing, you agree to our{" "}
+            <a href="#" className="underline transition-colors hover:text-primary">
+              Terms
             </a>{" "}
             and{" "}
-            <a href="#" className="underline hover:text-primary">
+            <a href="#" className="underline transition-colors hover:text-primary">
               Privacy Policy
             </a>
             .
           </div>
         </CardFooter>
       </Card>
+
+      {/* Bottom branding */}
+      <p className="z-10 mt-8 text-xs text-muted-foreground/50">
+        © {new Date().getFullYear()} CodeScapes. All rights reserved.
+      </p>
     </div>
   )
 }
