@@ -222,28 +222,41 @@ export class CloudRepository implements IScapeRepository {
     const { data, error } = await supabase.from("files").select("*").eq("scape_id", scapeId)
     if (error) throw error
 
-    return data.map((f) => {
-      let content: string | Uint8Array = f.content || ""
+    return Promise.all(
+      data.map(async (f) => {
+        let content: string | Uint8Array = f.content || ""
 
-      // Check for Base64 prefix
-      if (typeof f.content === "string" && f.content.startsWith("base64:")) {
-        try {
-          content = base64ToArrayBuffer(f.content.slice(7))
-        } catch {
-          console.warn("Failed to decode base64 content for file:", f.name)
+        // Hydrate Assets (URL -> Binary) or Base64 -> Binary
+        if (typeof f.content === "string") {
+          if (f.content.startsWith("http")) {
+            try {
+              const res = await fetch(f.content)
+              if (res.ok) {
+                const buffer = await res.arrayBuffer()
+                content = new Uint8Array(buffer)
+              }
+            } catch (e) {
+              console.warn("Failed to download asset for file:", f.name, e)
+            }
+          } else if (f.content.startsWith("base64:")) {
+            try {
+              content = base64ToArrayBuffer(f.content.slice(7))
+            } catch {
+              console.warn("Failed to decode base64 content for file:", f.name)
+            }
+          }
         }
-        content = base64ToArrayBuffer(f.content.slice(7))
-      }
 
-      return {
-        id: f.id,
-        name: f.name,
-        language: f.language as FileType,
-        scapeId: f.scape_id,
-        updatedAt: new Date(f.updated_at),
-        content: content,
-      }
-    })
+        return {
+          id: f.id,
+          name: f.name,
+          language: f.language as FileType,
+          scapeId: f.scape_id,
+          updatedAt: new Date(f.updated_at),
+          content: content,
+        }
+      })
+    )
   }
 
   async createFile(file: ScapeFile & { scapeId: string }): Promise<void> {
@@ -389,33 +402,34 @@ export class CloudRepository implements IScapeRepository {
           event: "*",
           schema: "public",
           table: "files",
-          // NOTE: Server-side filtering for DELETE events requires REPLICA IDENTITY FULL and can be flaky.
-          // We remove the filter here and filter client-side in the callback/hook to be safe.
-          // RLS ensures we only see our own files anyway.
         },
-        (payload) => {
-          // NOTE: Server-side filtering for DELETE events requires REPLICA IDENTITY FULL and can be flaky.
-          // We remove the filter here and filter client-side in the callback/hook to be safe.
-          // Raw Payload: { schema: 'public', table: 'files', commit_timestamp: '...', eventType: '...', new: {}, old: {} }
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const p = payload as any
-          const newData = p.new
-          // Decode content if needed before callback
-          if (
-            (payload.eventType === "INSERT" || payload.eventType === "UPDATE") &&
-            newData &&
-            typeof newData.content === "string" &&
-            newData.content.startsWith("base64:")
-          ) {
-            try {
-              newData.content = base64ToArrayBuffer(newData.content.slice(7))
-            } catch (e) {
-              console.warn("Failed to decode realtime base64", e)
+        async (payload) => {
+          // payload type: { eventType: 'INSERT' | 'UPDATE' | 'DELETE', new: {...}, old: {...} }
+          const newData = (payload as { new: Record<string, unknown> }).new
+
+          // Hydrate Assets/Base64 in Realtime Payload
+          if (newData && typeof newData.content === "string") {
+            if (newData.content.startsWith("http")) {
+              try {
+                const res = await fetch(newData.content)
+                if (res.ok) {
+                  const buffer = await res.arrayBuffer()
+                  newData.content = new Uint8Array(buffer)
+                }
+              } catch (e) {
+                console.warn("Failed to hydrate realtime asset", e)
+              }
+            } else if (newData.content.startsWith("base64:")) {
+              try {
+                newData.content = base64ToArrayBuffer(newData.content.slice(7))
+              } catch (e) {
+                console.warn("Failed to decode realtime base64", e)
+              }
             }
           }
 
           // Pass full payload so receiver can check new/old explicitly
-          callback(payload.eventType as "INSERT" | "UPDATE" | "DELETE", payload) // Cast eventType
+          callback(payload.eventType as "INSERT" | "UPDATE" | "DELETE", payload)
         }
       )
       .subscribe()

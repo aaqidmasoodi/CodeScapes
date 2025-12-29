@@ -496,10 +496,10 @@ export default function ScapeEditor() {
           await previewRef.current.runFile(arg, {
             // Pass files directly - this bypasses debounced props and ensures fresh code
             files: files
-              .filter((f) => typeof f.content === "string")
+              .filter((f) => typeof f.content === "string" || f.content instanceof Uint8Array)
               .map((f) => ({
                 name: f.name,
-                content: f.content as string,
+                content: f.content as string | Uint8Array,
                 language: f.language,
               })),
             // Output callback: stream to terminal
@@ -618,7 +618,7 @@ export default function ScapeEditor() {
 
       return { success: false, error: "Unknown command handling" }
     },
-    [scape?.dependencies, scape?.environment, emitUpdate, updateScape]
+    [scape?.dependencies, scape?.environment, emitUpdate, updateScape, files]
   )
 
   const handleDeletePackage = useCallback(

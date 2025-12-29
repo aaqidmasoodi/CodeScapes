@@ -556,7 +556,7 @@ export const PythonRunner = memo(
               payload: {
                 files: currentFiles.map((f) => ({
                   name: f.name,
-                  content: f.content,
+                  content: f.content as string | Uint8Array,
                   language: f.language,
                 })),
                 entryPoint,

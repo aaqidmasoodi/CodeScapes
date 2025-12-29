@@ -16,7 +16,7 @@ export interface RunFileOptions {
   onOutput?: (content: string, type: "stdout" | "stderr") => void
   onInputRequest?: (prompt: string) => Promise<string>
   // Pass files directly to bypass debounced props
-  files?: { name: string; content: string; language: string }[]
+  files?: { name: string; content: string | Uint8Array; language: string }[]
 }
 
 export interface ScapeRunnerHandle {

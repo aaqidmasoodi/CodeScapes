@@ -33,6 +33,16 @@ export function getLanguageFromFilename(filename: string): string {
 
   if (lower.endsWith(".py")) return "python"
   if (lower.endsWith(".sql")) return "sql"
+  if (lower.endsWith(".pkl")) return "binary" // Pickle files
+  if (
+    lower.endsWith(".png") ||
+    lower.endsWith(".jpg") ||
+    lower.endsWith(".jpeg") ||
+    lower.endsWith(".gif") ||
+    lower.endsWith(".bmp")
+  )
+    return "image"
+  if (lower.endsWith(".bin") || lower.endsWith(".exe")) return "binary"
   if (lower.endsWith(".go")) return "go"
   if (lower.endsWith(".rs")) return "rust"
   if (lower.endsWith(".java")) return "java"
