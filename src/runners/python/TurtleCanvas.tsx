@@ -160,6 +160,83 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       return 1.0
     }, [])
 
+    const replayHistory = useCallback(
+      (ctx: CanvasRenderingContext2D) => {
+        drawHistoryRef.current.forEach((primitives) => {
+          primitives.forEach((prim) => {
+            switch (prim.type) {
+              case "line":
+                if (
+                  prim.x1 !== undefined &&
+                  prim.y1 !== undefined &&
+                  prim.x2 !== undefined &&
+                  prim.y2 !== undefined
+                ) {
+                  ctx.beginPath()
+                  ctx.moveTo(toCanvasX(prim.x1), toCanvasY(prim.y1))
+                  ctx.lineTo(toCanvasX(prim.x2), toCanvasY(prim.y2))
+                  ctx.strokeStyle = prim.color
+                  ctx.stroke()
+                }
+                break
+              case "arc":
+                if (prim.cx !== undefined && prim.cy !== undefined && prim.radius !== undefined) {
+                  ctx.beginPath()
+                  ctx.arc(
+                    toCanvasX(prim.cx),
+                    toCanvasY(prim.cy),
+                    Math.abs(prim.radius * getScaleX()),
+                    -(prim.startAngle || 0),
+                    -(prim.endAngle || 0),
+                    prim.counterclockwise ?? false
+                  )
+                  ctx.strokeStyle = prim.color
+                  ctx.stroke()
+                }
+                break
+              case "dot":
+                if (prim.x !== undefined && prim.y !== undefined) {
+                  ctx.beginPath()
+                  ctx.arc(
+                    toCanvasX(prim.x),
+                    toCanvasY(prim.y),
+                    (prim.size || 2) * getScaleX(),
+                    0,
+                    Math.PI * 2
+                  )
+                  ctx.fillStyle = prim.color
+                  ctx.fill()
+                }
+                break
+              case "fill":
+                if (prim.path && prim.path.length > 2) {
+                  ctx.beginPath()
+                  ctx.moveTo(toCanvasX(prim.path[0].x), toCanvasY(prim.path[0].y))
+                  for (let i = 1; i < prim.path.length; i++) {
+                    ctx.lineTo(toCanvasX(prim.path[i].x), toCanvasY(prim.path[i].y))
+                  }
+                  ctx.closePath()
+                  ctx.fillStyle = prim.fillColor || prim.color
+                  ctx.fill()
+                  ctx.strokeStyle = prim.color
+                  ctx.stroke()
+                }
+                break
+              case "text":
+                if (prim.x !== undefined && prim.y !== undefined && prim.text) {
+                  ctx.font = prim.font || "12px Arial"
+                  ctx.textAlign = (prim.align as CanvasTextAlign) || "left"
+                  ctx.fillStyle = prim.color
+                  ctx.fillText(prim.text, toCanvasX(prim.x), toCanvasY(prim.y))
+                }
+                break
+            }
+          })
+        })
+      },
+      [toCanvasX, toCanvasY, getScaleX]
+    )
+
     useEffect(() => {
       if (canvasInstance && containerRef.current) {
         if (containerRef.current.firstChild !== canvasInstance) {
@@ -198,13 +275,19 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
           if (bgColorRef.current && bgColorRef.current !== "white") {
             ctx.fillStyle = bgColorRef.current
             ctx.fillRect(0, 0, lw, lh)
+          } else {
+            // Default clear if no bgColor
+            ctx.clearRect(0, 0, lw, lh)
           }
+          // CRITICAL: Replay history on every resize/remount to prevent flickering
+          // The browser clears the canvas when dimensions change, so we MUST redraw.
+          replayHistory(ctx)
         }
 
         // Mark as fully ready to process commands
         isReadyRef.current = true
       }
-    }, [canvasInstance, width, height])
+    }, [canvasInstance, width, height, logicalSize.width, logicalSize.height, replayHistory])
 
     const drawShape = useCallback(
       (ctx: CanvasRenderingContext2D, item: TurtleState | StampState) => {
@@ -621,81 +704,7 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             ctx.fillRect(0, 0, lw, lh)
 
             // Replay all other turtles' draw primitives
-            drawHistoryRef.current.forEach((primitives) => {
-              primitives.forEach((prim) => {
-                switch (prim.type) {
-                  case "line":
-                    if (
-                      prim.x1 !== undefined &&
-                      prim.y1 !== undefined &&
-                      prim.x2 !== undefined &&
-                      prim.y2 !== undefined
-                    ) {
-                      ctx.beginPath()
-                      ctx.moveTo(toCanvasX(prim.x1), toCanvasY(prim.y1))
-                      ctx.lineTo(toCanvasX(prim.x2), toCanvasY(prim.y2))
-                      ctx.strokeStyle = prim.color
-                      ctx.stroke()
-                    }
-                    break
-                  case "arc":
-                    if (
-                      prim.cx !== undefined &&
-                      prim.cy !== undefined &&
-                      prim.radius !== undefined
-                    ) {
-                      ctx.beginPath()
-                      ctx.arc(
-                        toCanvasX(prim.cx),
-                        toCanvasY(prim.cy),
-                        Math.abs(prim.radius * getScaleX()),
-                        -(prim.startAngle || 0),
-                        -(prim.endAngle || 0),
-                        prim.counterclockwise ?? false
-                      )
-                      ctx.strokeStyle = prim.color
-                      ctx.stroke()
-                    }
-                    break
-                  case "dot":
-                    if (prim.x !== undefined && prim.y !== undefined) {
-                      ctx.beginPath()
-                      ctx.arc(
-                        toCanvasX(prim.x),
-                        toCanvasY(prim.y),
-                        (prim.size || 2) * getScaleX(),
-                        0,
-                        Math.PI * 2
-                      )
-                      ctx.fillStyle = prim.color
-                      ctx.fill()
-                    }
-                    break
-                  case "fill":
-                    if (prim.path && prim.path.length > 2) {
-                      ctx.beginPath()
-                      ctx.moveTo(toCanvasX(prim.path[0].x), toCanvasY(prim.path[0].y))
-                      for (let i = 1; i < prim.path.length; i++) {
-                        ctx.lineTo(toCanvasX(prim.path[i].x), toCanvasY(prim.path[i].y))
-                      }
-                      ctx.closePath()
-                      ctx.fillStyle = prim.fillColor || prim.color
-                      ctx.fill()
-                      ctx.strokeStyle = prim.color
-                      ctx.stroke()
-                    }
-                    break
-                  case "text":
-                    if (prim.x !== undefined && prim.y !== undefined && prim.text) {
-                      ctx.font = prim.font || "12px Arial"
-                      ctx.textAlign = (prim.align as CanvasTextAlign) || "left"
-                      ctx.fillStyle = prim.color
-                      ctx.fillText(prim.text, toCanvasX(prim.x), toCanvasY(prim.y))
-                    }
-                    break
-                }
-              })
-            })
+            replayHistory(ctx)
 
             needOverlayUpdate = true
             break
@@ -809,7 +818,19 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
           }
         }
       },
-      [width, height, toCanvasX, toCanvasY, redrawOverlay, onResize, getScaleX]
+
+      [
+        width,
+        height,
+        toCanvasX,
+        toCanvasY,
+        redrawOverlay,
+        onResize,
+        getScaleX,
+        addPrimitive,
+        replayHistory,
+        updateLogicalSize,
+      ]
     )
 
     const clear = useCallback(() => {
