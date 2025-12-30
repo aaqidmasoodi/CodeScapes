@@ -37,12 +37,14 @@
       "dist-electron/**/*"
     ],
     "mac": {
+      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"
       ]
     },
     "win": {
+      "icon": "build/icon.png",
       "target": "nsis"
     },
     "linux": {
