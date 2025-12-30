@@ -25,6 +25,7 @@ import { CodeScapeLogo } from "@/components/brand/Logo"
 import { useFlowStore, initAutosave } from "@/stores/flowStore"
 import { SpritePane } from "@/components/editor/SpritePane"
 import { StatusBar } from "@/components/StatusBar"
+import { uploadThumbnail } from "@/lib/services/thumbnailService"
 
 const StopIcon = ({ className }: { className?: string }) => (
   <div
@@ -205,10 +206,17 @@ export default function FlowEditor() {
     const capture = async () => {
       try {
         const thumb = await previewRef.current?.captureThumbnail()
-        if (thumb) {
-          await updateScape({ thumbnail: thumb })
-          lastCaptureRef.current = Date.now()
-          console.log("[FlowEditor] Thumbnail Captured")
+        if (thumb && id) {
+          try {
+            // Upload compressed thumbnail to Supabase Storage
+            const thumbnailUrl = await uploadThumbnail(id, thumb)
+            await updateScape({ thumbnail: thumbnailUrl })
+            lastCaptureRef.current = Date.now()
+            console.log("[FlowEditor] Thumbnail uploaded:", thumbnailUrl)
+          } catch (e) {
+            console.warn("[FlowEditor] Thumbnail upload failed, falling back to base64:", e)
+            await updateScape({ thumbnail: thumb })
+          }
         }
       } catch (e) {
         console.warn("[FlowEditor] Thumbnail capture failed", e)

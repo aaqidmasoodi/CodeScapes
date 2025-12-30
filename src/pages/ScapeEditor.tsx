@@ -49,6 +49,7 @@ import { checkShortcut } from "@/config/shortcuts"
 import { CodeScapeLogo } from "@/components/brand/Logo"
 import { DeploymentDialog } from "@/components/editor/DeploymentDialog"
 import { debug } from "@/lib/debug"
+import { uploadThumbnail } from "@/lib/services/thumbnailService"
 
 import {
   AlertDialog,
@@ -336,10 +337,18 @@ export default function ScapeEditor() {
           })
 
           const thumb = await previewRef.current?.captureThumbnail?.()
-          if (thumb) {
-            await updateScape({ thumbnail: thumb })
-            lastCaptureRef.current = Date.now()
-            debug.log("Thumbnail Captured")
+          if (thumb && id) {
+            try {
+              // Upload compressed thumbnail to Supabase Storage
+              const thumbnailUrl = await uploadThumbnail(id, thumb)
+              await updateScape({ thumbnail: thumbnailUrl })
+              lastCaptureRef.current = Date.now()
+              debug.log("Thumbnail uploaded:", thumbnailUrl)
+            } catch (e) {
+              debug.warn("Thumbnail upload failed, falling back to base64:", e)
+              // Fallback to old behavior if upload fails
+              await updateScape({ thumbnail: thumb })
+            }
           }
         } catch (e) {
           debug.warn(e)

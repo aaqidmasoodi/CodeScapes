@@ -12,15 +12,20 @@ export function optimizeSupabaseImage(
   quality = 80
 ) {
   if (!url) return undefined
-  // Only optimize Supabase Storage URLs
+  // Only optimize Supabase Storage URLs (not base64 data URLs)
   if (!url.includes("/storage/v1/object/public/")) return url
 
-  const optimizedUrl = url.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")
+  // Parse URL to handle existing query parameters properly
+  const urlObj = new URL(url)
+  const basePath =
+    urlObj.origin +
+    urlObj.pathname.replace("/storage/v1/object/public/", "/storage/v1/render/image/public/")
+
   const params = new URLSearchParams()
   params.set("width", width.toString())
   if (height) params.set("height", height.toString())
   params.set("quality", quality.toString())
   params.set("resize", "cover")
 
-  return `${optimizedUrl}?${params.toString()}`
+  return `${basePath}?${params.toString()}`
 }
