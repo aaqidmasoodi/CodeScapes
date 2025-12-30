@@ -32,4 +32,6 @@ export interface ScapeRunnerHandle {
   stop?: () => void
   updateScript?: (code: string) => void
   provideInput?: (text: string) => void
+  postMessage?: (message: Record<string, unknown>) => void
+  runSystemCommand?: (cmd: string, args: Record<string, unknown>) => Promise<void>
 }

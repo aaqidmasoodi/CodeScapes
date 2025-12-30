@@ -453,12 +453,17 @@ export default function ScapeEditor() {
   const handleExecCommand = useCallback(
     async (
       cmd: string,
-      arg: string,
+      arg: string | string[],
       onProgress?: (message: string) => void
     ): Promise<{ success: boolean; warning?: string; error?: string }> => {
+      const argString = Array.isArray(arg) ? arg.join(" ") : arg
+      const argsArray = Array.isArray(arg) ? arg : [arg]
+
       // --- PYTHON EXECUTION ---
       if (cmd === "python3") {
-        if (!arg) return { success: false, error: "Filename required" }
+        const filename = argsArray[0] || argString
+        if (!filename) return { success: false, error: "Filename required" }
+
         // We only support file execution in Python environment currently
         if (scape?.environment !== "python") {
           return {
@@ -493,7 +498,7 @@ export default function ScapeEditor() {
 
         try {
           // 3. Run the file with explicit callbacks AND pass files directly
-          await previewRef.current.runFile(arg, {
+          await previewRef.current.runFile(filename, {
             // Pass files directly - this bypasses debounced props and ensures fresh code
             files: files
               .filter((f) => typeof f.content === "string" || f.content instanceof Uint8Array)
@@ -533,6 +538,62 @@ export default function ScapeEditor() {
         }
       }
 
+      // --- SYSTEM COMMANDS ---
+      // These are typically called from handleSystemCommand, where `arg` is an array of strings.
+      // For direct calls, `arg` might be a string.
+      const program = cmd
+      const args = Array.isArray(arg) ? arg : typeof arg === "string" ? arg.split(/\s+/) : []
+
+      if (program === "aplay") {
+        console.log("[ScapeEditor] Executing aplay command via shim", args)
+        setIsRunning(true) // Ensure runner is active
+
+        // Wait for runner to be ready (and handle to include postMessage)
+        const startTime = Date.now()
+        while (!previewRef.current?.runSystemCommand && Date.now() - startTime < 10000) {
+          await new Promise((r) => setTimeout(r, 100))
+        }
+
+        if (!previewRef.current?.runSystemCommand) {
+          const msg =
+            "Audio runtime failed to initialize or does not support runSystemCommand. Ensure the preview pane is open."
+          console.error("[ScapeEditor]", msg)
+          return { success: false, error: msg }
+        }
+
+        // Args should be ["filename.wav"]
+        const filename = args[0]
+        if (!filename) {
+          const msg = "No filename provided for aplay"
+          console.error("[ScapeEditor]", msg)
+          return { success: false, error: msg }
+        }
+
+        const targetFile = files.find((f) => f.name === filename)
+        if (!targetFile) {
+          const msg = `aplay: ${filename}: No such file or directory`
+          console.error("[ScapeEditor]", msg)
+          return { success: false, error: msg }
+        }
+
+        try {
+          console.log("[ScapeEditor] Calling runSystemCommand on runner...")
+          // Prepare payload directly as object to preserve Uint8Array/ArrayBuffer
+          const payload = {
+            filename,
+            files: files
+              .filter((f) => f.name === filename)
+              .map((f) => ({ name: f.name, content: f.content })),
+          }
+          await previewRef.current.runSystemCommand("aplay", payload)
+          console.log("[ScapeEditor] runSystemCommand resolved")
+          return { success: true }
+        } catch (e: unknown) {
+          console.error("[ScapeEditor] runSystemCommand failed", e)
+          return { success: false, error: String(e) }
+        }
+      }
+
       if (cmd === "pip-list") {
         const pkgs = (await previewRef.current?.listPackages?.()) ?? []
         if (pkgs.length === 0) {
@@ -550,7 +611,7 @@ export default function ScapeEditor() {
 
       if (cmd === "pip-install") {
         // 1. Install in Runtime (expects the full payload with flags)
-        const result = (await previewRef.current?.installPackage?.(arg, onProgress)) ?? {
+        const result = (await previewRef.current?.installPackage?.(argString, onProgress)) ?? {
           success: false,
           error: "Preview not ready",
         }
@@ -559,14 +620,14 @@ export default function ScapeEditor() {
           // 2. Parse payload to get clean package names for persistence
           let newPackages: string[] = []
           try {
-            if (arg.trim().startsWith("{")) {
-              const parsed = JSON.parse(arg)
+            if (argString.trim().startsWith("{")) {
+              const parsed = JSON.parse(argString)
               newPackages = parsed.packages || []
             } else {
-              newPackages = [arg]
+              newPackages = [argString]
             }
           } catch {
-            newPackages = [arg]
+            newPackages = [argString]
           }
 
           // 3. Persist to DB
@@ -578,40 +639,38 @@ export default function ScapeEditor() {
             const nextDeps = [...currentDeps, ...toAdd]
             // Optimistic Update
             setOptimisticDependencies(nextDeps)
+
             await updateScape({ dependencies: nextDeps })
             // Broadcast to other clients
             if (emitUpdate) emitUpdate({ dependencies: nextDeps })
+
+            // Trigger restart
+            setTimeout(async () => {
+              if (previewRef.current?.restart) {
+                await previewRef.current.restart()
+              }
+            }, 100)
           }
+
+          return { success: true }
         }
         return result
       }
 
       if (cmd === "pip-uninstall") {
-        // We force a restart of the worker to reload with the new dependency list.
+        const pkgToRemove = argString
         const currentDeps = scape?.dependencies || []
-        const newDeps = currentDeps.filter((d) => d !== arg)
+        const newDeps = currentDeps.filter((d) => d !== pkgToRemove)
 
-        // Optimistic Update
         setOptimisticDependencies(newDeps)
-
         await updateScape({ dependencies: newDeps })
-        // Broadcast to other clients
         if (emitUpdate) emitUpdate({ dependencies: newDeps })
-
-        // Wait a tick for prop propagation (though ref-based restart pulls from parent props on re-render?)
-        // Actually, we should trigger restart. The restart logic in PythonRunner uses a ref for dependencies.
-        // If we update DB -> ScapeEditor re-renders -> passes new deps to PreviewPane -> PythonRunner updates its ref.
-        // Then we call restart.
-        // Ideally we await the DB update. The re-render might happen async.
-        // Safe bet: The restart will re-initialize. If the prop hasn't updated yet, it might re-install the old dep.
-        // But ScapeEditor re-render should be fast.
-        // Let's rely on React reactivity.
 
         setTimeout(async () => {
           if (previewRef.current?.restart) {
             await previewRef.current.restart()
           }
-        }, 100) // Slight delay to ensure props update
+        }, 100)
 
         return { success: true }
       }
@@ -619,6 +678,20 @@ export default function ScapeEditor() {
       return { success: false, error: "Unknown command handling" }
     },
     [scape?.dependencies, scape?.environment, emitUpdate, updateScape, files]
+  )
+
+  const handleSystemCommand = useCallback(
+    async (cmd: string) => {
+      // Parse "program arg1 arg2 ..."
+      console.log(`[ScapeEditor] handleSystemCommand: ${cmd}`)
+      const parts = cmd.trim().split(/\s+/)
+      const program = parts[0]
+      const args = parts.slice(1)
+
+      // Await execution
+      await handleExecCommand(program, args)
+    },
+    [handleExecCommand]
   )
 
   const handleDeletePackage = useCallback(
@@ -1371,6 +1444,69 @@ export default function ScapeEditor() {
                                     }
                                   }
 
+                                  // 1.4 Handle Audio
+                                  if (
+                                    [".wav", ".mp3", ".ogg", ".aac", ".m4a", ".flac"].some((ext) =>
+                                      activeFile.name.toLowerCase().endsWith(ext)
+                                    )
+                                  ) {
+                                    let src = ""
+                                    let type = "audio/wav"
+                                    const ext = activeFile.name.split(".").pop()?.toLowerCase()
+                                    if (ext === "mp3") type = "audio/mpeg"
+                                    else if (ext === "ogg") type = "audio/ogg"
+                                    else if (ext === "aac") type = "audio/aac"
+                                    else if (ext === "m4a") type = "audio/mp4"
+                                    else if (ext === "flac") type = "audio/flac"
+
+                                    if (activeFile.content instanceof Blob) {
+                                      src = URL.createObjectURL(activeFile.content)
+                                    } else if (activeFile.content instanceof Uint8Array) {
+                                      src = URL.createObjectURL(
+                                        new Blob([activeFile.content as unknown as BlobPart], {
+                                          type,
+                                        })
+                                      )
+                                    } else if (activeFile.content instanceof ArrayBuffer) {
+                                      src = URL.createObjectURL(
+                                        new Blob([activeFile.content as unknown as BlobPart], {
+                                          type,
+                                        })
+                                      )
+                                    } else if (typeof activeFile.content === "string") {
+                                      if (activeFile.content.startsWith("data:")) {
+                                        src = activeFile.content
+                                      } else {
+                                        try {
+                                          const binary = atob(activeFile.content)
+                                          const len = binary.length
+                                          const bytes = new Uint8Array(len)
+                                          for (let i = 0; i < len; i++)
+                                            bytes[i] = binary.charCodeAt(i)
+                                          src = URL.createObjectURL(new Blob([bytes], { type }))
+                                        } catch {
+                                          // ignore
+                                        }
+                                      }
+                                    }
+
+                                    if (src) {
+                                      return (
+                                        <div className="flex h-full flex-col items-center justify-center overflow-hidden bg-muted/5 p-4">
+                                          <div className="flex flex-col items-center justify-center rounded-xl border bg-card p-8 shadow-sm dark:bg-zinc-900/50">
+                                            <p className="mb-2 text-lg font-medium">
+                                              {activeFile.name}
+                                            </p>
+                                            <p className="mb-6 text-xs text-muted-foreground">
+                                              {type.toUpperCase().split("/")[1]} Audio
+                                            </p>
+                                            <audio controls src={src} className="w-[300px]" />
+                                          </div>
+                                        </div>
+                                      )
+                                    }
+                                  }
+
                                   // 1.5 Handle PDFs
                                   if (activeFile.name.toLowerCase().endsWith(".pdf")) {
                                     let src = ""
@@ -1593,6 +1729,7 @@ export default function ScapeEditor() {
                         onBusyChange={setIsRunnerBusy}
                         onInputRequest={handleInputRequest}
                         onFileSystemUpdate={handleFileSystemUpdate}
+                        onSystemCommand={handleSystemCommand}
                       />
                     </ResizablePanel>
                   </ResizablePanelGroup>

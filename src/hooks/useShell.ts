@@ -565,6 +565,45 @@ const commands: Record<string, CommandHandler> = {
       return { type: "error", content: `Error: ${e}` }
     }
   },
+
+  aplay: async (args, ctx) => {
+    if (!ctx.execCommand) {
+      return { type: "error", content: "aplay: environment does not support audio playback" }
+    }
+
+    const filename = args[0]
+
+    if (!filename) {
+      return { type: "error", content: "usage: aplay FILE" }
+    }
+
+    // Check if file exists
+    const file = ctx.files.find((f) => f.name === filename)
+    if (!file) {
+      return { type: "error", content: `aplay: ${filename}: No such file or directory` }
+    }
+
+    if (file.language === "folder") {
+      return { type: "error", content: `aplay: ${filename}: Is a directory` }
+    }
+
+    try {
+      // Execute command.
+      // Note: We don't pass 'async' flag anymore. The shell decided whether to await this call or not.
+      // This call handles the actual IPC and waiting (if needed).
+      const result = await ctx.execCommand("aplay", JSON.stringify({ filename }), (msg) => {
+        ctx.log({ type: "stdout", content: msg })
+      })
+
+      if (result.success) {
+        return { type: "success", content: "" }
+      } else {
+        return { type: "error", content: result.error || "Playback failed" }
+      }
+    } catch (e) {
+      return { type: "error", content: `Error: ${e}` }
+    }
+  },
 }
 
 export function useShell(fs: FileSystemHooks) {
@@ -592,8 +631,23 @@ export function useShell(fs: FileSystemHooks) {
         log: fs.onLog || (() => {}),
       }
 
+      // Check for generic background execution (&)
+      const args = parsed.args
+      const isAsync = args.length > 0 && args[args.length - 1] === "&"
+      const finalArgs = isAsync ? args.slice(0, -1) : args
+
       try {
-        const result = await handler(parsed.args, ctx)
+        if (isAsync) {
+          // Fire and forget - do not await
+          handler(finalArgs, ctx).catch((e) => {
+            ctx.log({ type: "stderr", content: `\n[Background] Error: ${e}\n` })
+          })
+          // Return immediately with a job ID or simple success
+          return { type: "success", content: "" }
+        }
+
+        // Foreground - await completion
+        const result = await handler(finalArgs, ctx)
         const output = result || { type: "success", content: "" }
 
         // Handle Redirection

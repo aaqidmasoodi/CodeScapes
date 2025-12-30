@@ -127,44 +127,53 @@ self.onmessage = async (e: MessageEvent) => {
           payload: { prompt, id },
         })
 
-        while (true) {
-          // Check for timeout (e.g. 1 hour? Input might take long)
-          // But if we are continually hitting the server (Bypass loop), we should throttle.
+        return (self as any)._xhr_block(id)
+      }
 
+      // Generic Blocking Utility (reused by input and system)
+      ;(self as any)._xhr_block = (id: string) => {
+        while (true) {
           const xhr = new XMLHttpRequest()
-          xhr.open("GET", `/_wait_input?id=${id}`, false) // false = synchronous
+          xhr.open("GET", `/_wait_input?id=${id}`, false)
           try {
             xhr.send(null)
-
             if (xhr.status === 200) {
               const text = xhr.responseText
-
-              // 1. Sanity Check for Safari/Server Fallback
-              // If we get the index.html content, it's a bypass. Retry.
-              const isHtml =
-                text.trim().toLowerCase().startsWith("<!doctype html") ||
-                text.trim().toLowerCase().startsWith("<html")
-
-              if (!isHtml) {
+              // Sanity check for HTML fallback
+              if (
+                !text.trim().toLowerCase().startsWith("<html") &&
+                !text.trim().toLowerCase().startsWith("<!doctype")
+              ) {
                 return text
               }
-
-              // BYPASS DETECTED
-              console.warn("[Worker] Input XHR hit server fallback (HTML detected). Retrying...")
-            } else {
-              console.warn(`[Worker] Input XHR failed with status ${xhr.status}. Retrying...`)
             }
-
-            // Busy-Wait Sleep (Small delay to allow SW to potentially claim or server to breathe)
-            const sleepStart = Date.now()
-            while (Date.now() - sleepStart < 100) {
-              // spin
+            // Busy wait
+            const start = Date.now()
+            while (Date.now() - start < 100) {
+              /* spin */
             }
-          } catch (e) {
-            console.error("[Worker] XHR Error", e)
+          } catch {
+            // Silent fail - input fallback
             return ""
           }
         }
+      }
+
+      // Generic System Command Handler
+      ;(self as any).run_system_command = (cmd: string) => {
+        const id = Math.random().toString(36).substring(7)
+
+        // Notify Main Thread
+        self.postMessage({
+          type: "SYSTEM_COMMAND",
+          payload: { cmd, id },
+        })
+
+        // Block and wait for completion signal
+        // The main thread will 'resolve' this ID when the command finishes
+        ;(self as any)._xhr_block(id)
+
+        return 0 // os.system returns exit code, assume 0 for success
       }
 
       // Install initial dependencies
@@ -327,6 +336,104 @@ self.onmessage = async (e: MessageEvent) => {
     readyPromise.then(runDispatch)
   }
 
+  if (type === "AUDIO_PLAY") {
+    const handleAudioPlay = async () => {
+      const py = await loadPyodide()
+      try {
+        let data = payload
+        if (typeof payload === "string") {
+          try {
+            data = JSON.parse(payload)
+          } catch {
+            // If parse fails, assume it's just a filename string? No, spec is strict.
+            throw new Error("Invalid payload format")
+          }
+        }
+        const { filename, async: isAsync, files } = data
+
+        // Sync files if provided (legacy check: logic copied from RUN handler)
+        if (files && Array.isArray(files)) {
+          for (const file of files) {
+            // Skip directories passed as files (legacy)
+            if (file.language === "folder") {
+              try {
+                py.FS.mkdir(file.name)
+              } catch {
+                // Ignore if exists
+              }
+              continue
+            }
+
+            // Ensure parent directories exist
+            const parts = file.name.split("/")
+            if (parts.length > 1) {
+              let currentPath = ""
+              for (let i = 0; i < parts.length - 1; i++) {
+                currentPath += (i === 0 ? "" : "/") + parts[i]
+                try {
+                  py.FS.mkdir(currentPath)
+                } catch {
+                  // Ignore
+                }
+              }
+            }
+
+            let contentToWrite = file.content
+            if (contentToWrite instanceof ArrayBuffer) {
+              contentToWrite = new Uint8Array(contentToWrite)
+            }
+
+            try {
+              py.FS.writeFile(file.name, contentToWrite)
+            } catch (err: any) {
+              console.warn(`[Audio] Failed to write ${file.name}: ${err.message}`)
+            }
+          }
+        }
+
+        // Read file from virtual filesystem
+        let audioData: Uint8Array
+        try {
+          audioData = py.FS.readFile(filename, { encoding: "binary" })
+        } catch {
+          postMessage({
+            type: "AUDIO_ERROR",
+            payload: { error: `Cannot read file: ${filename}`, async: isAsync },
+          })
+          return
+        }
+
+        // Convert to base64
+        let binary = ""
+        const len = audioData.byteLength
+        for (let i = 0; i < len; i++) {
+          binary += String.fromCharCode(audioData[i])
+        }
+        const base64 = btoa(binary)
+
+        // Determine format from extension
+        const ext = filename.split(".").pop()?.toLowerCase() || "wav"
+
+        // Send to main thread for playback
+        postMessage({
+          type: "AUDIO_DATA",
+          payload: {
+            data: base64,
+            format: ext,
+            async: isAsync,
+            filename,
+          },
+        })
+      } catch (e: any) {
+        postMessage({
+          type: "AUDIO_ERROR",
+          payload: { error: e.message || String(e), async: false },
+        })
+      }
+    }
+    readyPromise.then(handleAudioPlay)
+  }
+
   if (type === "RUN") {
     let py: PyodideInterface | null = null
     try {
@@ -484,6 +591,41 @@ self.onmessage = async (e: MessageEvent) => {
         mod = types.ModuleType("codescapes")
         mod.socket = CodeScapesSocket('${socketId || ""}')
         sys.modules["codescapes"] = mod
+
+        # --- Shim os.system ---
+        import os
+        def _system(cmd):
+            # Check for background execution &
+            if cmd.strip().endswith("&"):
+                # If background, we submit but assume success immediately
+                # Note: We probably still want to send it to JS to run?
+                # Yes, run_system_command handles notification.
+                # BUT run_system_command blocks by default.
+                # We need to tell JS not to block?
+                # Or handle logic here.
+                # If we use run_system_command as defined, it BLOCKS.
+                # So we must NOT block here if '&' exists.
+                
+                # Logic:
+                # 1. Parse cmd
+                # 2. Call JS NON-blocking variant? 
+                # OR Modify run_system_command to accept block flag?
+                
+                # Let's Modify run_system_command logic in python?
+                # No, better: Just fire and forget postMessage from Python?
+                # We can use js.postMessage directly here for non-blocking cases.
+                
+                clean_cmd = cmd.strip()[:-1].strip()
+                import json
+                js.postMessage(js.JSON.parse(json.dumps({
+                    'type': 'SYSTEM_COMMAND',
+                    'payload': { 'cmd': clean_cmd, 'id': 'background' } 
+                })))
+                return 0
+            
+            return js.run_system_command(cmd)
+
+        os.system = _system
       `)
 
       // 0.6 Inject Secrets (Environment Variables)
