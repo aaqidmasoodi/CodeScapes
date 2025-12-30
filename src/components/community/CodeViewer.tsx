@@ -14,9 +14,27 @@ export function CodeViewer({ scapeId }: { scapeId: string }) {
   useEffect(() => {
     async function load() {
       try {
-        const data = await repo.getFiles(scapeId)
+        // Use getPublishedScape to fetch the snapshot (frozen at publish time)
+        // This ensures users see the code as it was when the author published,
+        // not the current live/draft version.
+        const published = await repo.getPublishedScape(scapeId)
+        if (!published) {
+          console.warn("[CodeViewer] No published snapshot found, falling back to live files")
+          // Fallback to live files if no published version exists
+          const data = await repo.getFiles(scapeId)
+          const filtered = data.filter(
+            (f) =>
+              !f.name.startsWith("assets/") &&
+              !f.name.match(/\.(png|jpg|jpeg|gif|webp|ico|svg)$/i) &&
+              f.name.match(/\.(html|css|js|jsx|ts|tsx|json|py|csv|txt)$/i)
+          )
+          setFiles(filtered)
+          if (filtered.length > 0) setActiveFile(filtered[0])
+          return
+        }
+
         // Filter: Exclude assets folder and binary files, keep only code
-        const filtered = data.filter(
+        const filtered = published.files.filter(
           (f) =>
             !f.name.startsWith("assets/") &&
             !f.name.match(/\.(png|jpg|jpeg|gif|webp|ico|svg)$/i) &&
