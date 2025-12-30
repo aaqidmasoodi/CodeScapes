@@ -50,6 +50,7 @@ import { CodeScapeLogo } from "@/components/brand/Logo"
 import { DeploymentDialog } from "@/components/editor/DeploymentDialog"
 import { debug } from "@/lib/debug"
 import { uploadThumbnail } from "@/lib/services/thumbnailService"
+import { useEditorSettings } from "@/hooks/useEditorSettings"
 
 import {
   AlertDialog,
@@ -224,6 +225,13 @@ export default function ScapeEditor() {
     "codescape:ui:terminalTab",
     "terminal"
   )
+
+  // Editor Settings
+  const {
+    settings: editorSettings,
+    updateSetting: updateEditorSetting,
+    resetSettings: resetEditorSettings,
+  } = useEditorSettings()
 
   // Project Specific State
   const [activeFilePath, setActiveFilePath] = usePersistentState<string | null>(
@@ -1554,6 +1562,7 @@ export default function ScapeEditor() {
                                         onValidate={handleValidate}
                                         files={deferredFiles}
                                         onRun={handleRun}
+                                        editorSettings={editorSettings}
                                       />
                                     )
                                   }
@@ -1789,7 +1798,17 @@ export default function ScapeEditor() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <SettingsModal open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+      <SettingsModal
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        editorSettings={editorSettings}
+        onEditorSettingChange={updateEditorSetting}
+        onResetEditorSettings={resetEditorSettings}
+        scape={scape}
+        onScapeUpdate={async (updates) => {
+          await updateScape(updates)
+        }}
+      />
     </>
   )
 }
