@@ -34,7 +34,12 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
   const [copied, setCopied] = useState(false)
 
   // Optimistic UI state
-  const [isPublic, setIsPublic] = useState(scape.is_public)
+  const [isPublic, setIsPublic] = useState(scape.is_public ?? false)
+
+  // Sync isPublic when scape prop updates (e.g., after deploy or external change)
+  useEffect(() => {
+    setIsPublic(scape.is_public ?? false)
+  }, [scape.is_public])
 
   // Collaborators state
   const [collaborators, setCollaborators] = useState<Collaborator[]>([])
