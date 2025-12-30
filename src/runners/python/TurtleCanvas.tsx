@@ -1118,6 +1118,94 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       [toWorldX, toWorldY, toCanvasX, toCanvasY, pushEvent]
     )
 
+    // Track mouse button state for drag detection
+    const isMouseDownRef = useRef(false)
+    const lastDragTargetRef = useRef<number | null>(null)
+
+    const handleMouseDown = useCallback(
+      (e: React.MouseEvent) => {
+        isMouseDownRef.current = true
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!rect) return
+        const cx = e.clientX - rect.left
+        const cy = e.clientY - rect.top
+
+        // Find hit target on mouse down
+        let hitId: number | null = null
+        const tList = Array.from(turtlesRef.current.values()).reverse()
+        for (const t of tList) {
+          if (!t.visible) continue
+          const tcx = toCanvasX(t.x)
+          const tcy = toCanvasY(t.y)
+          const dcx = cx - tcx
+          const dcy = cy - tcy
+          const cDist = Math.sqrt(dcx * dcx + dcy * dcy)
+
+          if (cDist < 15 * Math.max(t.stretchLen, t.stretchWid)) {
+            hitId = t.id
+            break
+          }
+        }
+        lastDragTargetRef.current = hitId
+      },
+      [toCanvasX, toCanvasY]
+    )
+
+    const handleMouseUp = useCallback(
+      (e: React.MouseEvent) => {
+        isMouseDownRef.current = false
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!rect) return
+        const cx = e.clientX - rect.left
+        const cy = e.clientY - rect.top
+        const wx = toWorldX(cx)
+        const wy = toWorldY(cy)
+
+        // Find hit target
+        let hitId: number | null = null
+        const tList = Array.from(turtlesRef.current.values()).reverse()
+        for (const t of tList) {
+          if (!t.visible) continue
+          const tcx = toCanvasX(t.x)
+          const tcy = toCanvasY(t.y)
+          const dcx = cx - tcx
+          const dcy = cy - tcy
+          const cDist = Math.sqrt(dcx * dcx + dcy * dcy)
+
+          if (cDist < 15 * Math.max(t.stretchLen, t.stretchWid)) {
+            hitId = t.id
+            break
+          }
+        }
+
+        debug.log(`[Turtle] MouseUp at (${wx.toFixed(1)}, ${wy.toFixed(1)}) Hit: ${hitId}`)
+        pushEvent({ type: "mouseup", x: wx, y: wy, id: hitId })
+        lastDragTargetRef.current = null
+      },
+      [toWorldX, toWorldY, toCanvasX, toCanvasY, pushEvent]
+    )
+
+    const handleMouseMove = useCallback(
+      (e: React.MouseEvent) => {
+        // Only track drag when mouse is down
+        if (!isMouseDownRef.current) return
+
+        const rect = containerRef.current?.getBoundingClientRect()
+        if (!rect) return
+        const cx = e.clientX - rect.left
+        const cy = e.clientY - rect.top
+        const wx = toWorldX(cx)
+        const wy = toWorldY(cy)
+
+        // Use the drag target from mousedown
+        const hitId = lastDragTargetRef.current
+
+        // Throttle drag events (don't send every pixel)
+        pushEvent({ type: "drag", x: wx, y: wy, id: hitId })
+      },
+      [toWorldX, toWorldY, pushEvent]
+    )
+
     // ─────────────────────────────────────────────────────────
     // RENDER (Just a container div)
     // ─────────────────────────────────────────────────────────
@@ -1127,6 +1215,9 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         className="relative overflow-hidden rounded border border-border bg-white shadow-sm dark:bg-zinc-900"
         style={{ width: logicalSize.width, height: logicalSize.height }}
         onClick={handleCanvasClick}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseMove={handleMouseMove}
       />
     )
   }
