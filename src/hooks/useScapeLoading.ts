@@ -63,6 +63,7 @@ export function useScapeLoading(id: string, options?: { skipLocal?: boolean }) {
         setCloudScape({
           id: data.id,
           name: data.name,
+          description: data.description || undefined,
           environment: data.environment as Scape["environment"],
           template: data.template,
           source: "cloud",
@@ -131,6 +132,8 @@ export function useScapeLoading(id: string, options?: { skipLocal?: boolean }) {
                 // Note: newData from Supabase with REPLICA IDENTITY FULL should have all columns.
                 // But we safeguard against partials.
                 name: newData.name !== undefined ? newData.name : base.name,
+                description:
+                  newData.description !== undefined ? newData.description : base.description,
                 dependencies:
                   newData.dependencies !== undefined
                     ? newData.dependencies
