@@ -20,6 +20,7 @@ import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import { useToast } from "@/components/ui/use-toast"
 import { collaboratorsService } from "@/services/collaborators"
 import type { Collaborator } from "@/types/collaborator"
+import { supabase } from "@/lib/supabase"
 
 interface ShareDialogProps {
   scape: Scape
@@ -33,8 +34,32 @@ export function ShareDialog({ scape, onSyncComplete }: ShareDialogProps) {
   const [isSyncing, setIsSyncing] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Optimistic UI state
-  const [isPublic, setIsPublic] = useState(scape.is_public)
+  // Optimistic UI state - initialized with prop but will be refreshed from DB
+  const [isPublic, setIsPublic] = useState(scape.is_public ?? false)
+
+  // Fetch fresh is_public from Supabase when dialog opens (for cloud scapes)
+  // This ensures we bypass any stale local IndexedDB data
+  useEffect(() => {
+    if (!isOpen || scape.source !== "cloud") return
+
+    const fetchFreshPublicState = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("scapes")
+          .select("is_public")
+          .eq("id", scape.id)
+          .single()
+
+        if (!error && data) {
+          setIsPublic(data.is_public ?? false)
+        }
+      } catch (e) {
+        console.error("Failed to fetch fresh is_public state", e)
+      }
+    }
+
+    fetchFreshPublicState()
+  }, [isOpen, scape.id, scape.source])
 
   // Collaborators state
   const [collaborators, setCollaborators] = useState<Collaborator[]>([])

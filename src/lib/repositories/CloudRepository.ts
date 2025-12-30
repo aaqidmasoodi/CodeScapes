@@ -692,12 +692,12 @@ export class CloudRepository implements IScapeRepository {
     if (deployError) throw deployError
 
     // 5. Update Scape with Published Version link
-    // And ensure is_public is true (optional, maybe user wants private deployment?)
-    // For community platform: Deployment usually implies Public.
+    // Deployment implies Public access for the Community platform.
     const { error: updateError } = await supabase
       .from("scapes")
       .update({
         published_version_id: deploymentId,
+        is_public: true, // Deploy = Public
         updated_at: new Date().toISOString(),
       })
       .eq("id", scapeId)
