@@ -26,6 +26,7 @@ interface PreviewPaneProps {
   onBusyChange?: (isBusy: boolean) => void
   onInputRequest?: (prompt: string) => void
   onFileSystemUpdate?: (files: ScapeFile[]) => void
+  onSystemCommand?: (cmd: string) => Promise<void>
   showStoppedOverlay?: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   project?: any // For FlowScape High-Speed Sync
@@ -88,6 +89,99 @@ export const PreviewPane = memo(
           await runnerRef.current.runFile(path, opts)
         }
       },
+      postMessage: (message: Record<string, unknown>) => {
+        if (runnerRef.current?.postMessage) {
+          runnerRef.current.postMessage(message)
+        }
+      },
+      runSystemCommand: async (cmd: string, args: Record<string, unknown>) => {
+        // 1. Try forwarding to runner (preferred)
+        if (runnerRef.current?.runSystemCommand) {
+          try {
+            return await runnerRef.current.runSystemCommand(cmd, args)
+          } catch (e: unknown) {
+            // If runtime not ready, fall back to local
+            const errMsg = e instanceof Error ? e.message : String(e)
+            if (!errMsg.includes("Runtime not ready")) {
+              throw e
+            }
+          }
+        }
+
+        // 2. Local Fallback for 'aplay'
+        if (cmd === "aplay") {
+          const { filename } = args
+          const file = props.files.find((f) => f.name === filename)
+          if (!file) throw new Error(`File '${filename}' not found`)
+
+          // Decode content
+          let buffer: ArrayBuffer | null = null
+          if (file.content instanceof Uint8Array) {
+            buffer = file.content.buffer as unknown as ArrayBuffer
+          } else if (typeof file.content === "string") {
+            // Try base64
+            try {
+              const bin = atob(file.content)
+              const len = bin.length
+              const bytes = new Uint8Array(len)
+              for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i)
+              buffer = bytes.buffer
+            } catch {
+              // Not base64, maybe raw text (unlikely for wav) or utf8?
+              // Just try playing what we have?
+              // Creating buffer from string directly is hard without context.
+              // Assuming base64 for now if string.
+            }
+          } else if (
+            file.content instanceof ArrayBuffer ||
+            file.content instanceof SharedArrayBuffer
+          ) {
+            buffer = file.content as unknown as ArrayBuffer
+          }
+
+          if (!buffer) throw new Error("Could not read audio file content")
+
+          // Play locally
+          const audioContext = new (
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+          )()
+
+          const ctx = audioContext
+          try {
+            const audioBuffer = await ctx.decodeAudioData(buffer.slice(0)) // slice to copy if needed
+            const source = ctx.createBufferSource()
+            source.buffer = audioBuffer
+            source.connect(ctx.destination)
+
+            if (ctx.state === "suspended") await ctx.resume()
+
+            source.start(0)
+
+            // Wait for completion (sync mode)
+            // If args.async is true, shell already handled it?
+            // ScapeEditor sends 'async: false' usually because shell waits for our promise?
+            // Wait... ScapeEditor sends { async: isAsync }.
+            // If isAsync is true, we should resolve immediately?
+            // Actually, Shell calls `command &` -> shell doesn't await `runSystemCommand`.
+            // So we can ALWAYS await here?
+            // NO. If shell waits, we must wait.
+
+            return new Promise<void>((resolve) => {
+              source.onended = () => {
+                ctx.close().catch(() => {})
+                resolve()
+              }
+            })
+          } catch (e: unknown) {
+            ctx.close().catch(() => {})
+            const errMsg = e instanceof Error ? e.message : String(e)
+            throw new Error(`Failed to play audio: ${errMsg}`)
+          }
+        }
+
+        throw new Error(`System command '${cmd}' not supported in this environment`)
+      },
     }))
 
     // STOPPED STATE
@@ -143,6 +237,7 @@ export const PreviewPane = memo(
         onBusyChange={onBusyChange}
         onInputRequest={props.onInputRequest}
         onFileSystemUpdate={props.onFileSystemUpdate}
+        onSystemCommand={props.onSystemCommand}
         project={props.project}
         ref={runnerRef}
       />

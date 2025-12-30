@@ -190,6 +190,7 @@ export function TerminalPane({
     "grep",
     "pip",
     "python3",
+    "aplay",
     "clear",
     "help",
   ]

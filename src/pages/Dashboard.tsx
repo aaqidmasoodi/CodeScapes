@@ -285,13 +285,16 @@ export default function Dashboard() {
                         r: "R Language",
                       }[scape.environment as string] || scape.environment
 
-                    const hasThumbnail = scape.thumbnail && scape.thumbnail.length > 100
+                    const hasThumbnail = scape.thumbnail && scape.thumbnail.length > 50
 
-                    // Normalize thumbnail - ensure it has data: prefix
+                    // Normalize thumbnail - handle both URL (new) and base64 (legacy)
                     const thumbnailSrc = hasThumbnail
-                      ? scape.thumbnail?.startsWith("data:")
-                        ? scape.thumbnail
-                        : `data:image/jpeg;base64,${scape.thumbnail}`
+                      ? scape.thumbnail?.startsWith("http://") ||
+                        scape.thumbnail?.startsWith("https://")
+                        ? scape.thumbnail // New URL format - use directly
+                        : scape.thumbnail?.startsWith("data:")
+                          ? scape.thumbnail // Already has data: prefix
+                          : `data:image/jpeg;base64,${scape.thumbnail}` // Legacy raw base64
                       : null
 
                     return (

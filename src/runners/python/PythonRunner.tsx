@@ -26,6 +26,7 @@ interface PythonRunnerProps {
   onBusyChange?: (isBusy: boolean) => void
   onInputRequest?: (prompt: string) => Promise<string> | void
   onFileSystemUpdate?: (files: ScapeFile[]) => void
+  onSystemCommand?: (cmd: string) => Promise<void>
   isLive?: boolean
 }
 
@@ -42,6 +43,7 @@ export const PythonRunner = memo(
         onFileSystemUpdate,
         scapeId,
         isLive,
+        onSystemCommand,
       },
       ref
     ) => {
@@ -79,7 +81,14 @@ export const PythonRunner = memo(
       const pendingListPackages = useRef<
         ((packages: { name: string; version: string }[]) => void) | null
       >(null)
+      const pendingAudioResolve = useRef<
+        ((result: { success: boolean; error?: string }) => void) | null
+      >(null)
       const runResolveRef = useRef<(() => void) | null>(null)
+      // Track active sounds by ID for stop/volume control
+      const activeSounds = useRef<
+        Map<string, { source: AudioBufferSourceNode; gainNode: GainNode }>
+      >(new Map())
       // For terminal-initiated runs that need to wait for completion
       const pendingFileRunRef = useRef<{
         path: string
@@ -111,6 +120,7 @@ export const PythonRunner = memo(
         dependencies,
         files,
         socketEmit,
+        onSystemCommand,
       })
 
       useEffect(() => {
@@ -131,11 +141,13 @@ export const PythonRunner = memo(
           dependencies,
           files,
           socketEmit,
+          onSystemCommand,
         }
       }, [
         onOutput,
         onBusyChange,
         onInputRequest,
+        onSystemCommand,
         onFileSystemUpdate,
         dependencies,
         files,
@@ -145,6 +157,7 @@ export const PythonRunner = memo(
       // Forward declaration for initWorker to use
       const runPythonRef = useRef<() => Promise<void>>(async () => {})
       const isTurtleActiveRef = useRef(false)
+      const audioContextRef = useRef<AudioContext | null>(null)
 
       // --- Stable Helpers ---
 
@@ -161,6 +174,36 @@ export const PythonRunner = memo(
           content,
           timestamp: Date.now(),
         })
+      }, [])
+
+      // --- AudioContext Resume on User Gesture ---
+      // Browsers suspend AudioContext until user interaction.
+      // This effect resumes it on first click/keydown.
+      useEffect(() => {
+        const resumeAudioContext = () => {
+          const ctx = audioContextRef.current
+          if (ctx && ctx.state === "suspended") {
+            ctx
+              .resume()
+              .then(() => {
+                console.log("[Sound] AudioContext resumed via user gesture")
+              })
+              .catch(() => {
+                /* ignore */
+              })
+          }
+        }
+
+        // Listen for user interactions
+        document.addEventListener("click", resumeAudioContext, { once: true })
+        document.addEventListener("keydown", resumeAudioContext, { once: true })
+        document.addEventListener("touchstart", resumeAudioContext, { once: true })
+
+        return () => {
+          document.removeEventListener("click", resumeAudioContext)
+          document.removeEventListener("keydown", resumeAudioContext)
+          document.removeEventListener("touchstart", resumeAudioContext)
+        }
       }, [])
 
       // --- Stable Worker Init ---
@@ -197,6 +240,10 @@ export const PythonRunner = memo(
 
         worker.onmessage = (e) => {
           const { type, payload } = e.data
+          // console.log(`[PythonRunner] Received message type: ${type}`)
+          if (type === "SYSTEM_COMMAND") {
+            console.log("[PythonRunner] Received SYSTEM_COMMAND", payload)
+          }
 
           switch (type) {
             case "SOCKET_EMIT":
@@ -409,9 +456,231 @@ export const PythonRunner = memo(
               }
               break
             }
+            case "AUDIO_DATA": {
+              const { data, format, async: isAsync, filename } = payload
+
+              // Decode base64 to ArrayBuffer
+              const binaryString = atob(data)
+              const bytes = new Uint8Array(binaryString.length)
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i)
+              }
+
+              // Create or reuse AudioContext
+              let audioContext = audioContextRef.current
+              const AudioContextClass =
+                window.AudioContext ||
+                (window as unknown as { webkitAudioContext: typeof AudioContext })
+                  .webkitAudioContext
+
+              if (!audioContext || audioContext.state === "closed") {
+                if (!AudioContextClass) {
+                  log("stderr", "Audio playback not supported in this browser")
+                  if (pendingAudioResolve.current) {
+                    pendingAudioResolve.current({ success: false, error: "Audio not supported" })
+                    pendingAudioResolve.current = null
+                  }
+                  break
+                }
+                audioContext = new AudioContextClass()
+                audioContextRef.current = audioContext
+              }
+
+              audioContext
+                .decodeAudioData(bytes.buffer)
+                .then((audioBuffer) => {
+                  const source = audioContext!.createBufferSource()
+                  source.buffer = audioBuffer
+                  source.connect(audioContext!.destination)
+
+                  source.onended = () => {
+                    // Do NOT close shared context
+                    // Signal completion for sync mode
+                    if (!isAsync && pendingAudioResolve.current) {
+                      pendingAudioResolve.current({ success: true })
+                      pendingAudioResolve.current = null
+                    }
+                  }
+
+                  // Ensure context is running (fixes short sounds not playing if suspended)
+                  const resumePromise =
+                    audioContext!.state === "suspended" ? audioContext!.resume() : Promise.resolve()
+
+                  resumePromise
+                    .then(() => {
+                      source.start(0)
+                      debug.log(`[PythonRunner] Playing audio: ${filename} (${format})`)
+
+                      if (isAsync && pendingAudioResolve.current) {
+                        pendingAudioResolve.current({ success: true })
+                        pendingAudioResolve.current = null
+                      }
+                    })
+                    .catch((e) => {
+                      console.error("Failed to resume audio context:", e)
+                    })
+                })
+                .catch((err) => {
+                  log("stderr", `Failed to decode audio: ${err.message}`)
+                  // Do NOT close shared context on decode error
+                  if (pendingAudioResolve.current) {
+                    pendingAudioResolve.current({ success: false, error: err.message })
+                    pendingAudioResolve.current = null
+                  }
+                })
+              break
+            }
+            case "AUDIO_ERROR": {
+              const { error, async: isAsync } = payload
+              log("stderr", `Audio error: ${error}`)
+              if (!isAsync && pendingAudioResolve.current) {
+                pendingAudioResolve.current({ success: false, error })
+                pendingAudioResolve.current = null
+              }
+              break
+            }
+            // --- codescapes.sound module handlers ---
+            case "AUDIO_PLAY": {
+              const { id, data, filename, loop, volume } = payload as {
+                id: string
+                data: string
+                filename: string
+                loop: boolean
+                volume: number
+              }
+              console.log(`[Sound] Playing: ${filename} (id=${id}, loop=${loop}, vol=${volume})`)
+
+              // Decode base64 → ArrayBuffer
+              try {
+                const binary = atob(data)
+                const bytes = new Uint8Array(binary.length)
+                for (let i = 0; i < binary.length; i++) {
+                  bytes[i] = binary.charCodeAt(i)
+                }
+
+                let audioContext = audioContextRef.current
+                const AudioContextClass =
+                  window.AudioContext ||
+                  (window as unknown as { webkitAudioContext: typeof AudioContext })
+                    .webkitAudioContext
+                if (!audioContext || audioContext.state === "closed") {
+                  if (!AudioContextClass) {
+                    console.error("[Sound] Web Audio API not supported")
+                    break
+                  }
+                  audioContext = new AudioContextClass() as AudioContext
+                  audioContextRef.current = audioContext
+                }
+
+                // Resume if suspended (browser autoplay policy)
+                if (audioContext.state === "suspended") {
+                  audioContext.resume()
+                }
+
+                audioContext
+                  .decodeAudioData(bytes.buffer.slice(0))
+                  .then((buffer) => {
+                    const source = audioContext!.createBufferSource()
+                    const gainNode = audioContext!.createGain()
+
+                    source.buffer = buffer
+                    source.loop = loop
+                    gainNode.gain.value = volume
+
+                    source.connect(gainNode)
+                    gainNode.connect(audioContext!.destination)
+
+                    source.onended = () => {
+                      console.log(`[Sound] Ended: ${filename} (id=${id})`)
+                      activeSounds.current.delete(id)
+                    }
+
+                    activeSounds.current.set(id, { source, gainNode })
+                    source.start(0)
+                    console.log(`[Sound] Started: ${filename}`)
+                  })
+                  .catch((e) => console.error("[Sound] Decode failed:", filename, e))
+              } catch (e) {
+                console.error("[Sound] Failed to process audio:", e)
+              }
+              break
+            }
+            case "AUDIO_STOP": {
+              const { id } = payload as { id: string }
+              const sound = activeSounds.current.get(id)
+              if (sound) {
+                console.log(`[Sound] Stopping: ${id}`)
+                try {
+                  sound.source.stop()
+                } catch {
+                  /* Already stopped */
+                }
+                activeSounds.current.delete(id)
+              }
+              break
+            }
+            case "AUDIO_VOLUME": {
+              const { id, volume } = payload as { id: string; volume: number }
+              const sound = activeSounds.current.get(id)
+              if (sound) {
+                console.log(`[Sound] Volume: ${id} → ${volume}`)
+                sound.gainNode.gain.value = Math.max(0, Math.min(1, volume))
+              }
+              break
+            }
+            case "AUDIO_STOP_ALL": {
+              console.log(`[Sound] Stopping all (${activeSounds.current.size} sounds)`)
+              activeSounds.current.forEach(({ source }) => {
+                try {
+                  source.stop()
+                } catch {
+                  /* Already stopped */
+                }
+              })
+              activeSounds.current.clear()
+              break
+            }
             case "FS_UPDATE":
               propsRef.current.onFileSystemUpdate?.(payload)
               break
+            case "SYSTEM_COMMAND": {
+              const { cmd, id } = payload
+              // Execute securely via Shell (delegated via props)
+              const execute = propsRef.current.onSystemCommand
+              console.log("[PythonRunner] onSystemCommand prop exists?", !!execute)
+
+              if (execute) {
+                execute(cmd)
+                  .then(() => {
+                    // Resolve the blocking XHR in worker
+                    // IMPORTANT: Use /_submit_input (not /_wait_input) to RELEASE the held connection
+                    console.log("[PythonRunner] System command resolved, unblocking worker...")
+                    fetch("/_submit_input", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id, value: "0" }), // value = exit code
+                    }).catch((e: Error) => console.error("Failed to resolve system command", e))
+                  })
+                  .catch((e: Error) => {
+                    console.error("System command failed", e)
+                    // Release with error code
+                    fetch("/_submit_input", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ id, value: "1" }), // Error exit code
+                    }).catch(() => {})
+                  })
+              } else {
+                console.error("[PythonRunner] onSystemCommand prop is MISSING")
+                // Unblock anyway to avoid deadlock
+                fetch("/_submit_input", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ id, value: "127" }),
+                }).catch(() => {})
+              }
+              break
+            }
           }
         }
 
@@ -768,6 +1037,141 @@ export const PythonRunner = memo(
           } catch (e) {
             console.error("[Runner] Input submission error:", e)
           }
+        },
+        postMessage: (message: Record<string, unknown>) => {
+          if (workerRef.current) {
+            workerRef.current.postMessage(message)
+          } else {
+            debug.warn("[Runner] postMessage called but worker not ready")
+          }
+        },
+        runSystemCommand: async (cmd: string, args: Record<string, unknown>) => {
+          if (cmd === "aplay") {
+            // Deadlock Prevention: Play audio LOCALLY to avoid blocking worker interaction
+            const { filename, files: taskFiles } = args as {
+              filename: string
+              files?: Array<{ name: string; content: string | Uint8Array | ArrayBuffer }>
+            }
+            console.log(`[PythonRunner] System Command: aplay ${filename}`)
+            const targetFile = taskFiles?.find((f) => f.name === filename)
+
+            if (!targetFile) {
+              console.error(`[PythonRunner] File not found: ${filename}`)
+              throw new Error(`File not found: ${filename}`)
+            }
+
+            // Prepare Audio Buffer
+            // Binary files are stored as Base64 strings or Uint8Array
+            // Prepare Audio Buffer
+            // Binary files are stored as Base64 strings or Uint8Array
+            let arrayBuffer: ArrayBuffer
+            if (typeof targetFile.content === "string") {
+              const binaryString = atob(targetFile.content)
+              const bytes = new Uint8Array(binaryString.length)
+              for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i)
+              }
+              arrayBuffer = bytes.buffer
+            } else if (targetFile.content instanceof Uint8Array) {
+              // Create a COPY of the buffer to ensure we don't pass a view of a larger buffer
+              // and to avoid SharedArrayBuffer issues.
+              const bytes = new Uint8Array(targetFile.content)
+              arrayBuffer = bytes.buffer.slice(
+                bytes.byteOffset,
+                bytes.byteOffset + bytes.byteLength
+              )
+            } else {
+              // ArrayBuffer or similar - slice to ensure copy
+              arrayBuffer = (targetFile.content as ArrayBuffer).slice(0)
+            }
+
+            console.log(`[PythonRunner] Audio Buffer Size: ${arrayBuffer.byteLength}`)
+
+            return new Promise((resolve) => {
+              // Initialize Audio Context
+              const AudioContextClass =
+                window.AudioContext ||
+                (window as unknown as { webkitAudioContext: typeof AudioContext })
+                  .webkitAudioContext
+              if (!AudioContextClass) {
+                console.error("[PythonRunner] Audio not supported")
+                resolve(void 0)
+                return
+              }
+
+              let audioContext = audioContextRef.current
+              if (!audioContext || audioContext.state === "closed") {
+                audioContext = new AudioContextClass() as AudioContext
+                audioContextRef.current = audioContext
+              }
+
+              console.log(`[PythonRunner] AudioContext State: ${audioContext.state}`)
+
+              // Decode and Play
+              audioContext
+                .decodeAudioData(arrayBuffer)
+                .then((decodedBuffer) => {
+                  console.log(
+                    `[PythonRunner] Decoded successfully. Duration: ${decodedBuffer.duration}s`
+                  )
+                  const source = audioContext!.createBufferSource()
+                  source.buffer = decodedBuffer
+                  source.connect(audioContext!.destination)
+
+                  let isResolved = false
+                  const safeResolve = () => {
+                    if (!isResolved) {
+                      isResolved = true
+                      console.log("[PythonRunner] Audio playback finished (resolved)")
+                      resolve(void 0)
+                    }
+                  }
+
+                  source.onended = () => {
+                    console.log("[PythonRunner] Playback ended (event)")
+                    safeResolve()
+                  }
+
+                  // Safety timeout based on duration + buffer (500ms)
+                  // If onended fails (e.g. suspended context weirdness), this ensures unblocking.
+                  const durationMs = decodedBuffer.duration * 1000
+                  console.log(
+                    `[PythonRunner] Audio Duration: ${decodedBuffer.duration.toFixed(2)}s. Safety timeout set for ${durationMs + 500}ms.`
+                  )
+
+                  setTimeout(() => {
+                    if (!isResolved) {
+                      console.warn("[PythonRunner] Audio playback timed out (fallback resolve)")
+                      safeResolve()
+                    }
+                  }, durationMs + 500)
+
+                  // Resume if needed
+                  if (audioContext!.state === "suspended") {
+                    console.log("[PythonRunner] Resuming AudioContext...")
+                    audioContext!
+                      .resume()
+                      .then(() => {
+                        console.log("[PythonRunner] Resumed. Starting playback...")
+                        source.start(0)
+                      })
+                      .catch((e) => {
+                        console.error("[PythonRunner] Resume failed", e)
+                        safeResolve()
+                      })
+                  } else {
+                    console.log("[PythonRunner] Starting playback immediately...")
+                    source.start(0)
+                  }
+                })
+                .catch((e) => {
+                  console.error("[PythonRunner] Audio decode failed", e)
+                  resolve(void 0)
+                })
+            })
+          }
+          // Other system commands can be added here
+          throw new Error(`Unknown system command: ${cmd}`)
         },
       }))
 
