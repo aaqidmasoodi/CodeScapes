@@ -1807,6 +1807,10 @@ export default function ScapeEditor() {
         scape={scape}
         onScapeUpdate={async (updates) => {
           await updateScape(updates)
+          // For cloud scapes, broadcast the update to update local state immediately
+          if (source === "cloud") {
+            await emitUpdate(updates)
+          }
         }}
       />
     </>

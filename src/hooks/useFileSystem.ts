@@ -258,6 +258,7 @@ export function useFileSystem(scapeId: string, source: "local" | "cloud" = "loca
         await repo.updateScape(scapeId, updates)
       } catch (e) {
         console.error("Failed to update scape:", e)
+        throw e // Re-throw so callers can handle
       }
     },
     [repo, scapeId]
