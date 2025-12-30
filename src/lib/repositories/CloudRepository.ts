@@ -4,7 +4,6 @@ import type { ScapeFile, FileType } from "@/types/file"
 import type { IScapeRepository } from "./types"
 
 // --- Helpers for Binary Support ---
-
 function base64ToArrayBuffer(base64: string): Uint8Array {
   const binary_string = atob(base64)
   const len = binary_string.length

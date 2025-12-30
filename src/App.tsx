@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom"
 import Dashboard from "./pages/Dashboard"
 import { ThemeProvider } from "@/components/theme-provider"
 import ScapeEditor from "@/pages/ScapeEditor"
@@ -20,11 +20,15 @@ import { AdminDashboard } from "@/pages/admin/AdminDashboard"
 import { AdminEditor } from "@/pages/admin/AdminEditor"
 import { AdminOverview } from "@/pages/admin/AdminOverview"
 
+// Use HashRouter for Electron (file:// protocol), BrowserRouter for web
+const isElectron = typeof window !== "undefined" && window.location.protocol === "file:"
+const Router = isElectron ? HashRouter : BrowserRouter
+
 function App() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <ErrorBoundary>
-        <BrowserRouter>
+        <Router>
           <Routes>
             <Route path="/login" element={<AuthPage />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -65,7 +69,7 @@ function App() {
               <Route path="docs/edit/:id" element={<AdminEditor />} />
             </Route>
           </Routes>
-        </BrowserRouter>
+        </Router>
       </ErrorBoundary>
       <Toaster />
     </ThemeProvider>
