@@ -85,6 +85,10 @@ export const PythonRunner = memo(
         ((result: { success: boolean; error?: string }) => void) | null
       >(null)
       const runResolveRef = useRef<(() => void) | null>(null)
+      // Track active sounds by ID for stop/volume control
+      const activeSounds = useRef<
+        Map<string, { source: AudioBufferSourceNode; gainNode: GainNode }>
+      >(new Map())
       // For terminal-initiated runs that need to wait for completion
       const pendingFileRunRef = useRef<{
         path: string
@@ -170,6 +174,36 @@ export const PythonRunner = memo(
           content,
           timestamp: Date.now(),
         })
+      }, [])
+
+      // --- AudioContext Resume on User Gesture ---
+      // Browsers suspend AudioContext until user interaction.
+      // This effect resumes it on first click/keydown.
+      useEffect(() => {
+        const resumeAudioContext = () => {
+          const ctx = audioContextRef.current
+          if (ctx && ctx.state === "suspended") {
+            ctx
+              .resume()
+              .then(() => {
+                console.log("[Sound] AudioContext resumed via user gesture")
+              })
+              .catch(() => {
+                /* ignore */
+              })
+          }
+        }
+
+        // Listen for user interactions
+        document.addEventListener("click", resumeAudioContext, { once: true })
+        document.addEventListener("keydown", resumeAudioContext, { once: true })
+        document.addEventListener("touchstart", resumeAudioContext, { once: true })
+
+        return () => {
+          document.removeEventListener("click", resumeAudioContext)
+          document.removeEventListener("keydown", resumeAudioContext)
+          document.removeEventListener("touchstart", resumeAudioContext)
+        }
       }, [])
 
       // --- Stable Worker Init ---
@@ -503,6 +537,107 @@ export const PythonRunner = memo(
                 pendingAudioResolve.current({ success: false, error })
                 pendingAudioResolve.current = null
               }
+              break
+            }
+            // --- codescapes.sound module handlers ---
+            case "AUDIO_PLAY": {
+              const { id, data, filename, loop, volume } = payload as {
+                id: string
+                data: string
+                filename: string
+                loop: boolean
+                volume: number
+              }
+              console.log(`[Sound] Playing: ${filename} (id=${id}, loop=${loop}, vol=${volume})`)
+
+              // Decode base64 → ArrayBuffer
+              try {
+                const binary = atob(data)
+                const bytes = new Uint8Array(binary.length)
+                for (let i = 0; i < binary.length; i++) {
+                  bytes[i] = binary.charCodeAt(i)
+                }
+
+                let audioContext = audioContextRef.current
+                const AudioContextClass =
+                  window.AudioContext ||
+                  (window as unknown as { webkitAudioContext: typeof AudioContext })
+                    .webkitAudioContext
+                if (!audioContext || audioContext.state === "closed") {
+                  if (!AudioContextClass) {
+                    console.error("[Sound] Web Audio API not supported")
+                    break
+                  }
+                  audioContext = new AudioContextClass() as AudioContext
+                  audioContextRef.current = audioContext
+                }
+
+                // Resume if suspended (browser autoplay policy)
+                if (audioContext.state === "suspended") {
+                  audioContext.resume()
+                }
+
+                audioContext
+                  .decodeAudioData(bytes.buffer.slice(0))
+                  .then((buffer) => {
+                    const source = audioContext!.createBufferSource()
+                    const gainNode = audioContext!.createGain()
+
+                    source.buffer = buffer
+                    source.loop = loop
+                    gainNode.gain.value = volume
+
+                    source.connect(gainNode)
+                    gainNode.connect(audioContext!.destination)
+
+                    source.onended = () => {
+                      console.log(`[Sound] Ended: ${filename} (id=${id})`)
+                      activeSounds.current.delete(id)
+                    }
+
+                    activeSounds.current.set(id, { source, gainNode })
+                    source.start(0)
+                    console.log(`[Sound] Started: ${filename}`)
+                  })
+                  .catch((e) => console.error("[Sound] Decode failed:", filename, e))
+              } catch (e) {
+                console.error("[Sound] Failed to process audio:", e)
+              }
+              break
+            }
+            case "AUDIO_STOP": {
+              const { id } = payload as { id: string }
+              const sound = activeSounds.current.get(id)
+              if (sound) {
+                console.log(`[Sound] Stopping: ${id}`)
+                try {
+                  sound.source.stop()
+                } catch {
+                  /* Already stopped */
+                }
+                activeSounds.current.delete(id)
+              }
+              break
+            }
+            case "AUDIO_VOLUME": {
+              const { id, volume } = payload as { id: string; volume: number }
+              const sound = activeSounds.current.get(id)
+              if (sound) {
+                console.log(`[Sound] Volume: ${id} → ${volume}`)
+                sound.gainNode.gain.value = Math.max(0, Math.min(1, volume))
+              }
+              break
+            }
+            case "AUDIO_STOP_ALL": {
+              console.log(`[Sound] Stopping all (${activeSounds.current.size} sounds)`)
+              activeSounds.current.forEach(({ source }) => {
+                try {
+                  source.stop()
+                } catch {
+                  /* Already stopped */
+                }
+              })
+              activeSounds.current.clear()
               break
             }
             case "FS_UPDATE":

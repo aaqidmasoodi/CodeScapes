@@ -590,6 +590,126 @@ self.onmessage = async (e: MessageEvent) => {
         # Create module
         mod = types.ModuleType("codescapes")
         mod.socket = CodeScapesSocket('${socketId || ""}')
+        
+        # --- CodeScapes Sound Module ---
+        import uuid
+        import base64
+        
+        class _SoundInstance:
+            """Represents a single sound instance with playback control."""
+            def __init__(self, filename, loop=False, volume=1.0):
+                self._id = str(uuid.uuid4())[:8]
+                self._filename = filename
+                self._loop = bool(loop)
+                self._volume = max(0.0, min(1.0, float(volume)))
+                self._playing = False
+            
+            def play(self):
+                """Start playback. Non-blocking."""
+                if self._playing:
+                    return self
+                # Read file from virtual FS
+                try:
+                    with open(self._filename, 'rb') as f:
+                        data = f.read()
+                except FileNotFoundError:
+                    raise FileNotFoundError(f"Sound file not found: {self._filename}")
+                except Exception as e:
+                    raise RuntimeError(f"Failed to read sound file: {e}")
+                
+                b64_data = base64.b64encode(data).decode('ascii')
+                
+                # Send to main thread
+                payload = json.dumps({
+                    'type': 'AUDIO_PLAY',
+                    'payload': {
+                        'id': self._id,
+                        'data': b64_data,
+                        'filename': self._filename,
+                        'loop': self._loop,
+                        'volume': self._volume
+                    }
+                })
+                js.postMessage(js.JSON.parse(payload))
+                self._playing = True
+                return self
+            
+            def stop(self):
+                """Stop playback."""
+                if not self._playing:
+                    return
+                payload = json.dumps({
+                    'type': 'AUDIO_STOP',
+                    'payload': {'id': self._id}
+                })
+                js.postMessage(js.JSON.parse(payload))
+                self._playing = False
+            
+            @property
+            def volume(self):
+                return self._volume
+            
+            @volume.setter
+            def volume(self, val):
+                self._volume = max(0.0, min(1.0, float(val)))
+                payload = json.dumps({
+                    'type': 'AUDIO_VOLUME',
+                    'payload': {'id': self._id, 'volume': self._volume}
+                })
+                js.postMessage(js.JSON.parse(payload))
+            
+            @property
+            def loop(self):
+                return self._loop
+            
+            @loop.setter
+            def loop(self, val):
+                self._loop = bool(val)
+                # Note: Changing loop on an already-playing sound requires re-send
+                # For simplicity, this only affects next play() call
+        
+        class CodeScapesSound:
+            """Non-blocking audio playback for CodeScapes.
+            
+            Usage:
+                from codescapes import sound
+                
+                # Simple (fire-and-forget)
+                sound.play("beep.wav")
+                sound.play("music.mp3", loop=True)
+                sound.stop_all()
+                
+                # Controlled
+                s = sound.Sound("bgm.mp3")
+                s.volume = 0.5
+                s.loop = True
+                s.play()
+                s.stop()
+            """
+            Sound = _SoundInstance
+            
+            @staticmethod
+            def play(filename, loop=False, volume=1.0):
+                """Play a sound file. Returns immediately (non-blocking).
+                
+                Args:
+                    filename: Path to sound file in the scape
+                    loop: If True, loop forever
+                    volume: 0.0 to 1.0
+                    
+                Returns:
+                    _SoundInstance for further control
+                """
+                s = _SoundInstance(filename, loop=loop, volume=volume)
+                return s.play()
+            
+            @staticmethod
+            def stop_all():
+                """Stop all playing sounds."""
+                payload = json.dumps({'type': 'AUDIO_STOP_ALL'})
+                js.postMessage(js.JSON.parse(payload))
+        
+        mod.sound = CodeScapesSound()
         sys.modules["codescapes"] = mod
 
         # --- Shim os.system ---
