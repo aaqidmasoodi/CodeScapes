@@ -15,7 +15,13 @@ import {
 } from "@/components/ui/select"
 import type { EditorSettings } from "@/hooks/useEditorSettings"
 import type { Scape } from "@/lib/db"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { toast } from "@/components/ui/use-toast"
+
+// Same validation as CreateScapeDialog
+const NAME_REGEX = /^[a-zA-Z0-9 ]+$/
+const NAME_MAX_LENGTH = 25
+const DESCRIPTION_MAX_LENGTH = 500
 
 interface SettingsPaneProps {
   editorSettings: EditorSettings
@@ -37,15 +43,59 @@ export function SettingsPane({
   // Project settings local state
   const [projectName, setProjectName] = useState(scape?.name || "")
   const [projectDescription, setProjectDescription] = useState(scape?.description || "")
+  const [nameError, setNameError] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+
+  // Sync state when scape prop changes (e.g., dialog reopens or scape updates)
+  useEffect(() => {
+    setProjectName(scape?.name || "")
+    setProjectDescription(scape?.description || "")
+    setNameError("")
+  }, [scape?.id, scape?.name, scape?.description])
+
+  const validateName = (value: string) => {
+    if (!value.trim()) {
+      return "Project name is required"
+    }
+    if (!NAME_REGEX.test(value)) {
+      return "Only letters, numbers, and spaces allowed"
+    }
+    if (value.length > NAME_MAX_LENGTH) {
+      return `Name must be ${NAME_MAX_LENGTH} characters or less`
+    }
+    return ""
+  }
+
+  const handleNameChange = (value: string) => {
+    setProjectName(value)
+    setNameError(validateName(value))
+  }
 
   const handleSaveProject = async () => {
     if (!onScapeUpdate) return
+
+    const error = validateName(projectName)
+    if (error) {
+      setNameError(error)
+      return
+    }
+
     setIsSaving(true)
     try {
       await onScapeUpdate({
-        name: projectName,
-        description: projectDescription,
+        name: projectName.trim(),
+        description: projectDescription.trim() || undefined,
+      })
+      toast({
+        title: "Project updated",
+        description: "Your changes have been saved.",
+      })
+    } catch (e) {
+      console.error("Failed to save project:", e)
+      toast({
+        title: "Failed to save",
+        description: "Please try again.",
+        variant: "destructive",
       })
     } finally {
       setIsSaving(false)
@@ -53,7 +103,8 @@ export function SettingsPane({
   }
 
   const hasProjectChanges =
-    projectName !== scape?.name || projectDescription !== (scape?.description || "")
+    projectName.trim() !== (scape?.name || "") ||
+    projectDescription.trim() !== (scape?.description || "")
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -260,26 +311,37 @@ export function SettingsPane({
                     <Input
                       id="projectName"
                       value={projectName}
-                      onChange={(e) => setProjectName(e.target.value)}
+                      onChange={(e) => handleNameChange(e.target.value)}
                       placeholder="My Awesome Project"
-                      maxLength={100}
+                      maxLength={NAME_MAX_LENGTH}
+                      className={
+                        nameError ? "border-destructive focus-visible:ring-destructive" : ""
+                      }
                     />
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        {projectName.length}/{NAME_MAX_LENGTH}
+                      </p>
+                      {nameError && <p className="text-xs text-destructive">{nameError}</p>}
+                    </div>
                   </div>
 
                   {/* Description */}
                   <div className="space-y-2">
-                    <Label htmlFor="projectDescription">Description</Label>
+                    <Label htmlFor="projectDescription">
+                      Description <span className="text-muted-foreground">(optional)</span>
+                    </Label>
                     <textarea
                       id="projectDescription"
                       value={projectDescription}
                       onChange={(e) => setProjectDescription(e.target.value)}
                       placeholder="A brief description of your project..."
-                      maxLength={500}
+                      maxLength={DESCRIPTION_MAX_LENGTH}
                       rows={4}
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     />
                     <p className="text-xs text-muted-foreground">
-                      {projectDescription.length}/500 characters
+                      {projectDescription.length}/{DESCRIPTION_MAX_LENGTH} characters
                     </p>
                   </div>
 
@@ -290,7 +352,10 @@ export function SettingsPane({
                     <p className="text-xs text-muted-foreground">
                       {isCloud ? "Saved to cloud" : "Saved locally"}
                     </p>
-                    <Button onClick={handleSaveProject} disabled={!hasProjectChanges || isSaving}>
+                    <Button
+                      onClick={handleSaveProject}
+                      disabled={!hasProjectChanges || isSaving || !!nameError}
+                    >
                       {isSaving ? "Saving..." : "Save Changes"}
                     </Button>
                   </div>
