@@ -3,6 +3,7 @@ import { emmetHTML, emmetCSS } from "emmet-monaco-es"
 import { useTheme } from "@/components/theme-provider"
 import type { Problem } from "@/types/problem"
 import type { ScapeFile } from "@/types/file"
+import type { EditorSettings } from "@/hooks/useEditorSettings"
 import { useEffect, useRef } from "react"
 import { LoadingOverlay } from "@/components/ui/spinner"
 
@@ -14,6 +15,7 @@ interface CodeEditorProps {
   onValidate?: (problems: Problem[]) => void
   files?: ScapeFile[] // All files for IntelliSense
   onRun?: () => void
+  editorSettings?: EditorSettings
 }
 
 // Track global registration of Emmet to prevent duplicates on file switch
@@ -30,6 +32,7 @@ export function CodeEditor({
   onValidate,
   files = [],
   onRun,
+  editorSettings,
 }: CodeEditorProps) {
   const { theme } = useTheme()
   const monaco = useMonaco()
@@ -83,11 +86,12 @@ export function CodeEditor({
     // Store editor reference for external content sync
     editorRef.current = editor
 
-    // Basic configuration
+    // Basic configuration (will be overridden by editorSettings if provided)
     editor.updateOptions({
-      minimap: { enabled: false },
-      fontSize: 14,
-      wordWrap: "on",
+      minimap: { enabled: editorSettings?.minimap ?? false },
+      fontSize: editorSettings?.fontSize ?? 14,
+      wordWrap: editorSettings?.wordWrap ?? "on",
+      lineNumbers: editorSettings?.lineNumbers ?? "on",
       padding: { top: 16 },
       scrollBeyondLastLine: false,
     })
@@ -117,6 +121,18 @@ export function CodeEditor({
       editor.getAction("editor.action.formatDocument")?.run()
     })
   }
+
+  // Apply editor settings dynamically when they change
+  useEffect(() => {
+    if (!editorRef.current || !editorSettings) return
+
+    editorRef.current.updateOptions({
+      fontSize: editorSettings.fontSize,
+      wordWrap: editorSettings.wordWrap,
+      minimap: { enabled: editorSettings.minimap },
+      lineNumbers: editorSettings.lineNumbers,
+    })
+  }, [editorSettings])
 
   // Sync external content changes to Monaco
   // This handles cases like search/replace updating file content
