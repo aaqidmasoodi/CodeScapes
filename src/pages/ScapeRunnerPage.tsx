@@ -143,12 +143,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
   // True if not in explicit 'dev' mode
   const isLiveRunner = mode !== "dev"
 
-  // Auto-open console for Python in view mode if it's the primary output
-  useEffect(() => {
-    if (isPython && mode !== "dev") {
-      setIsConsoleOpen(true)
-    }
-  }, [isPython, mode])
+  // Console will auto-open when output is received (see addLog callback)
 
   useEffect(() => {
     async function fetchScape() {
@@ -262,6 +257,10 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
       return [...prev, log]
     })
     setIsConsoleOpen((current) => {
+      // Auto-open console on first output in live/published modes
+      if (!current && mode !== "dev") {
+        return true
+      }
       if (!current) setUnreadLogs((prev) => prev + 1)
       return current
     })
