@@ -52,6 +52,9 @@ class Vec2D(tuple):
         rad = math.radians(angle)
         c, s = math.cos(rad), math.sin(rad)
         return Vec2D(self[0]*c - self[1]*s, self[0]*s + self[1]*c)
+    
+    def __repr__(self):
+        return "(%.2f,%.2f)" % (self[0], self[1])
 
 # ===== Protocol Utilities =====
 
@@ -836,6 +839,8 @@ class Turtle:
                 "extent": ext_deg,
                 "steps": steps or 0,
                 "pen_down": self._pen_down,
+                "color": self._pencolor,
+                "width": self._pensize,
                 "filling": self._filling,
                 "fillcolor": self._fillcolor,
                 "start_x": self._x,
@@ -949,6 +954,8 @@ class Turtle:
             "extent": extent,
             "steps": 0,
             "pen_down": self._pen_down,
+            "color": self._pencolor,
+            "width": self._pensize,
             "filling": self._filling,
             "fillcolor": self._fillcolor,
             "start_x": self._x,
@@ -1058,9 +1065,9 @@ class Turtle:
                 "speed": self._speed,
                 "resizemode": "user",
                 "stretchfactor": (self._stretch_wid, self._stretch_len),
-                "shearfactor": 0,
+                "shearfactor": self._shear,
                 "outline": self._outline,
-                "tilt": 0
+                "tilt": self._tilt_angle
             }
         _p = {}
         if pen: _p.update(pen)
@@ -1134,6 +1141,9 @@ class Turtle:
     
     def speed(self, speed=None):
         if speed is None: return self._speed
+        # Handle speed strings (standard turtle aliases)
+        if isinstance(speed, str):
+            speed = {"fastest": 0, "fast": 10, "normal": 6, "slow": 3, "slowest": 1}.get(speed.lower(), 3)
         self._speed = speed
         _send_cmd("UPDATE_TURTLE", {"id": self._id, "speed": speed})
 
@@ -1151,7 +1161,7 @@ class Turtle:
 
     def xcor(self): return self._x
     def ycor(self): return self._y
-    def position(self): return (self._x, self._y)
+    def position(self): return Vec2D(self._x, self._y)
     pos = position
 
     def heading(self):
@@ -1271,6 +1281,12 @@ class Turtle:
     def undobufferentries(self):
         """Return count of entries in undobuffer."""
         return len(self._undo_buffer)
+
+# ===== Class Aliases (CPython Compatibility) =====
+# These provide standard turtle module class names
+RawTurtle = Turtle
+RawPen = Turtle
+Pen = Turtle
 
 # ===== Helper Functions =====
 
@@ -1393,6 +1409,12 @@ def addshape(n, s=None): Screen().addshape(n, s)
 def getshapes(): return Screen().getshapes()
 def turtles(): return Screen().turtles()
 def colormode(m=None): return Screen().colormode(m)
+def mode(m=None): return Screen().mode(m)
 def title(T): Screen().title(T)
 def save(filename="turtle_drawing.png", overwrite=False): Screen().save(filename, overwrite)
 def getcanvas(): return Screen().getcanvas()
+def towards(x, y=None): return _get_turtle().towards(x, y)
+def isdown(): return _get_turtle().isdown()
+def pen(p=None, **kw): return _get_turtle().pen(p, **kw)
+def setundobuffer(s): _get_turtle().setundobuffer(s)
+def undobufferentries(): return _get_turtle().undobufferentries()
