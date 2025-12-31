@@ -139,7 +139,7 @@ export function CodeScapeFullLogo({ className, height = 40 }: FullLogoProps) {
         letterSpacing="-0.5"
         fill="currentColor"
       >
-        <tspan fill={`url(#${id}-text)`}>Code</tspan>
+        <tspan fill="currentColor">Code</tspan>
         <tspan fill="currentColor">Scapes</tspan>
       </text>
     </svg>

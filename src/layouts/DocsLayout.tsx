@@ -2,13 +2,14 @@ import { useState, useEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Menu, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Link, useLocation } from "react-router-dom"
 import { DocsRepository } from "@/lib/repositories/DocsRepository"
 import type { DocsTreeItem } from "@/types/docs"
-import { ModeToggle } from "@/components/mode-toggle"
-import { CodeScapeLogo } from "@/components/brand/Logo"
+import { Header } from "@/components/layout/Header"
+import { CodeScapeFullLogo } from "@/components/brand/Logo"
 
 interface DocsSidebarItemProps {
   item: DocsTreeItem
@@ -70,7 +71,6 @@ function DocsSidebarItem({ item, depth = 0, activeSlug }: DocsSidebarItemProps) 
 
 export function DocsLayout({ children }: { children: React.ReactNode }) {
   const [tree, setTree] = useState<DocsTreeItem[]>([])
-  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
   const location = useLocation()
 
   // Extract clean slug from path: /docs/foo -> foo
@@ -81,52 +81,57 @@ export function DocsLayout({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Mobile Header */}
-      <div className="flex h-14 items-center border-b px-4 lg:hidden">
-        <Button variant="ghost" size="icon" onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}>
-          <Menu className="h-5 w-5" />
-        </Button>
-        <span className="ml-2 font-bold">Documentation</span>
-      </div>
-
-      {/* Left Sidebar - FIXED */}
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-40 w-64 border-r bg-background transition-transform lg:translate-x-0",
-          !isMobileNavOpen && "-translate-x-full lg:translate-x-0"
-        )}
-      >
-        <div className="flex h-14 items-center border-b px-4">
-          <Link to="/" className="flex items-center gap-2">
-            <CodeScapeLogo size={28} />
-            <span className="font-semibold">CodeScapes</span>
-            <Badge
-              variant="secondary"
-              className="border-primary/20 bg-primary/10 text-xs text-primary"
-            >
-              Docs
-            </Badge>
-          </Link>
-        </div>
-        <div className="flex h-[calc(100vh-3.5rem)] flex-col">
-          <ScrollArea className="flex-1 py-6 pl-4 pr-6">
+    <div className="flex h-screen flex-col overflow-hidden bg-background">
+      {/* Shared Header with Docs Badge - full width */}
+      <Sheet>
+        <Header
+          customTitle={
+            <Link to="/" className="flex items-center gap-1">
+              <CodeScapeFullLogo height={28} className="text-foreground" />
+              <Badge
+                variant="secondary"
+                className="border-primary/20 bg-primary/10 text-xs text-primary"
+              >
+                Docs
+              </Badge>
+            </Link>
+          }
+          startContent={
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="lg:hidden">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+          }
+        />
+        <SheetContent side="left" className="w-64 p-0">
+          <ScrollArea className="h-full py-6 pl-4 pr-6">
             <div className="flex flex-col gap-2">
               {tree.map((node) => (
                 <DocsSidebarItem key={node.id} item={node} activeSlug={currentSlug} />
               ))}
             </div>
           </ScrollArea>
-          <div className="border-t p-4">
-            <ModeToggle />
-          </div>
-        </div>
-      </aside>
+        </SheetContent>
+      </Sheet>
 
-      {/* Main Content - SCROLLABLE, CENTERED */}
-      <main className="min-h-screen lg:ml-64">
-        <div className="mx-auto max-w-5xl px-6 py-10 lg:px-8">{children}</div>
-      </main>
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Sidebar - hidden on mobile */}
+        <aside className="hidden w-64 shrink-0 overflow-y-auto border-r lg:block">
+          <div className="py-6 pl-4 pr-6">
+            <div className="flex flex-col gap-2">
+              {tree.map((node) => (
+                <DocsSidebarItem key={node.id} item={node} activeSlug={currentSlug} />
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content - SCROLLABLE */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-5xl px-6 pb-10 pt-10 lg:px-8">{children}</div>
+        </main>
+      </div>
     </div>
   )
 }
