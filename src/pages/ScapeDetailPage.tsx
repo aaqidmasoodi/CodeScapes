@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import { useAuth } from "@/hooks/useAuth"
 import { useTheme } from "@/components/theme-provider"
+import { Skeleton } from "@/components/ui/skeleton"
 
 import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
@@ -204,7 +205,112 @@ export default function ScapeDetailPage() {
   if (loading)
     return (
       <DashboardLayout>
-        <div className="flex h-full items-center justify-center">Loading...</div>
+        {/* Skeleton Loader matching the page layout */}
+        <div className="h-full w-full overflow-y-auto bg-background p-4 md:p-6">
+          <div className="mx-auto flex max-w-[1800px] flex-col gap-8">
+            {/* Top Section: Preview & Metadata */}
+            <div className="grid min-h-[500px] grid-cols-1 gap-6 lg:h-[750px] lg:grid-cols-4">
+              {/* Visual Preview Skeleton (3/4) */}
+              <div className="flex h-[60vh] flex-col overflow-hidden rounded-xl border bg-secondary/5 shadow-sm lg:col-span-3 lg:h-full">
+                <div className="flex items-center justify-between border-b px-4 py-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-6 w-32" />
+                </div>
+                <div className="flex-1 bg-muted/10">
+                  <div className="flex h-full items-center justify-center">
+                    <Skeleton className="h-20 w-20 rounded-full" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Metadata Card Skeleton (1/3) */}
+              <div className="flex flex-col rounded-xl border bg-card p-6 shadow-sm">
+                {/* Header */}
+                <div className="mb-6 flex items-start gap-4">
+                  <Skeleton className="h-12 w-12 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-6 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </div>
+                </div>
+
+                {/* Stats Grid */}
+                <div className="mb-6 grid grid-cols-3 gap-4 rounded-lg bg-muted/50 p-4">
+                  <div className="flex flex-col items-center gap-2">
+                    <Skeleton className="h-8 w-8" />
+                    <Skeleton className="h-3 w-12" />
+                  </div>
+                  <div className="flex flex-col items-center gap-2">
+                    <Skeleton className="h-8 w-8" />
+                    <Skeleton className="h-3 w-12" />
+                  </div>
+                  <div className="flex flex-col items-center gap-2">
+                    <Skeleton className="h-8 w-8" />
+                    <Skeleton className="h-3 w-12" />
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="col-span-2 h-10 w-full" />
+                </div>
+
+                <Separator className="my-6" />
+
+                {/* About */}
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="mb-2 h-5 w-16" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <div className="mt-4">
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Section: Code & Comments */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* Source Code Skeleton */}
+              <div className="flex h-[700px] flex-col rounded-xl border bg-card shadow-sm">
+                <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
+                  <Skeleton className="h-5 w-32" />
+                </div>
+                <div className="space-y-2 p-4">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-5/6" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-4/5" />
+                </div>
+              </div>
+
+              {/* Comments Skeleton */}
+              <div className="flex h-[700px] flex-col rounded-xl border bg-card shadow-sm">
+                <div className="border-b bg-muted/20 px-4 py-3">
+                  <Skeleton className="h-5 w-40" />
+                </div>
+                <div className="space-y-6 p-4">
+                  {/* Comment items */}
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex gap-4">
+                      <Skeleton className="h-10 w-10 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-16 w-full" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="h-12" />
+          </div>
+        </div>
       </DashboardLayout>
     )
   if (!scape)
