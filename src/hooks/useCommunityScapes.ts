@@ -19,12 +19,13 @@ export function useCommunityScapes({
 
   const query = useInfiniteQuery({
     queryKey: ["communityScapes", filter],
-    queryFn: async ({ pageParam = 0 }) => {
-      return repo.getPublicScapesPaginated(filterValue, pageParam, 24)
+    queryFn: async (context) => {
+      const page = context.pageParam ?? 0
+      return repo.getPublicScapesPaginated(filterValue, page, 24)
     },
-    getNextPageParam: (lastPage, allPages) => {
+    getNextPageParam: (lastPage, _allPages, lastPageParam) => {
       if (!lastPage.hasMore) return undefined
-      return allPages.length // Next page number
+      return (lastPageParam ?? 0) + 1
     },
     initialPageParam: 0,
     staleTime: 2 * 60 * 1000, // 2 minutes
@@ -33,14 +34,14 @@ export function useCommunityScapes({
   })
 
   // Flatten all pages into a single array of scapes
-  const scapes: Scape[] = query.data?.pages.flatMap((page) => page.data) || []
+  const scapes: Scape[] = query.data?.pages?.flatMap((page) => page.data) ?? []
 
   return {
     scapes,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     isFetchingNextPage: query.isFetchingNextPage,
-    hasNextPage: query.hasNextPage,
+    hasNextPage: Boolean(query.hasNextPage),
     fetchNextPage: query.fetchNextPage,
     error: query.error,
     refetch: query.refetch,
