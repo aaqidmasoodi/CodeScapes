@@ -53,7 +53,7 @@ export function Sidebar({
         "z-50 flex h-full flex-col justify-between border-r bg-background py-4 transition-all duration-300 ease-in-out",
         isMobile
           ? "w-full border-none bg-transparent"
-          : cn("w-16 hover:w-64 hover:shadow-xl", isExpanded && "w-64"),
+          : cn("w-12 hover:w-56 hover:shadow-xl", isExpanded && "w-56"),
         className
       )}
       onMouseEnter={() => !isMobile && setIsHovered(true)}
@@ -71,7 +71,7 @@ export function Sidebar({
             onClick={() => handleTabClick(tab.id, tab.path)}
           >
             {/* Fixed Width Icon Container - Guarantees 0 Shift */}
-            <div className="flex h-10 w-16 shrink-0 items-center justify-center">
+            <div className="flex h-9 w-12 shrink-0 items-center justify-center">
               <tab.icon className="h-5 w-5" />
             </div>
 
@@ -95,7 +95,7 @@ export function Sidebar({
               className="relative flex w-full items-center justify-start overflow-hidden p-0 text-muted-foreground hover:text-primary"
               onMouseDown={() => !isMobile && setIsHovered(false)}
             >
-              <div className="flex h-10 w-16 shrink-0 items-center justify-center">
+              <div className="flex h-9 w-12 shrink-0 items-center justify-center">
                 <MessageSquarePlus className="h-5 w-5" />
               </div>
               <span
@@ -115,7 +115,7 @@ export function Sidebar({
           className="relative flex w-full items-center justify-start overflow-hidden p-0 text-muted-foreground hover:text-primary"
           onClick={() => navigate("/docs/introduction")}
         >
-          <div className="flex h-10 w-16 shrink-0 items-center justify-center">
+          <div className="flex h-9 w-12 shrink-0 items-center justify-center">
             <Book className="h-5 w-5" />
           </div>
           <span
@@ -133,7 +133,7 @@ export function Sidebar({
           className="relative flex w-full items-center justify-start overflow-hidden p-0 text-muted-foreground hover:text-primary"
           onClick={() => console.log("Open settings")}
         >
-          <div className="flex h-10 w-16 shrink-0 items-center justify-center">
+          <div className="flex h-9 w-12 shrink-0 items-center justify-center">
             <Settings className="h-5 w-5" />
           </div>
           <span
@@ -152,7 +152,7 @@ export function Sidebar({
             className="relative flex w-full items-center justify-start overflow-hidden p-0 text-red-600 hover:bg-red-100 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/30 dark:hover:text-red-300"
             onClick={() => signOut()}
           >
-            <div className="flex h-10 w-16 shrink-0 items-center justify-center">
+            <div className="flex h-9 w-12 shrink-0 items-center justify-center">
               <LogOut className="h-5 w-5" />
             </div>
             <span
