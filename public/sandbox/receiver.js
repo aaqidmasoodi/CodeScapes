@@ -8,8 +8,8 @@
  * 5. Redirects to /run/<id>/index.html
  */
 
-// DEBUG: Set to false for production builds (Vercel)
-const DEBUG = true
+// DEBUG: Automatically disabled on production (non-localhost)
+const DEBUG = location.hostname === "localhost" || location.hostname === "127.0.0.1"
 const log = (...args) => DEBUG && console.log(...args)
 
 const PARENT_ORIGIN = "*" // Should be strict in production
