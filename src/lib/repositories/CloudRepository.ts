@@ -527,6 +527,102 @@ export class CloudRepository implements IScapeRepository {
     })
   }
 
+  /**
+   * Paginated version of getPublicScapes for infinite scroll.
+   * Returns scapes with pagination info.
+   */
+  async getPublicScapesPaginated(
+    filter?: "web" | "python" | "flow",
+    page: number = 0,
+    limit: number = 24
+  ): Promise<{ data: Scape[]; hasMore: boolean }> {
+    const from = page * limit
+    const to = from + limit - 1
+
+    let query = supabase
+      .from("scapes")
+      .select(
+        `
+        id,
+        name,
+        environment,
+        template,
+        thumbnail,
+        description,
+        parent_id,
+        author_id,
+        created_at,
+        updated_at,
+        is_public,
+        published_version_id,
+        dependencies,
+        profiles (
+          full_name,
+          username,
+          avatar_url
+        ),
+        deployments!published_version_id (
+          thumbnail
+        ),
+        likes (count),
+        comments (count)
+      `,
+        { count: "exact" }
+      )
+      .eq("is_public", true)
+      .not("published_version_id", "is", null)
+      .order("updated_at", { ascending: false })
+      .range(from, to)
+
+    if (filter) {
+      query = query.eq("environment", filter)
+    }
+
+    const { data, error, count } = await query
+    if (error) throw error
+
+    const totalCount = count || 0
+    const hasMore = from + (data?.length || 0) < totalCount
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scapes = (data || []).map((d: any) => {
+      const deploymentRaw = d.deployments
+      const deployment = Array.isArray(deploymentRaw) ? deploymentRaw[0] : deploymentRaw
+      const frozenThumbnail = deployment?.thumbnail
+
+      return {
+        id: d.id,
+        name: d.name,
+        environment: d.environment as Scape["environment"],
+        template: d.template,
+        source: "cloud" as const,
+        authorId: d.author_id,
+        syncStatus: "synced" as const,
+        createdAt: new Date(d.created_at),
+        updatedAt: new Date(d.updated_at),
+        thumbnail: frozenThumbnail || d.thumbnail,
+        dependencies: d.dependencies || [],
+        is_public: true,
+        description: d.description,
+        parentId: d.parent_id,
+        author: d.profiles
+          ? {
+              name: d.profiles.full_name || d.profiles.username || "Unknown",
+              avatar: d.profiles.avatar_url,
+              username: d.profiles.username,
+            }
+          : undefined,
+        stats: {
+          views: 0,
+          likes: d.likes?.[0]?.count || 0,
+          forks: 0,
+        },
+      }
+    })
+
+    return { data: scapes, hasMore }
+  }
+
   async toggleLike(scapeId: string, userId: string): Promise<boolean> {
     // Check if liked
     const { data: existing } = await supabase

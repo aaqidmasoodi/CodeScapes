@@ -1,21 +1,17 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Menu, Search, Heart, GitFork, User, Code2 } from "lucide-react"
-
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
+import { Search, Heart, GitFork, User, Code2, Menu, Loader2 } from "lucide-react"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 
 import { optimizeSupabaseImage } from "@/lib/utils"
-import { CloudRepository } from "@/lib/repositories/CloudRepository"
-import { type Scape } from "@/lib/db"
-
-const repo = new CloudRepository()
+import { Skeleton } from "@/components/ui/skeleton"
+import { useCommunityScapes } from "@/hooks/useCommunityScapes"
 
 type FilterType = "all" | "web" | "python" | "flow"
 
@@ -24,51 +20,61 @@ export default function CommunityPage() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const [scapes, setScapes] = useState<Scape[]>([])
-  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
 
   // Get filter from URL or default to "all"
   const filterFromUrl = (searchParams.get("filter") as FilterType) || "all"
   const [filter, setFilter] = useState<FilterType>(filterFromUrl)
 
-  // Browser Detection
-  const [isRestrictedBrowser, setIsRestrictedBrowser] = useState(false)
-
-  useEffect(() => {
-    if (typeof navigator !== "undefined") {
-      const isIOS =
-        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-      const isSafariRaw =
-        /Safari/.test(navigator.userAgent) &&
-        !/Chrome/.test(navigator.userAgent) &&
-        !/Chromium/.test(navigator.userAgent)
-
-      if (isIOS || isSafariRaw) {
-        setIsRestrictedBrowser(true)
-        setFilter("python")
-      }
-    }
+  // Browser Detection (computed once on mount)
+  const isRestrictedBrowser = useMemo(() => {
+    if (typeof navigator === "undefined") return false
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    const isSafariRaw =
+      /Safari/.test(navigator.userAgent) &&
+      !/Chrome/.test(navigator.userAgent) &&
+      !/Chromium/.test(navigator.userAgent)
+    return isIOS || isSafariRaw
   }, [])
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true)
-      try {
-        const data = await repo.getPublicScapes(filter === "all" ? undefined : filter)
-        setScapes(data)
-      } catch (e) {
-        console.error("Failed to load community scapes", e)
-      } finally {
-        setLoading(false)
-      }
-    }
-    // Dont reload if we are just setting the restricted filter initially to avoid double fetch if possible,
-    // but here simplicity is fine.
-    load()
-  }, [filter])
+  // Effective filter (force python for restricted browsers)
+  const effectiveFilter = isRestrictedBrowser ? "python" : filter
 
+  // Use the cached infinite query hook
+  const { scapes, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = useCommunityScapes({
+    filter: effectiveFilter,
+  })
+
+  // Intersection Observer for infinite scroll
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+
+  const handleObserver = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      const [entry] = entries
+      if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+        fetchNextPage()
+      }
+    },
+    [hasNextPage, isFetchingNextPage, fetchNextPage]
+  )
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(handleObserver, {
+      root: null,
+      rootMargin: "200px", // Trigger 200px before reaching bottom
+      threshold: 0,
+    })
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current)
+    }
+
+    return () => observer.disconnect()
+  }, [handleObserver])
+
+  // Client-side search filter
   const filteredScapes = scapes.filter((s) => {
     const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase())
     // Hard filter for restricted browsers (Safari/iOS)
@@ -196,9 +202,9 @@ export default function CommunityPage() {
             </div>
 
             {/* Grid */}
-            {loading ? (
+            {isLoading ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => (
                   <Skeleton key={i} className="h-52 w-full rounded-xl" />
                 ))}
               </div>
@@ -209,75 +215,99 @@ export default function CommunityPage() {
                 <p className="text-muted-foreground">Try creating one or adjust your filters.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {filteredScapes.map((scape) => (
-                  <Card
-                    key={scape.id}
-                    className="group cursor-pointer overflow-hidden transition-all hover:border-primary/50 hover:shadow-lg"
-                    onClick={() =>
-                      navigate(`/community/scape/${scape.id}`, {
-                        state: { from: location.pathname },
-                      })
-                    }
-                  >
-                    {/* Thumbnail */}
-                    <div className="relative aspect-video bg-muted">
-                      {scape.thumbnail ? (
-                        <img
-                          src={optimizeSupabaseImage(scape.thumbnail, 600)}
-                          alt={scape.name}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center bg-secondary/20">
-                          {getIcon(scape.environment)}
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-black/0 transition-all group-hover:bg-black/10" />
-                    </div>
-
-                    <CardHeader className="p-3 pb-1.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="line-clamp-1 text-sm font-medium leading-none">
-                          {scape.name}
-                        </CardTitle>
-                        <Badge variant="outline" className="h-5 px-1 text-[10px]">
-                          {getEnvLabel(scape.environment)}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-3 pt-0">
-                      <p className="line-clamp-2 text-xs text-muted-foreground">
-                        {scape.description || "No description provided."}
-                      </p>
-                    </CardContent>
-                    <CardFooter className="flex items-center justify-between border-t p-3 text-[10px] text-muted-foreground">
-                      <div className="flex items-center gap-1.5 overflow-hidden">
-                        {scape.author?.avatar ? (
+              <>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {filteredScapes.map((scape) => (
+                    <Card
+                      key={scape.id}
+                      className="group cursor-pointer overflow-hidden transition-all hover:border-primary/50 hover:shadow-lg"
+                      onClick={() =>
+                        navigate(`/community/scape/${scape.id}`, {
+                          state: { from: location.pathname },
+                        })
+                      }
+                    >
+                      {/* Thumbnail */}
+                      <div className="relative aspect-video bg-muted">
+                        {scape.thumbnail ? (
                           <img
-                            src={optimizeSupabaseImage(scape.author.avatar, 64, 64)}
-                            alt="Author"
-                            className="h-3.5 w-3.5 rounded-full"
+                            src={optimizeSupabaseImage(scape.thumbnail, 600)}
+                            alt={scape.name}
+                            className="h-full w-full object-cover"
                           />
                         ) : (
-                          <User className="h-3 w-3" />
+                          <div className="flex h-full items-center justify-center bg-secondary/20">
+                            {getIcon(scape.environment)}
+                          </div>
                         )}
-                        <span className="truncate">{scape.author?.name || "Unknown"}</span>
+                        <div className="absolute inset-0 bg-black/0 transition-all group-hover:bg-black/10" />
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <Heart className="h-3 w-3" />
-                          <span>{scape.stats?.likes || 0}</span>
+
+                      <CardHeader className="p-3 pb-1.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <CardTitle className="line-clamp-1 text-sm font-medium leading-none">
+                            {scape.name}
+                          </CardTitle>
+                          <Badge variant="outline" className="h-5 px-1 text-[10px]">
+                            {getEnvLabel(scape.environment)}
+                          </Badge>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <GitFork className="h-3 w-3" />
-                          <span>{scape.stats?.forks || 0}</span>
+                      </CardHeader>
+                      <CardContent className="p-3 pt-0">
+                        <p className="line-clamp-2 text-xs text-muted-foreground">
+                          {scape.description || "No description provided."}
+                        </p>
+                      </CardContent>
+                      <CardFooter className="flex items-center justify-between border-t p-3 text-[10px] text-muted-foreground">
+                        <div className="flex items-center gap-1.5 overflow-hidden">
+                          {scape.author?.avatar ? (
+                            <img
+                              src={optimizeSupabaseImage(scape.author.avatar, 64, 64)}
+                              alt="Author"
+                              className="h-3.5 w-3.5 rounded-full"
+                            />
+                          ) : (
+                            <User className="h-3 w-3" />
+                          )}
+                          <span className="truncate">{scape.author?.name || "Unknown"}</span>
                         </div>
-                      </div>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex items-center gap-1">
+                            <Heart className="h-3 w-3" />
+                            <span>{scape.stats?.likes || 0}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <GitFork className="h-3 w-3" />
+                            <span>{scape.stats?.forks || 0}</span>
+                          </div>
+                        </div>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Infinite Scroll Trigger */}
+                <div ref={loadMoreRef} className="mt-8 flex justify-center">
+                  {isFetchingNextPage && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span>Loading more...</span>
+                    </div>
+                  )}
+                  {!hasNextPage && scapes.length > 0 && (
+                    <p className="text-sm text-muted-foreground">You've reached the end</p>
+                  )}
+                </div>
+
+                {/* Skeleton placeholders while loading more */}
+                {isFetchingNextPage && (
+                  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <Skeleton key={`loading-${i}`} className="h-52 w-full rounded-xl" />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </main>
         </div>
