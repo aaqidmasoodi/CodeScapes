@@ -406,6 +406,7 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
                   prim.counterclockwise ?? false
                 )
                 ctx.strokeStyle = prim.color
+                ctx.lineWidth = (prim.penWidth || 1) * getScaleX()
                 ctx.stroke()
               }
               break
@@ -755,7 +756,10 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             }
 
             if (command.pen_down !== false) {
+              const strokeColor = (command.color as string) || t.color
+              const lineWidth = (command.width as number) || t.penWidth || 1
               inkCtx.beginPath()
+              inkCtx.lineWidth = lineWidth
               if (steps) {
                 inkCtx.moveTo(toCanvasX(arcPoints[0].x), toCanvasY(arcPoints[0].y))
                 for (let i = 1; i < arcPoints.length; i++) {
@@ -764,8 +768,22 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               } else {
                 inkCtx.arc(canvasCX, canvasCY, canvasR, -startAngle, -endAngle, r >= 0)
               }
-              inkCtx.strokeStyle = t.color
+              inkCtx.strokeStyle = strokeColor
               inkCtx.stroke()
+
+              // Add to draw history so it persists
+              addPrimitive(id, {
+                type: "arc",
+                turtleId: id,
+                cx,
+                cy,
+                radius: Math.abs(r),
+                startAngle,
+                endAngle,
+                counterclockwise: r >= 0,
+                color: strokeColor,
+                penWidth: lineWidth,
+              })
             }
 
             if (filling && extent === 360) {
@@ -773,7 +791,7 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               inkCtx.arc(canvasCX, canvasCY, canvasR, 0, Math.PI * 2)
               inkCtx.fillStyle = fillcolor || t.fillColor || t.color
               inkCtx.fill()
-              inkCtx.strokeStyle = t.color
+              inkCtx.strokeStyle = (command.color as string) || t.color
               inkCtx.stroke()
             }
 
@@ -783,6 +801,11 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               t.heading = (t.heading + extent) % 360
             } else {
               t.heading = (t.heading - extent + 360) % 360
+            }
+
+            if (autoUpdateRef.current) {
+              redrawSpritesToBackBuffer()
+              swapBuffers()
             }
             break
           }
