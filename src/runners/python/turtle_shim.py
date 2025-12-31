@@ -433,6 +433,48 @@ class _Screen(TurtleScreenBase):
         # This is needed because mainloop() would otherwise block immediately
         time.sleep(0.1)
     
+    # --- Mock Canvas for CPython Compatibility ---
+    class _MockCanvas:
+        """Mock Tkinter canvas that provides postscript() compatibility.
+        
+        In CPython turtle, you save drawings via:
+            canvas = screen.getcanvas()
+            canvas.postscript(file="drawing.ps")
+        
+        This mock class allows the same syntax to work in the browser,
+        but produces PNG instead of PostScript.
+        """
+        def __init__(self, screen):
+            self._screen = screen
+        
+        def postscript(self, file=None, **kwargs):
+            """Save canvas as image (PNG instead of PostScript).
+            
+            Args:
+                file: Output filename. If ends with .ps or .eps, 
+                      it will be converted to .png automatically.
+            """
+            if file is None:
+                file = "turtle_drawing.png"
+            
+            # Convert PostScript extensions to PNG
+            if file.endswith('.ps') or file.endswith('.eps'):
+                file = file.rsplit('.', 1)[0] + '.png'
+            elif not file.endswith('.png'):
+                file = file + '.png'
+            
+            self._screen.save(file)
+            return file  # Return the actual filename used
+    
+    def getcanvas(self):
+        """Return a mock canvas object for CPython compatibility.
+        
+        Usage:
+            canvas = screen.getcanvas()
+            canvas.postscript(file="my_drawing.ps")  # Produces PNG
+        """
+        return self._MockCanvas(self)
+    
     # --- Context Managers ---
     class _FillContext:
         def __init__(self, turtle):
@@ -1353,3 +1395,4 @@ def turtles(): return Screen().turtles()
 def colormode(m=None): return Screen().colormode(m)
 def title(T): Screen().title(T)
 def save(filename="turtle_drawing.png", overwrite=False): Screen().save(filename, overwrite)
+def getcanvas(): return Screen().getcanvas()
