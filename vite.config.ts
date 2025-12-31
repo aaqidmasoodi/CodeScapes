@@ -55,7 +55,6 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  base: mode === "production" ? "./" : "/",
   build: {
     sourcemap: false, // IP Protection: Disable source maps
   },

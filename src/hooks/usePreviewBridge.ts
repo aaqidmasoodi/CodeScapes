@@ -20,37 +20,6 @@ const computeHash = (str: string) => {
   return h.toString(36)
 }
 
-// Detect Electron environment
-const isElectron =
-  typeof window !== "undefined" && !!(window as { ipcRenderer?: unknown }).ipcRenderer
-
-// Get the appropriate sandbox origin based on environment
-const getSandboxOrigin = (): string => {
-  if (isElectron) {
-    // Electron uses embedded local sandbox server
-    return "http://127.0.0.1:3003"
-  }
-
-  const currentHost = window.location.hostname
-  if (currentHost === "localhost" || currentHost === "127.0.0.1") {
-    // Dev mode: use local sandbox server
-    return `${window.location.protocol}//localhost:3002`
-  }
-
-  // Prod web: use cloud sandbox
-  return "https://sandbox.codescapes.io"
-}
-
-const getBootloaderUrl = (version: number | string, hash: string): string => {
-  const origin = getSandboxOrigin()
-  if (origin.includes("localhost:3002")) {
-    // Dev mode serves from /sandbox/ path
-    return `${origin}/sandbox/bootloader.html?v=${version}&h=${hash}`
-  }
-  // Electron and prod use root path
-  return `${origin}/bootloader.html?v=${version}&h=${hash}`
-}
-
 export function usePreviewBridge(
   files: ScapeFile[],
   scapeId: string,
@@ -85,12 +54,19 @@ export function usePreviewBridge(
   const [prevFilesHash, setPrevFilesHash] = useState(filesHash)
 
   const [bridgeState, setBridgeState] = useState<PreviewBridge>(() => {
+    let bootloaderUrl = ""
+    const currentHost = window.location.hostname
     const version = versionKey || Date.now()
     const hash = computeHash(filesHash)
+    if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+      bootloaderUrl = `${window.location.protocol}//localhost:3002/sandbox/bootloader.html?v=${version}&h=${hash}`
+    } else {
+      bootloaderUrl = `https://sandbox.codescapes.io/bootloader.html?v=${version}&h=${hash}`
+    }
     return {
       ready: false,
       contentReady: false,
-      url: getBootloaderUrl(version, hash),
+      url: bootloaderUrl,
     }
   })
 
@@ -105,9 +81,15 @@ export function usePreviewBridge(
       setPrevVersionKey(versionKey)
       setPrevFilesHash(filesHash)
 
+      let bootloaderUrl = ""
+      const currentHost = window.location.hostname
       const version = versionKey ?? 0
       const hash = computeHash(filesHash)
-      const bootloaderUrl = getBootloaderUrl(version, hash)
+      if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+        bootloaderUrl = `${window.location.protocol}//localhost:3002/sandbox/bootloader.html?v=${version}&h=${hash}`
+      } else {
+        bootloaderUrl = `https://sandbox.codescapes.io/bootloader.html?v=${version}&h=${hash}`
+      }
 
       setBridgeState({ ready: false, contentReady: false, url: bootloaderUrl })
     }
@@ -139,7 +121,13 @@ export function usePreviewBridge(
     }
 
     // 1. Determine Bootloader Origin
-    const bootloaderOrigin = getSandboxOrigin()
+    let bootloaderOrigin = ""
+    const currentHost = window.location.hostname
+    if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+      bootloaderOrigin = `${window.location.protocol}//localhost:3002`
+    } else {
+      bootloaderOrigin = `https://sandbox.codescapes.io`
+    }
 
     // 2. Setup Handshake Listener
     const handleMessage = (event: MessageEvent) => {
@@ -219,7 +207,13 @@ export function usePreviewBridge(
         lastSentVersion.current = versionKey
 
         // Determine Origin
-        const bootloaderOrigin = getSandboxOrigin()
+        let bootloaderOrigin = ""
+        const currentHost = window.location.hostname
+        if (currentHost === "localhost" || currentHost === "127.0.0.1") {
+          bootloaderOrigin = `${window.location.protocol}//localhost:3002`
+        } else {
+          bootloaderOrigin = `https://sandbox.codescapes.io`
+        }
 
         debug.log("[Bridge] Hot Swapping Files...")
         iframeRef.current.contentWindow?.postMessage(
