@@ -24,12 +24,6 @@ const EXPECTED_SW_VERSION = "2024.12.25.1"
  * Register Service Worker with version checking and force-update capability
  */
 async function registerServiceWorker() {
-  // Skip SW registration on file:// protocol (Electron)
-  if (window.location.protocol === "file:") {
-    debug.log("Skipping SW registration in Electron (file:// protocol)")
-    return
-  }
-
   if (!("serviceWorker" in navigator)) {
     debug.log("Service Workers not supported")
     return

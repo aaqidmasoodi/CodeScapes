@@ -29,26 +29,20 @@
   "build": {
     "appId": "com.code.scape",
     "productName": "CodeScape",
-    "extraMetadata": {
-      "type": "commonjs"
-    },
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*",
-      "public/sandbox/**/*"
+      "dist-electron/**/*"
     ],
     "mac": {
-      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"
       ]
     },
     "win": {
-      "icon": "build/icon.png",
       "target": "nsis"
     },
     "linux": {
