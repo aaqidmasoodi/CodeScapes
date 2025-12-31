@@ -82,11 +82,11 @@ def _poll_events():
                 if screen and hasattr(screen, '_key_handlers'):
                     for event in events:
                         etype = event.get("type", "keydown")
+                        x, y, tid = event.get("x"), event.get("y"), event.get("id")
+                        
                         if etype == "keydown":
                             browser_key = event.get("key")
-                            # Try browser key first, then mapped key
                             turtle_key = KEY_MAP.get(browser_key, browser_key)
-                            # Check both browser key and turtle key
                             if browser_key in screen._key_handlers:
                                 try: screen._key_handlers[browser_key]()
                                 except: pass
@@ -94,17 +94,36 @@ def _poll_events():
                                 try: screen._key_handlers[turtle_key]()
                                 except: pass
                         elif etype == "keyup":
-                             pass 
+                            pass
                         elif etype == "click":
-                             x, y, tid = event.get("x"), event.get("y"), event.get("id")
-                             if tid is not None and hasattr(screen, '_turtles') and tid in screen._turtles:
-                                 t = screen._turtles[tid]
-                                 if hasattr(t, '_onclick_handler') and t._onclick_handler:
-                                     try: t._onclick_handler(x, y)
-                                     except: pass
-                             elif hasattr(screen, '_onclick_handler') and screen._onclick_handler:
-                                 try: screen._onclick_handler(x, y)
-                                 except: pass
+                            if tid is not None and tid in screen._turtles:
+                                t = screen._turtles[tid]
+                                if hasattr(t, '_onclick_handler') and t._onclick_handler:
+                                    try: t._onclick_handler(x, y)
+                                    except: pass
+                            elif hasattr(screen, '_onclick_handler') and screen._onclick_handler:
+                                try: screen._onclick_handler(x, y)
+                                except: pass
+                        elif etype == "mouseup":
+                            # Handle onrelease events
+                            if tid is not None and tid in screen._turtles:
+                                t = screen._turtles[tid]
+                                if hasattr(t, '_onrelease_handler') and t._onrelease_handler:
+                                    try: t._onrelease_handler(x, y)
+                                    except: pass
+                            elif hasattr(screen, '_onrelease_handler') and screen._onrelease_handler:
+                                try: screen._onrelease_handler(x, y)
+                                except: pass
+                        elif etype == "drag":
+                            # Handle ondrag events
+                            if tid is not None and tid in screen._turtles:
+                                t = screen._turtles[tid]
+                                if hasattr(t, '_ondrag_handler') and t._ondrag_handler:
+                                    try: t._ondrag_handler(x, y)
+                                    except: pass
+                            elif hasattr(screen, '_ondrag_handler') and screen._ondrag_handler:
+                                try: screen._ondrag_handler(x, y)
+                                except: pass
     except Exception:
         pass
 
@@ -131,6 +150,8 @@ class _Screen(TurtleScreenBase):
         self._tracer_delay = 10  # Default delay in ms
         self._key_handlers = {}
         self._onclick_handler = None
+        self._onrelease_handler = None
+        self._ondrag_handler = None
         self._mode = "standard"
         self._colormode = 1.0 
         self._turtles = {}
@@ -138,6 +159,7 @@ class _Screen(TurtleScreenBase):
         self._shapes = ["classic", "arrow", "turtle", "circle", "square", "triangle"]
         self._cmd_count = 0      # Command counter for tracer
         self._stamp_counter = 0  # Global monotonic counter for stamp IDs
+        self._title = "Python Turtle Graphics"
         
         # Send INIT (Defaults)
         _send_cmd("INIT", {
@@ -282,6 +304,20 @@ class _Screen(TurtleScreenBase):
         
     def onscreenclick(self, fun, btn=1, add=None):
         self.onclick(fun, btn, add)
+    
+    def onrelease(self, fun, btn=1, add=None):
+        """Bind fun to mouse button release on canvas."""
+        self._onrelease_handler = fun
+    
+    def ondrag(self, fun, btn=1, add=None):
+        """Bind fun to mouse drag on canvas."""
+        self._ondrag_handler = fun
+    
+    def title(self, titlestring):
+        """Set the title of the turtle graphics window."""
+        self._title = titlestring
+        # Note: We can't actually change the browser window title
+        # but we store the value for compatibility
 
     def ontimer(self, fun, t=0):
         expiry = (time.time() * 1000) + t
@@ -375,6 +411,17 @@ class Turtle:
         self._stretch_len = 1.0
         self._outline = 1
         self._onclick_handler = None
+        self._onrelease_handler = None
+        self._ondrag_handler = None
+        # Polygon recording
+        self._poly_path = []
+        self._poly_recording = False
+        # Shape transforms
+        self._tilt_angle = 0.0
+        self._shear = 0.0
+        # Undo buffer
+        self._undo_buffer = []
+        self._undo_buffer_size = 100
         
         _send_cmd("CREATE", {"id": self._id, "shape": shape, "visible": visible})
 
@@ -940,15 +987,21 @@ class Turtle:
     def end_fill(self):
         self._filling = False
         _send_cmd("END_FILL", {"id": self._id, "color": self._fillcolor})
+    
+    def filling(self):
+        """Return fillstate (True if filling, False else)."""
+        return self._filling
         
     def onclick(self, fun, btn=1, add=None):
         self._onclick_handler = fun
     
     def onrelease(self, fun, btn=1, add=None):
-        pass # Stub
+        """Bind fun to mouse button release on this turtle."""
+        self._onrelease_handler = fun
         
     def ondrag(self, fun, btn=1, add=None):
-        pass # Stub
+        """Bind fun to mouse-move-event on this turtle."""
+        self._ondrag_handler = fun
 
     # --- State ---
 
@@ -1017,21 +1070,77 @@ class Turtle:
         t.pensize(self._pensize)
         return t
 
-    def settiltangle(self, angle): pass
-    tiltangle = settiltangle
-    def tilt(self, angle): pass
-    def shapetransform(self, t11=None, t12=None, t21=None, t22=None): return (1,0,0,1)
-    def shearfactor(self, shear=None): return 0
-    def get_shapepoly(self): return ((0,0),)
-    def begin_poly(self): pass
-    def end_poly(self): pass
-    def get_poly(self): return ((0,0),)
+    def settiltangle(self, angle=None):
+        """Set or return the current tilt-angle."""
+        if angle is None: return self._tilt_angle
+        self._tilt_angle = float(angle) % 360
+    
+    def tiltangle(self, angle=None):
+        """Set or return the current tilt-angle."""
+        if angle is None: return self._tilt_angle
+        self._tilt_angle = float(angle) % 360
+    
+    def tilt(self, angle):
+        """Rotate the turtleshape by angle."""
+        self._tilt_angle = (self._tilt_angle + float(angle)) % 360
+    
+    def shapetransform(self, t11=None, t12=None, t21=None, t22=None):
+        """Set or return the current transformation matrix."""
+        if t11 is None:
+            c = math.cos(math.radians(self._tilt_angle))
+            s = math.sin(math.radians(self._tilt_angle))
+            return (self._stretch_len * c, self._stretch_len * s + self._shear * self._stretch_wid,
+                    -self._stretch_wid * s, self._stretch_wid * c)
+        # Setting is not fully implemented but we accept the call
+        return (1, 0, 0, 1)
+    
+    def shearfactor(self, shear=None):
+        """Set or return the current shearfactor."""
+        if shear is None: return self._shear
+        self._shear = float(shear)
+    
+    def get_shapepoly(self):
+        """Return the current shape polygon as tuple of coordinate pairs."""
+        # Return basic shape polygon (classic arrow)
+        return ((0, 0), (-10, 4), (-7, 0), (-10, -4))
+    
+    def begin_poly(self):
+        """Start recording vertices of polygon."""
+        self._poly_recording = True
+        self._poly_path = [(self._x, self._y)]
+    
+    def end_poly(self):
+        """Stop recording vertices of polygon."""
+        self._poly_recording = False
+        if self._poly_path:
+            self._poly_path.append((self._x, self._y))
+    
+    def get_poly(self):
+        """Return last recorded polygon."""
+        if self._poly_path:
+            return tuple(self._poly_path)
+        return ((0, 0),)
+    
     def getturtle(self): return self
     def getpen(self): return self
     def getscreen(self): return Screen()
-    def undo(self): pass
-    def setundobuffer(self, size): pass
-    def undobufferentries(self): return 0
+    
+    def undo(self):
+        """Undo last turtle action (limited implementation)."""
+        # Not fully implemented - would require storing command history
+        pass
+    
+    def setundobuffer(self, size):
+        """Set size of undobuffer."""
+        if size is None:
+            self._undo_buffer = []
+            self._undo_buffer_size = 0
+        else:
+            self._undo_buffer_size = int(size)
+    
+    def undobufferentries(self):
+        """Return count of entries in undobuffer."""
+        return len(self._undo_buffer)
 
 # ===== Helper Functions =====
 
@@ -1082,6 +1191,11 @@ def pencolor(*a): return _get_turtle().pencolor(*a)
 def fillcolor(*a): return _get_turtle().fillcolor(*a)
 def begin_fill(): _get_turtle().begin_fill()
 def end_fill(): _get_turtle().end_fill()
+def filling(): return _get_turtle().filling()
+def begin_poly(): _get_turtle().begin_poly()
+def end_poly(): _get_turtle().end_poly()
+def get_poly(): return _get_turtle().get_poly()
+
 def pendown(): _get_turtle().pendown()
 pd = down = pendown
 def penup(): _get_turtle().penup()
@@ -1096,6 +1210,7 @@ def isvisible(): return _get_turtle().isvisible()
 def shape(n=None): return _get_turtle().shape(n)
 def shapesize(*a): return _get_turtle().shapesize(*a)
 turtlesize = shapesize
+def resizemode(r=None): return _get_turtle().resizemode(r)
 def shearfactor(s=None): return _get_turtle().shearfactor(s)
 def tilt(a): _get_turtle().tilt(a)
 def tiltangle(a=None): return _get_turtle().tiltangle(a)
@@ -1148,3 +1263,4 @@ def addshape(n, s=None): Screen().addshape(n, s)
 def getshapes(): return Screen().getshapes()
 def turtles(): return Screen().turtles()
 def colormode(m=None): return Screen().colormode(m)
+def title(T): Screen().title(T)
