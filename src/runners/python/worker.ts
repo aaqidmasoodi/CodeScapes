@@ -434,6 +434,28 @@ self.onmessage = async (e: MessageEvent) => {
     readyPromise.then(handleAudioPlay)
   }
 
+  if (type === "WRITE_IMAGE") {
+    // Forward to handler for writing image to virtual FS
+    const { filename, data } = payload
+    const py = await loadPyodide()
+    try {
+      // Decode base64 to binary
+      const binaryString = atob(data)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      // Write to virtual filesystem
+      py.FS.writeFile(filename, bytes)
+      console.log(`[Worker] Wrote image to virtual FS: ${filename}`)
+      // Sync to update file explorer
+      syncFileSystem()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[Worker] Failed to write image: ${msg}`)
+    }
+  }
+
   if (type === "RUN") {
     let py: PyodideInterface | null = null
     try {
@@ -1004,6 +1026,33 @@ function syncFileSystem() {
     console.warn("[Worker] FS Sync failed", e)
   }
 }
+
+// Handle WRITE_IMAGE message (for turtle.save() and similar)
+// This handler is called from PythonRunner when TurtleCanvas sends image data
+const handleWriteImageMessage = async (payload: { filename: string; data: string }) => {
+  const py = await loadPyodide()
+  try {
+    const { filename, data } = payload
+    // Decode base64 to binary
+    const binaryString = atob(data)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    // Write to virtual filesystem
+    py.FS.writeFile(filename, bytes)
+    console.log(`[Worker] Wrote image to virtual FS: ${filename}`)
+    // Sync to update file explorer
+    syncFileSystem()
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[Worker] Failed to write image: ${msg}`)
+  }
+}
+
+// Expose to message handler
+;(self as unknown as { handleWriteImage: typeof handleWriteImageMessage }).handleWriteImage =
+  handleWriteImageMessage
 
 // Expose sync function to JS global for Python access
 ;(self as any).sync_fs = () => {

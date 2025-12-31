@@ -18,6 +18,41 @@ except ImportError:
 
 _last_sync_time = 0
 
+# ===== Vec2D Helper Class =====
+
+class Vec2D(tuple):
+    """A 2D vector class for turtle graphics calculations."""
+    
+    def __new__(cls, x, y):
+        return tuple.__new__(cls, (x, y))
+    
+    def __add__(self, other):
+        return Vec2D(self[0] + other[0], self[1] + other[1])
+    
+    def __sub__(self, other):
+        return Vec2D(self[0] - other[0], self[1] - other[1])
+    
+    def __mul__(self, other):
+        if isinstance(other, (int, float)):
+            return Vec2D(self[0] * other, self[1] * other)
+        # Dot product
+        return self[0] * other[0] + self[1] * other[1]
+    
+    def __rmul__(self, other):
+        return self.__mul__(other)
+    
+    def __neg__(self):
+        return Vec2D(-self[0], -self[1])
+    
+    def __abs__(self):
+        return math.sqrt(self[0]**2 + self[1]**2)
+    
+    def rotate(self, angle):
+        """Rotate vector by angle (in degrees)."""
+        rad = math.radians(angle)
+        c, s = math.cos(rad), math.sin(rad)
+        return Vec2D(self[0]*c - self[1]*s, self[0]*s + self[1]*c)
+
 # ===== Protocol Utilities =====
 
 def _send_cmd(cmd_type: str, args: dict):
@@ -383,6 +418,81 @@ class _Screen(TurtleScreenBase):
                 if maxval is not None and val > maxval: continue
                 return val
             except: pass
+    
+    # --- Save/Export ---
+    def save(self, filename="turtle_drawing.png", overwrite=False):
+        """Save the current drawing as a PNG image.
+        
+        The image is written to the virtual filesystem and appears in the file explorer.
+        """
+        # Force update to ensure canvas is fully rendered
+        self.update()
+        # Send save command
+        _send_cmd("SAVE", {"filename": filename})
+        # Small delay to allow async message chain to complete
+        # This is needed because mainloop() would otherwise block immediately
+        time.sleep(0.1)
+    
+    # --- Mock Canvas for CPython Compatibility ---
+    class _MockCanvas:
+        """Mock Tkinter canvas that provides postscript() compatibility.
+        
+        In CPython turtle, you save drawings via:
+            canvas = screen.getcanvas()
+            canvas.postscript(file="drawing.ps")
+        
+        This mock class allows the same syntax to work in the browser,
+        but produces PNG instead of PostScript.
+        """
+        def __init__(self, screen):
+            self._screen = screen
+        
+        def postscript(self, file=None, **kwargs):
+            """Save canvas as image (PNG instead of PostScript).
+            
+            Args:
+                file: Output filename. If ends with .ps or .eps, 
+                      it will be converted to .png automatically.
+            """
+            if file is None:
+                file = "turtle_drawing.png"
+            
+            # Convert PostScript extensions to PNG
+            if file.endswith('.ps') or file.endswith('.eps'):
+                file = file.rsplit('.', 1)[0] + '.png'
+            elif not file.endswith('.png'):
+                file = file + '.png'
+            
+            self._screen.save(file)
+            return file  # Return the actual filename used
+    
+    def getcanvas(self):
+        """Return a mock canvas object for CPython compatibility.
+        
+        Usage:
+            canvas = screen.getcanvas()
+            canvas.postscript(file="my_drawing.ps")  # Produces PNG
+        """
+        return self._MockCanvas(self)
+    
+    # --- Context Managers ---
+    class _FillContext:
+        def __init__(self, turtle):
+            self.turtle = turtle
+        def __enter__(self):
+            self.turtle.begin_fill()
+            return self.turtle
+        def __exit__(self, *args):
+            self.turtle.end_fill()
+    
+    class _PolyContext:
+        def __init__(self, turtle):
+            self.turtle = turtle
+        def __enter__(self):
+            self.turtle.begin_poly()
+            return self.turtle
+        def __exit__(self, *args):
+            self.turtle.end_poly()
 
 
 def Screen():
@@ -438,6 +548,11 @@ class Turtle:
     def _from_degrees(self, angle):
         return angle * (self._fullcircle / 360.0)
 
+    def _record_poly(self):
+        """Helper to record the current position if polygon recording is active."""
+        if self._poly_recording:
+            self._poly_path.append((self._x, self._y))
+
     # --- Motion ---
 
     def forward(self, distance):
@@ -449,6 +564,7 @@ class Turtle:
             deg = math.radians(self._heading)
             self._x += distance * math.cos(deg)
             self._y += distance * math.sin(deg)
+            self._record_poly()
             _send_cmd("MOVE", {
                 "id": self._id, 
                 "x": self._x, 
@@ -486,6 +602,7 @@ class Turtle:
         for i in range(steps):
             self._x += dx
             self._y += dy
+            self._record_poly()
             _send_cmd("MOVE", {
                 "id": self._id, 
                 "x": self._x, 
@@ -516,6 +633,7 @@ class Turtle:
         if tracer_n == 0:
             self._x = target_x
             self._y = target_y
+            self._record_poly()
             _send_cmd("MOVE", {
                 "id": self._id, 
                 "x": self._x, 
@@ -564,6 +682,7 @@ class Turtle:
         for i in range(steps):
             self._x += step_dx
             self._y += step_dy
+            self._record_poly()
             _send_cmd("MOVE", {
                 "id": self._id, 
                 "x": self._x, 
@@ -590,6 +709,7 @@ class Turtle:
         self.penup()
         self.goto(x, y)
         if pd: self.pendown()
+        self._record_poly()
 
     def right(self, angle):
         deg = self._to_degrees(angle)
@@ -726,6 +846,7 @@ class Turtle:
             
             self._x = new_x
             self._y = new_y
+            self._record_poly()
             if radius >= 0:
                 self._heading = (self._heading + ext_deg) % 360
             else:
@@ -780,6 +901,7 @@ class Turtle:
             
             self._x = new_x
             self._y = new_y
+            self._record_poly()
             
             # Update heading progressively
             heading_step = ext_deg / num_steps
@@ -1121,6 +1243,14 @@ class Turtle:
             return tuple(self._poly_path)
         return ((0, 0),)
     
+    def fill(self):
+        """Context manager for filling shapes."""
+        return _Screen._FillContext(self)
+    
+    def poly(self):
+        """Context manager for polygon recording."""
+        return _Screen._PolyContext(self)
+    
     def getturtle(self): return self
     def getpen(self): return self
     def getscreen(self): return Screen()
@@ -1264,3 +1394,5 @@ def getshapes(): return Screen().getshapes()
 def turtles(): return Screen().turtles()
 def colormode(m=None): return Screen().colormode(m)
 def title(T): Screen().title(T)
+def save(filename="turtle_drawing.png", overwrite=False): Screen().save(filename, overwrite)
+def getcanvas(): return Screen().getcanvas()

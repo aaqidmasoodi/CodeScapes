@@ -858,6 +858,24 @@ export const PythonRunner = memo(
           navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange)
       }, [])
 
+      // Listen for TURTLE_SAVE_IMAGE messages from TurtleCanvas and forward to worker
+      useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+          if (event.data?.type === "TURTLE_SAVE_IMAGE") {
+            const worker = workerRef.current
+            if (worker) {
+              // Forward to worker as WRITE_IMAGE
+              worker.postMessage({
+                type: "WRITE_IMAGE",
+                payload: event.data.payload,
+              })
+            }
+          }
+        }
+        window.addEventListener("message", handleMessage)
+        return () => window.removeEventListener("message", handleMessage)
+      }, [])
+
       // 1. Initialize on mount or when dependencies change (deeply)
       const depsString = JSON.stringify(dependencies)
       useEffect(() => {
@@ -1220,6 +1238,44 @@ export const PythonRunner = memo(
                   onResize={(w, h) => {
                     debug.log(`[PythonRunner] onResize: ${w}x${h}`)
                     setCanvasSize({ width: w, height: h })
+                  }}
+                  onSaveImage={(filename, base64Data) => {
+                    // Decode base64 to binary directly in main thread
+                    // This bypasses the worker which may be blocked by Python's mainloop
+                    try {
+                      const binaryString = atob(base64Data)
+                      const bytes = new Uint8Array(binaryString.length)
+                      for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i)
+                      }
+
+                      // Create file object and add to file system
+                      const newFile: ScapeFile = {
+                        id: `generated-${Date.now()}-${filename}`,
+                        name: filename,
+                        content: bytes,
+                        language: "image",
+                      }
+
+                      // Use onFileSystemUpdate to add the file directly
+                      if (onFileSystemUpdate) {
+                        const updatedFiles = [...propsRef.current.files, newFile]
+                        onFileSystemUpdate(updatedFiles)
+                        debug.log(`[PythonRunner] Added ${filename} to file system directly`)
+                      } else {
+                        // Fallback: send to worker (may not work during mainloop)
+                        const worker = workerRef.current
+                        if (worker) {
+                          worker.postMessage({
+                            type: "WRITE_IMAGE",
+                            payload: { filename, data: base64Data },
+                          })
+                          debug.log(`[PythonRunner] Sent ${filename} to worker (fallback)`)
+                        }
+                      }
+                    } catch (e) {
+                      debug.error(`[PythonRunner] Failed to save image:`, e)
+                    }
                   }}
                   canvasInstance={persistentCanvas}
                 />
