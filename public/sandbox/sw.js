@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
-// DEBUG: Set to false for production builds (Vercel)
-const DEBUG = true
+// DEBUG: Automatically disabled on production (non-localhost)
+const DEBUG = self.location.hostname === "localhost" || self.location.hostname === "127.0.0.1"
 const log = (...args) => DEBUG && console.log(...args)
 const warn = (...args) => DEBUG && console.warn(...args)
 
@@ -83,7 +83,6 @@ self.addEventListener("message", async (event) => {
           window.addEventListener("unhandledrejection", function(e) {
              window.parent.postMessage({ type: "SANDBOX_LOG", level: "error", payload: ["Unhandled Rejection:", e.reason] }, PARENT_ORIGIN);
           });
-          nativeConsole.log("[Sandbox Preamble] Setting process.env", ${JSON.stringify(Object.keys(envSafe))});
           var env = ${JSON.stringify(envSafe)};
           window.process = window.process || {};
           window.process.env = env;
@@ -297,7 +296,10 @@ self.addEventListener("message", async (event) => {
           // Construct Cache Key using environment-aware prefix
           // Note: file.name might contain subdirectories e.g. "css/style.css"
           // We must ensure it matches the fetch request URL exactly.
-          const cacheUrl = new URL(`${RUN_PATH_PREFIX}/${scapeId}/${file.name}`, self.location.origin)
+          const cacheUrl = new URL(
+            `${RUN_PATH_PREFIX}/${scapeId}/${file.name}`,
+            self.location.origin
+          )
 
           await cache.put(
             cacheUrl,

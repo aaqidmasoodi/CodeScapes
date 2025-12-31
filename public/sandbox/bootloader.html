@@ -49,6 +49,9 @@
 
       const PARENT_ORIGIN = "*"
 
+      // DEBUG: Automatically disabled on production (non-localhost)
+      const DEBUG = location.hostname === "localhost" || location.hostname === "127.0.0.1"
+
       const nativeConsole = {
         log: console.log.bind(console),
         warn: console.warn.bind(console),
@@ -56,9 +59,9 @@
       }
 
       const sys = {
-        log: (...args) => nativeConsole.log(...args),
-        warn: (...args) => nativeConsole.warn(...args),
-        error: (...args) => nativeConsole.error(...args)
+        log: (...args) => DEBUG && nativeConsole.log(...args),
+        warn: (...args) => DEBUG && nativeConsole.warn(...args),
+        error: (...args) => nativeConsole.error(...args)  // Errors always logged
       }
 
       // Proxy User Console to Parent
