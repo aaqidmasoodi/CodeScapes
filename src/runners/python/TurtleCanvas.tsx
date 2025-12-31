@@ -7,6 +7,7 @@ interface TurtleCanvasProps {
   onKeyEvent?: (key: string, type: "keydown" | "keyup") => void
   canvasInstance?: HTMLCanvasElement
   onResize?: (width: number, height: number) => void
+  onSaveImage?: (filename: string, base64Data: string) => void
 }
 
 export interface TurtleCanvasHandle {
@@ -95,7 +96,7 @@ type Point = { x: number; y: number }
  *   4. User never sees partial states
  */
 export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
-  ({ width = 800, height = 600, onKeyEvent, onResize }, ref) => {
+  ({ width = 800, height = 600, onKeyEvent, onResize, onSaveImage }, ref) => {
     // Container div (React owns this)
     const containerRef = useRef<HTMLDivElement>(null)
 
@@ -948,6 +949,33 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             break
           }
 
+          case "SAVE": {
+            // Capture current canvas as PNG and send to worker to write to virtual FS
+            if (!displayCanvasRef.current) break
+
+            try {
+              // Ensure we capture the fully rendered state
+              redrawSpritesToBackBuffer()
+              swapBuffers()
+
+              const dataUrl = displayCanvasRef.current.toDataURL("image/png")
+              // Extract base64 data (remove "data:image/png;base64," prefix)
+              const base64Data = dataUrl.split(",")[1]
+              const filename = (command.filename as string) || "turtle_drawing.png"
+
+              // Use callback to send image data to PythonRunner -> Worker
+              if (onSaveImage) {
+                onSaveImage(filename, base64Data)
+                debug.log(`[Turtle] Sent ${filename} to worker via callback`)
+              } else {
+                debug.warn("[Turtle] onSaveImage callback not provided")
+              }
+            } catch (e) {
+              debug.error("[Turtle] Failed to capture canvas for save", e)
+            }
+            break
+          }
+
           case "SET_AUTO_UPDATE": {
             autoUpdateRef.current = command.value as boolean
             break
@@ -962,6 +990,7 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         redrawSpritesToBackBuffer,
         swapBuffers,
         onResize,
+        onSaveImage,
         getScaleX,
         addPrimitive,
         replayInkHistoryToBackBuffer,
