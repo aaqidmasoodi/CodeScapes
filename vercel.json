@@ -54,7 +54,7 @@
     },
     {
       "source": "/community/scape/:scapeId",
-      "destination": "/api/og/:scapeId"
+      "destination": "/api/og?scapeId=:scapeId"
     },
     {
       "source": "/(.*)",
