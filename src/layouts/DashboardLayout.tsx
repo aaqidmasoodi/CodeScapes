@@ -36,7 +36,7 @@ export function DashboardLayout({ children, activeTab = "community" }: Dashboard
       <div className="flex flex-1 overflow-hidden">
         {/* Desktop Sidebar (Hidden on Mobile) */}
         <div className="relative hidden md:block">
-          <div className="h-full w-16" /> {/* Spacer */}
+          <div className="h-full w-12" /> {/* Spacer */}
           <div className="absolute inset-y-0 left-0 z-50">
             <Sidebar activeTab={activeTab} />
           </div>

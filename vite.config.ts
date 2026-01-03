@@ -57,6 +57,10 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     sourcemap: false, // IP Protection: Disable source maps
+    rollupOptions: {
+      // Exclude api folder and Node.js modules from client bundle
+      external: [/^api\//, "fs", "path"],
+    },
   },
   test: {
     globals: true,
