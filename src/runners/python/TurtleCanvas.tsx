@@ -543,6 +543,49 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             break
           }
 
+          case "CLEAR_SCREEN": {
+            // CPython clearscreen():
+            // 1. Delete all drawings and turtles
+            // 2. Reset empty TurtleScreen to initial state: white bg, no image, no event bindings, tracing on
+
+            bgColorRef.current = "white"
+            autoUpdateRef.current = true // Tracing on
+            listeningRef.current = false // No bindings
+
+            turtlesRef.current.clear()
+            fillPathRef.current.clear()
+            stampsRef.current.clear()
+            drawHistoryRef.current.clear()
+            coordsRef.current = null
+
+            // Clear buffers
+            if (bgCtx) {
+              // Reset transform? No, CPython clearscreen doesn't reset coordinates, resetscreen does?
+              // Wait, CPython clearscreen: "Reset the empty TurtleScreen to its initial state"
+              // This implies coordinates are reset to standard?
+              // Usually clearscreen DOES reset coordinates.
+              // Let's assume standard behavior: clean slate.
+              if (coordsRef.current === null) {
+                // If we were using standard coords (null), stay null
+              } else {
+                // If we had custom coords, do we keep them?
+                // CPython 'resetscreen' resets turtles. 'clearscreen' resets SCREEN.
+                // clearscreen effectively is "new screen".
+                coordsRef.current = null
+              }
+
+              bgCtx.fillStyle = "white"
+              bgCtx.fillRect(0, 0, width, height)
+            }
+            if (inkCtx) {
+              inkCtx.clearRect(0, 0, width, height)
+            }
+            backSpriteCtxRef.current?.clearRect(0, 0, width, height)
+
+            swapBuffers()
+            break
+          }
+
           case "SETUP": {
             const w = command.width as number
             const h = command.height as number

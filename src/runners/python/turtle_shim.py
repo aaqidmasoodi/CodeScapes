@@ -275,9 +275,15 @@ class _Screen(TurtleScreenBase):
              _send_cmd("BGPIC", {"url": picname})
 
     def clearscreen(self):
+        """Delete all drawings and all turtles. Reset screen to initial state."""
         _send_cmd("CLEAR_SCREEN", {})
         self._turtles = {}
-        # Re-init default turtle?
+        self._bgpic = self._bgpicname = None
+        self._tracer_n = 1
+        self._delay_value = 10
+        self._keys = {}  # Clear event bindings
+        
+        # Reset default turtle
         global _default_turtle
         _default_turtle = None
         
@@ -1174,8 +1180,23 @@ class Turtle:
         return math.sqrt((self._x - x)**2 + (self._y - y)**2)
         
     def reset(self):
-        self.home()
+        """Delete drawings and reset turtle to initial state."""
         self.clear()
+        self.home()
+        # Restore defaults
+        self.pensize(1)
+        self.pencolor("black")
+        self.fillcolor("black")
+        self.speed(3)
+        self.shape("classic")
+        self.showturtle()
+        self.pendown()
+        self._filling = False
+        self._fillpath = []
+        # Reset custom shape transforms if any?
+        self.shapesize(1, 1, 1)
+        self.shearfactor(0)
+        self.tiltangle(0)
         
     def clear(self):
         """Clear the turtle's drawings from the screen.
