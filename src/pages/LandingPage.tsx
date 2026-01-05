@@ -18,7 +18,7 @@ export default function LandingPage() {
       />
 
       {/* Header */}
-      <Header showFullLogo />
+      <Header showFullLogo isFixed />
 
       {/* Main Content */}
       <main className="flex-1">

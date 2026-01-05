@@ -49,7 +49,7 @@ export function FeaturesGrid() {
   const backgroundY = useTransform(scrollYProgress, [0, 1], [50, -50])
 
   return (
-    <section ref={sectionRef} className="relative -mt-10 overflow-hidden pb-24 pt-20">
+    <section ref={sectionRef} className="relative overflow-hidden pb-20 pt-16">
       {/* Background Subtle Noise/Texture */}
       <motion.div
         className="pointer-events-none absolute inset-0 opacity-20"
