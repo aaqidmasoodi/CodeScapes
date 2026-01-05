@@ -11,6 +11,7 @@ import { Header } from "@/components/layout/Header"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCommunityScapes } from "@/hooks/useCommunityScapes"
 import { ScapeCard } from "@/components/community/ScapeCard"
+import { SeoHead } from "@/components/common/SeoHead"
 
 type FilterType = "all" | "web" | "python" | "flow"
 
@@ -83,8 +84,25 @@ export default function CommunityPage() {
     return matchesSearch
   })
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    itemListElement: scapes.map((s, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      url: `https://codescapes.io/community/scape/${s.id}`,
+      name: s.name,
+    })),
+  }
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
+      <SeoHead
+        title="Community"
+        description="Discover interactive coding projects created by the CodeScapes community."
+        url="https://codescapes.io/community"
+        jsonLd={jsonLd}
+      />
       <Sheet>
         {/* 1. Full Width Top Header */}
         <div className="z-50 w-full border-b bg-background">

@@ -22,30 +22,30 @@ export default defineConfig(({ mode }) => ({
         options: {
           compact: true,
           controlFlowFlattening: true,
-          controlFlowFlatteningThreshold: 0.5, // Reduced from 0.75
-          deadCodeInjection: false, // Disabled (Major perf/crash culprit)
-          debugProtection: true,
+          controlFlowFlatteningThreshold: 0.3, // Lowered for stability
+          deadCodeInjection: false,
+          debugProtection: false, // Disabled to prevent runtime freezes
           debugProtectionInterval: 4000,
           disableConsoleOutput: true,
-          identifierNamesGenerator: "hexadecimal", // Strongest
-          log: false, // Cleaner build output
-          numbersToExpressions: true, // Good for confusing math
+          identifierNamesGenerator: "hexadecimal",
+          log: false,
+          numbersToExpressions: true,
           renameGlobals: false,
-          selfDefending: true, // Prevents tampering
+          selfDefending: false, // Disabled to prevent loops
           simplify: true,
-          splitStrings: false, // Disabled (Can cause crashes with huge chunks)
+          splitStrings: false,
           stringArray: true,
           stringArrayCallsTransform: true,
-          stringArrayCallsTransformThreshold: 0.5,
+          stringArrayCallsTransformThreshold: 0.3, // Lowered
           stringArrayEncoding: ["base64"],
           stringArrayIndexShift: true,
           stringArrayRotate: true,
           stringArrayShuffle: true,
-          stringArrayWrappersCount: 1, // Reduced wrapper complexity
+          stringArrayWrappersCount: 1,
           stringArrayWrappersChainedCalls: true,
           stringArrayWrappersType: "function",
-          stringArrayThreshold: 0.5,
-          transformObjectKeys: false, // Disabled to fix IndexedDB persistence
+          stringArrayThreshold: 0.3, // Lowered
+          transformObjectKeys: false,
           unicodeEscapeSequence: false,
         },
       }),
