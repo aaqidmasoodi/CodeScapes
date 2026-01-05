@@ -109,7 +109,7 @@ export default function ScapeDetailPage() {
         variant: "destructive",
         action: (
           <Button
-            variant="outline"
+            className="border-0 bg-white text-destructive hover:bg-white/90"
             size="sm"
             onClick={() => {
               dismissToast()
@@ -166,7 +166,7 @@ export default function ScapeDetailPage() {
         variant: "destructive",
         action: (
           <Button
-            variant="outline"
+            className="border-0 bg-white text-destructive hover:bg-white/90"
             size="sm"
             onClick={() => {
               dismissToast()
