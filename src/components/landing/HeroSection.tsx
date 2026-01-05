@@ -1,9 +1,36 @@
+import { useRef, useCallback, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { motion } from "framer-motion"
 import { ArrowRight, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useTheme } from "@/components/theme-provider"
 
 export function HeroSection() {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const { resolvedTheme } = useTheme()
+
+  // Sync theme to iframe
+  const sendThemeToIframe = useCallback(() => {
+    if (iframeRef.current?.contentWindow && resolvedTheme) {
+      iframeRef.current.contentWindow.postMessage(
+        { type: "THEME_CHANGE", theme: resolvedTheme },
+        "*"
+      )
+    }
+  }, [resolvedTheme])
+
+  // Effect to send theme when it changes
+  useEffect(() => {
+    sendThemeToIframe()
+    const timeout = setTimeout(sendThemeToIframe, 100)
+    return () => clearTimeout(timeout)
+  }, [resolvedTheme, sendThemeToIframe])
+
+  // Send theme when iframe loads
+  const handleIframeLoad = () => {
+    setTimeout(sendThemeToIframe, 50)
+  }
+
   return (
     <section className="relative flex min-h-[calc(100vh-3rem)] flex-col items-center justify-center overflow-hidden px-4 py-20">
       {/* Background Gradient */}
@@ -71,14 +98,14 @@ export function HeroSection() {
           </motion.p>
         </motion.div>
 
-        {/* Live Demo Preview */}
+        {/* Live Demo Preview - LARGER */}
         <motion.div
-          className="relative flex-1"
+          className="relative w-full max-w-2xl flex-1"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
         >
-          <div className="relative aspect-[4/3] w-full max-w-lg overflow-hidden rounded-xl border bg-card shadow-2xl lg:max-w-xl">
+          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border bg-card shadow-2xl">
             {/* Window Chrome */}
             <div className="flex h-8 items-center gap-2 border-b bg-muted/50 px-4">
               <div className="h-3 w-3 rounded-full bg-red-500/80" />
@@ -86,13 +113,15 @@ export function HeroSection() {
               <div className="h-3 w-3 rounded-full bg-green-500/80" />
               <span className="ml-2 text-xs text-muted-foreground">preview</span>
             </div>
-            {/* Preview Content - Using a featured scape or placeholder */}
-            <div className="relative h-[calc(100%-2rem)] w-full bg-zinc-950">
+            {/* Preview Content */}
+            <div className="relative h-[calc(100%-2rem)] w-full bg-zinc-950 dark:bg-zinc-950">
               <iframe
+                ref={iframeRef}
                 src="/view/9478cf68-d30a-4fa9-bc68-bbd715a829f4"
                 className="h-full w-full border-0"
                 title="Live Demo"
                 loading="lazy"
+                onLoad={handleIframeLoad}
               />
             </div>
           </div>
