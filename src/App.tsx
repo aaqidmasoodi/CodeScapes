@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import Dashboard from "./pages/Dashboard"
+import LandingPage from "./pages/LandingPage"
 import { ThemeProvider } from "@/components/theme-provider"
 import ScapeEditor from "@/pages/ScapeEditor"
 import FlowEditor from "@/pages/FlowEditor"
@@ -30,7 +31,7 @@ function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<AuthPage />} />
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/" element={<LandingPage />} />
               <Route path="/dashboard" element={<Navigate to="/dashboard/scapes" replace />} />
               <Route path="/dashboard/:tab" element={<Dashboard />} />
               <Route path="/scape/:scapeId" element={<ScapeEditor />} />
