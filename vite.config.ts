@@ -1,9 +1,9 @@
 import path from "path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vitest/config"
-// import obfuscator from "rollup-plugin-obfuscator"
+import obfuscator from "rollup-plugin-obfuscator"
 
-export default defineConfig(() => ({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     {
@@ -16,8 +16,39 @@ export default defineConfig(() => ({
         })
       },
     },
-    // Obfuscation disabled for staging debugging
-    // mode === "production" && obfuscator({ ... })
+    mode === "production" &&
+      obfuscator({
+        global: true,
+        options: {
+          compact: true,
+          controlFlowFlattening: true,
+          controlFlowFlatteningThreshold: 0.3, // Lowered for stability
+          deadCodeInjection: false,
+          debugProtection: false, // Disabled to prevent runtime freezes
+          debugProtectionInterval: 4000,
+          disableConsoleOutput: true,
+          identifierNamesGenerator: "hexadecimal",
+          log: false,
+          numbersToExpressions: true,
+          renameGlobals: false,
+          selfDefending: false, // Disabled to prevent loops
+          simplify: true,
+          splitStrings: false,
+          stringArray: true,
+          stringArrayCallsTransform: true,
+          stringArrayCallsTransformThreshold: 0.3, // Lowered
+          stringArrayEncoding: ["base64"],
+          stringArrayIndexShift: true,
+          stringArrayRotate: true,
+          stringArrayShuffle: true,
+          stringArrayWrappersCount: 1,
+          stringArrayWrappersChainedCalls: true,
+          stringArrayWrappersType: "function",
+          stringArrayThreshold: 0.3, // Lowered
+          transformObjectKeys: false,
+          unicodeEscapeSequence: false,
+        },
+      }),
   ],
   resolve: {
     alias: {
