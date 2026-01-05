@@ -1,13 +1,34 @@
-import { useRef, useCallback, useEffect } from "react"
+import { useRef, useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { motion } from "framer-motion"
 import { ArrowRight, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTheme } from "@/components/theme-provider"
+import { supabase } from "@/lib/supabase"
+
+const DEFAULT_FEATURED_SCAPE = "9478cf68-d30a-4fa9-bc68-bbd715a829f4"
 
 export function HeroSection() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const { resolvedTheme } = useTheme()
+  const [featuredScapeId, setFeaturedScapeId] = useState(DEFAULT_FEATURED_SCAPE)
+
+  // Fetch featured scape from settings
+  useEffect(() => {
+    async function fetchFeatured() {
+      const { data } = await supabase
+        .from("site_settings")
+        .select("value")
+        .eq("key", "featured_scape_id")
+        .single()
+
+      if (data?.value) {
+        const id = typeof data.value === "string" ? data.value.replace(/"/g, "") : data.value
+        if (id) setFeaturedScapeId(id)
+      }
+    }
+    fetchFeatured()
+  }, [])
 
   // Sync theme to iframe
   const sendThemeToIframe = useCallback(() => {
@@ -98,14 +119,14 @@ export function HeroSection() {
           </motion.p>
         </motion.div>
 
-        {/* Live Demo Preview - LARGER */}
+        {/* Live Demo Preview - FULL WIDTH HERO */}
         <motion.div
-          className="relative w-full max-w-2xl flex-1"
+          className="relative w-full lg:flex-[1.3]"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
         >
-          <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border bg-card shadow-2xl">
+          <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl border bg-card shadow-2xl">
             {/* Window Chrome */}
             <div className="flex h-8 items-center gap-2 border-b bg-muted/50 px-4">
               <div className="h-3 w-3 rounded-full bg-red-500/80" />
@@ -117,7 +138,7 @@ export function HeroSection() {
             <div className="relative h-[calc(100%-2rem)] w-full bg-zinc-950 dark:bg-zinc-950">
               <iframe
                 ref={iframeRef}
-                src="/view/9478cf68-d30a-4fa9-bc68-bbd715a829f4"
+                src={`/view/${featuredScapeId}`}
                 className="h-full w-full border-0"
                 title="Live Demo"
                 loading="lazy"

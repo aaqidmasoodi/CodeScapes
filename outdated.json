@@ -1,0 +1,114 @@
+{
+  "@sentry/react": {
+    "current": "10.30.0",
+    "wanted": "10.32.1",
+    "latest": "10.32.1",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/@sentry/react"
+  },
+  "@supabase/supabase-js": {
+    "current": "2.88.0",
+    "wanted": "2.89.0",
+    "latest": "2.89.0",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/@supabase/supabase-js"
+  },
+  "@testing-library/react": {
+    "current": "16.3.0",
+    "wanted": "16.3.1",
+    "latest": "16.3.1",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/@testing-library/react"
+  },
+  "@types/node": {
+    "current": "24.10.3",
+    "wanted": "24.10.4",
+    "latest": "25.0.3",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/@types/node"
+  },
+  "autoprefixer": {
+    "current": "10.4.22",
+    "wanted": "10.4.23",
+    "latest": "10.4.23",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/autoprefixer"
+  },
+  "eslint-plugin-react-refresh": {
+    "current": "0.4.24",
+    "wanted": "0.4.26",
+    "latest": "0.4.26",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/eslint-plugin-react-refresh"
+  },
+  "framer-motion": {
+    "current": "12.23.26",
+    "wanted": "12.24.0",
+    "latest": "12.24.0",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/framer-motion"
+  },
+  "globals": {
+    "current": "16.5.0",
+    "wanted": "16.5.0",
+    "latest": "17.0.0",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/globals"
+  },
+  "jsdom": {
+    "current": "27.3.0",
+    "wanted": "27.4.0",
+    "latest": "27.4.0",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/jsdom"
+  },
+  "lucide-react": {
+    "current": "0.561.0",
+    "wanted": "0.561.0",
+    "latest": "0.562.0",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/lucide-react"
+  },
+  "react-resizable-panels": {
+    "current": "3.0.6",
+    "wanted": "3.0.6",
+    "latest": "4.2.1",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/react-resizable-panels"
+  },
+  "react-router-dom": {
+    "current": "7.10.1",
+    "wanted": "7.11.0",
+    "latest": "7.11.0",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/react-router-dom"
+  },
+  "tailwindcss": {
+    "current": "3.4.17",
+    "wanted": "3.4.19",
+    "latest": "4.1.18",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/tailwindcss"
+  },
+  "typescript-eslint": {
+    "current": "8.49.0",
+    "wanted": "8.52.0",
+    "latest": "8.52.0",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/typescript-eslint"
+  },
+  "vite": {
+    "current": "7.2.7",
+    "wanted": "7.3.0",
+    "latest": "7.3.0",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/vite"
+  },
+  "vitest": {
+    "current": "4.0.15",
+    "wanted": "4.0.16",
+    "latest": "4.0.16",
+    "dependent": "codescapes",
+    "location": "/Users/aaqidmasoodi/Documents/codescapes/node_modules/vitest"
+  }
+}
