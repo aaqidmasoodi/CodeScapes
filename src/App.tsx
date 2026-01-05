@@ -14,6 +14,7 @@ import ScapeDetailPage from "@/pages/ScapeDetailPage"
 import { Toaster } from "@/components/ui/toaster"
 import { DocsLayout } from "@/layouts/DocsLayout"
 import { DocsPage } from "@/pages/docs/DocsPage"
+import ProfilePage from "@/pages/ProfilePage"
 
 import { AdminLayout } from "@/layouts/AdminLayout"
 import { AdminDashboard } from "@/pages/admin/AdminDashboard"
@@ -47,6 +48,7 @@ function App() {
               {/* Community Routes */}
               <Route path="/community" element={<CommunityPage />} />
               <Route path="/community/scape/:scapeId" element={<ScapeDetailPage />} />
+              <Route path="/u/:username" element={<ProfilePage />} />
 
               {/* Docs Routes */}
               <Route path="/docs" element={<Navigate to="/docs/introduction" replace />} />

@@ -10,6 +10,7 @@ export interface Scape {
   syncStatus?: "synced" | "dirty" | "offline"
   authorId?: string
   cloudId?: string
+  published_version_id?: string
   thumbnail?: string // Base64 data URL (or URL in future)
   createdAt: Date
   updatedAt: Date
