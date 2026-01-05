@@ -20,6 +20,9 @@ import { CommentsSection } from "@/components/community/CommentsSection"
 import { CodeViewer } from "@/components/community/CodeViewer"
 import { AuthDialog } from "@/components/auth/AuthDialog"
 
+// SEO
+import { SeoHead } from "@/components/common/SeoHead"
+
 const repo = new CloudRepository()
 
 export default function ScapeDetailPage() {
@@ -322,8 +325,31 @@ export default function ScapeDetailPage() {
 
   const isOwner = user?.id === scape.authorId
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    name: scape.name,
+    programmingLanguage: scape.environment === "python" ? "Python" : "JavaScript",
+    author: {
+      "@type": "Person",
+      name: scape.author?.name || scape.author?.username || "Unknown",
+    },
+    dateCreated: scape.createdAt.toISOString(),
+    description: scape.description,
+  }
+
   return (
     <>
+      <SeoHead
+        title={`${scape.name} using ${scape.environment}`}
+        description={scape.description || `Check out ${scape.name} on CodeScapes.`}
+        url={`https://codescapes.io/community/scape/${scape.id}`}
+        image={scape.thumbnail || undefined}
+        author={scape.author?.name || scape.author?.username}
+        type="article"
+        jsonLd={jsonLd}
+        keywords={["CodeScapes", scape.environment, "creative coding", "programming"]}
+      />
       <DashboardLayout activeTab="community">
         <div className="h-full w-full overflow-y-auto bg-background p-4 md:p-6">
           <div className="mx-auto flex max-w-[1800px] flex-col gap-8">
