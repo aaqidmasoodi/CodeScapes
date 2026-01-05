@@ -4,14 +4,13 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
-import { Search, Heart, GitFork, User, Code2, Menu, Loader2 } from "lucide-react"
+import { Search, Menu, Loader2 } from "lucide-react"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Header } from "@/components/layout/Header"
 
-import { optimizeSupabaseImage } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCommunityScapes } from "@/hooks/useCommunityScapes"
+import { ScapeCard } from "@/components/community/ScapeCard"
 
 type FilterType = "all" | "web" | "python" | "flow"
 
@@ -83,32 +82,6 @@ export default function CommunityPage() {
     }
     return matchesSearch
   })
-
-  const getIcon = (env: string) => {
-    switch (env) {
-      case "python":
-        return <Code2 className="h-4 w-4 text-yellow-500" />
-      case "web":
-        return <div className="h-4 w-4 rounded-full bg-blue-500" />
-      case "flowscape":
-        return <div className="h-4 w-4 rounded-full bg-purple-500" />
-      default:
-        return <div className="h-4 w-4 rounded-full bg-gray-500" />
-    }
-  }
-
-  const getEnvLabel = (env: string) => {
-    switch (env) {
-      case "python":
-        return "Python"
-      case "web":
-        return "Web"
-      case "flowscape":
-        return "FlowScape"
-      default:
-        return env || "Unknown"
-    }
-  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background">
@@ -218,71 +191,15 @@ export default function CommunityPage() {
               <>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   {filteredScapes.map((scape) => (
-                    <Card
+                    <ScapeCard
                       key={scape.id}
-                      className="group cursor-pointer overflow-hidden transition-all hover:border-primary/50 hover:shadow-lg"
+                      scape={scape}
                       onClick={() =>
                         navigate(`/community/scape/${scape.id}`, {
                           state: { from: location.pathname },
                         })
                       }
-                    >
-                      {/* Thumbnail */}
-                      <div className="relative aspect-video bg-muted">
-                        {scape.thumbnail ? (
-                          <img
-                            src={optimizeSupabaseImage(scape.thumbnail, 600)}
-                            alt={scape.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full items-center justify-center bg-secondary/20">
-                            {getIcon(scape.environment)}
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/0 transition-all group-hover:bg-black/10" />
-                      </div>
-
-                      <CardHeader className="p-3 pb-1.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <CardTitle className="line-clamp-1 text-sm font-medium leading-none">
-                            {scape.name}
-                          </CardTitle>
-                          <Badge variant="outline" className="h-5 px-1 text-[10px]">
-                            {getEnvLabel(scape.environment)}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-3 pt-0">
-                        <p className="line-clamp-2 text-xs text-muted-foreground">
-                          {scape.description || "No description provided."}
-                        </p>
-                      </CardContent>
-                      <CardFooter className="flex items-center justify-between border-t p-3 text-[10px] text-muted-foreground">
-                        <div className="flex items-center gap-1.5 overflow-hidden">
-                          {scape.author?.avatar ? (
-                            <img
-                              src={optimizeSupabaseImage(scape.author.avatar, 64, 64)}
-                              alt="Author"
-                              className="h-3.5 w-3.5 rounded-full"
-                            />
-                          ) : (
-                            <User className="h-3 w-3" />
-                          )}
-                          <span className="truncate">{scape.author?.name || "Unknown"}</span>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <div className="flex items-center gap-1">
-                            <Heart className="h-3 w-3" />
-                            <span>{scape.stats?.likes || 0}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <GitFork className="h-3 w-3" />
-                            <span>{scape.stats?.forks || 0}</span>
-                          </div>
-                        </div>
-                      </CardFooter>
-                    </Card>
+                    />
                   ))}
                 </div>
 

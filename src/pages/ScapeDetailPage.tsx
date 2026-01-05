@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate, Link } from "react-router-dom"
 import { Heart, GitFork, Share2, Play, Eye, Maximize2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -379,7 +379,13 @@ export default function ScapeDetailPage() {
                   <div className="flex-1 overflow-hidden">
                     <h1 className="truncate text-xl font-bold">{scape.name}</h1>
                     <p className="truncate text-sm text-muted-foreground">
-                      by <span className="text-foreground">{scape.author?.name || "Unknown"}</span>
+                      by{" "}
+                      <Link
+                        to={`/u/${scape.author?.username || scape.authorId}`}
+                        className="text-foreground hover:underline"
+                      >
+                        {scape.author?.name || "Unknown"}
+                      </Link>
                     </p>
                   </div>
                 </div>

@@ -13,6 +13,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AuthDialog } from "@/components/auth/AuthDialog"
 import { CodeScapeLogo, CodeScapeFullLogo } from "@/components/brand/Logo"
+import { NotificationDropdown } from "@/components/notifications/NotificationDropdown"
 
 interface HeaderProps {
   actions?: React.ReactNode
@@ -52,6 +53,7 @@ export function Header({
 
       <div className="flex items-center gap-2">
         {actions}
+        <NotificationDropdown />
         <ModeToggle />
         <AuthButtons />
         {endActions}
@@ -105,6 +107,10 @@ function AuthButtons() {
             <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to={`/u/${user.user_metadata.username || user.id}`}>Profile</Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={signOut} className="text-red-500">
           Sign Out

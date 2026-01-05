@@ -503,6 +503,7 @@ export class CloudRepository implements IScapeRepository {
         template: d.template,
         source: "cloud",
         authorId: d.author_id,
+        published_version_id: d.published_version_id,
         syncStatus: "synced",
         createdAt: new Date(d.created_at),
         updatedAt: new Date(d.updated_at),
@@ -597,6 +598,7 @@ export class CloudRepository implements IScapeRepository {
         template: d.template,
         source: "cloud" as const,
         authorId: d.author_id,
+        published_version_id: d.published_version_id,
         syncStatus: "synced" as const,
         createdAt: new Date(d.created_at),
         updatedAt: new Date(d.updated_at),
@@ -621,6 +623,115 @@ export class CloudRepository implements IScapeRepository {
     })
 
     return { data: scapes, hasMore }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async getProfile(usernameOrId: string): Promise<any> {
+    // Try by username first
+    const query = supabase.from("profiles").select("*").eq("username", usernameOrId).maybeSingle()
+
+    let { data, error } = await query
+
+    // Fallback to ID if not found and looks like UUID
+    if (
+      !data &&
+      usernameOrId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    ) {
+      const { data: idData, error: idError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", usernameOrId)
+        .maybeSingle()
+
+      data = idData
+      if (idError) error = idError
+    }
+
+    if (error) throw error
+    if (!data) return undefined
+
+    return {
+      id: data.id,
+      username: data.username,
+      full_name: data.full_name,
+      avatar_url: data.avatar_url,
+      bio: data.bio, // Assuming bio exists, if not need to add to schema or ignore
+      website: data.website,
+    }
+  }
+
+  async getUserScapes(userId: string): Promise<Scape[]> {
+    const { data, error } = await supabase
+      .from("scapes")
+      .select(
+        `
+        id,
+        name,
+        environment,
+        template,
+        thumbnail,
+        description,
+        parent_id,
+        author_id,
+        created_at,
+        updated_at,
+        is_public,
+        published_version_id,
+        dependencies,
+        profiles (
+          full_name,
+          username,
+          avatar_url
+        ),
+        deployments!published_version_id (
+          thumbnail
+        ),
+        likes (count),
+        comments (count)
+      `
+      )
+      .eq("author_id", userId)
+      .eq("is_public", true) // Only public scapes for profile page
+      .order("updated_at", { ascending: false })
+
+    if (error) throw error
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return data.map((d: any) => {
+      const deploymentRaw = d.deployments
+      const deployment = Array.isArray(deploymentRaw) ? deploymentRaw[0] : deploymentRaw
+      const frozenThumbnail = deployment?.thumbnail
+
+      return {
+        id: d.id,
+        name: d.name,
+        environment: d.environment as Scape["environment"],
+        template: d.template,
+        source: "cloud",
+        authorId: d.author_id,
+        published_version_id: d.published_version_id,
+        syncStatus: "synced",
+        createdAt: new Date(d.created_at),
+        updatedAt: new Date(d.updated_at),
+        thumbnail: frozenThumbnail || d.thumbnail,
+        dependencies: d.dependencies || [],
+        is_public: d.is_public,
+        description: d.description,
+        parentId: d.parent_id,
+        author: d.profiles
+          ? {
+              name: d.profiles.full_name || d.profiles.username || "Unknown",
+              avatar: d.profiles.avatar_url,
+              username: d.profiles.username,
+            }
+          : undefined,
+        stats: {
+          views: 0,
+          likes: d.likes?.[0]?.count || 0,
+          forks: 0,
+        },
+      }
+    })
   }
 
   async toggleLike(scapeId: string, userId: string): Promise<boolean> {
@@ -886,5 +997,86 @@ export class CloudRepository implements IScapeRepository {
 
     if (error) throw error
     return data
+  }
+
+  // =============================================
+  // NOTIFICATION SYSTEM
+  // =============================================
+
+  async getNotifications(
+    userId: string,
+    limit = 20,
+    offset = 0
+  ): Promise<
+    {
+      id: string
+      type: string
+      actor: { username: string; avatar_url: string; full_name: string } | null
+      scape: { id: string; name: string; thumbnail: string } | null
+      message: string | null
+      is_read: boolean
+      created_at: string
+    }[]
+  > {
+    const { data, error } = await supabase
+      .from("notifications")
+      .select(
+        `
+        id,
+        type,
+        message,
+        is_read,
+        created_at,
+        actor:profiles!notifications_actor_id_fkey(username, avatar_url, full_name),
+        scape:scapes(id, name, thumbnail)
+      `
+      )
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (error) throw error
+
+    return (data || []).map((n) => ({
+      id: n.id,
+      type: n.type,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      actor: n.actor as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      scape: n.scape as any,
+      message: n.message,
+      is_read: n.is_read,
+      created_at: n.created_at,
+    }))
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_read", false)
+
+    if (error) throw error
+    return count || 0
+  }
+
+  async markNotificationRead(notificationId: string): Promise<void> {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", notificationId)
+
+    if (error) throw error
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("user_id", userId)
+      .eq("is_read", false)
+
+    if (error) throw error
   }
 }
