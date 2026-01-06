@@ -45,10 +45,14 @@ export function Header({
         {startContent}
         {customTitle ? (
           customTitle
-        ) : showFullLogo ? (
-          <CodeScapeFullLogo height={28} className="text-foreground" />
         ) : (
-          <CodeScapeLogo size={32} />
+          <Link to="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
+            {showFullLogo ? (
+              <CodeScapeFullLogo height={28} className="text-foreground" />
+            ) : (
+              <CodeScapeLogo size={32} />
+            )}
+          </Link>
         )}
       </div>
 
