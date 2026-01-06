@@ -34,26 +34,18 @@ export function useGitManager(
   const [changedFiles, setChangedFiles] = useState<FileStatus[]>([])
   const [history, setHistory] = useState<CommitInfo[]>([])
 
-  // Debounce file changes (2s)
-  const debouncedFiles = useDebounce(files, 2000)
+  // Debounce file changes (1s)
+  const debouncedFiles = useDebounce(files, 1000)
 
   // Refresh Status & History
   const refresh = useCallback(
-    async (sync = false) => {
-      if (!scapeId) return
-
+    async (sync = false, filesSnapshot?: Array<{ name: string; content: string }>) => {
       if (!scapeId) return
 
       setIsLoading(true)
       try {
-        if (sync) {
-          const fileData = files
-            .filter((f) => f.language !== "folder" && f.content !== undefined)
-            .map((f) => ({
-              name: f.name,
-              content: typeof f.content === "string" ? f.content : "",
-            }))
-          await syncFileSystem(scapeId, fileData)
+        if (sync && filesSnapshot) {
+          await syncFileSystem(scapeId, filesSnapshot)
         }
 
         const [status, log] = await Promise.all([getStatus(scapeId), getLog(scapeId)])
@@ -67,7 +59,7 @@ export function useGitManager(
         setIsLoading(false)
       }
     },
-    [scapeId, files]
+    [scapeId]
   )
 
   // Initial Load
@@ -80,7 +72,13 @@ export function useGitManager(
   // Auto-Sync on File Change
   useEffect(() => {
     if (isReady && debouncedFiles.length > 0) {
-      refresh(true)
+      const fileData = debouncedFiles
+        .filter((f) => f.language !== "folder" && f.content !== undefined)
+        .map((f) => ({
+          name: f.name,
+          content: typeof f.content === "string" ? f.content : "",
+        }))
+      refresh(true, fileData)
     }
   }, [debouncedFiles, isReady, refresh])
 

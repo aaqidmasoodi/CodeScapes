@@ -5,6 +5,7 @@
  * Each scape has its own git repository stored in IndexedDB.
  */
 
+import "@/lib/polyfill"
 import git from "isomorphic-git"
 import LightningFS from "@isomorphic-git/lightning-fs"
 
