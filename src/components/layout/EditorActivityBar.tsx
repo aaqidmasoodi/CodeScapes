@@ -7,6 +7,7 @@ export interface ActivityTool {
   id: string
   icon: React.ElementType
   label: string
+  badge?: number | string
 }
 
 interface EditorActivityBarProps {
@@ -56,14 +57,19 @@ export function EditorActivityBar({
             key={tool.id}
             variant={activeTool === tool.id ? "secondary" : "ghost"}
             size="icon"
-            className={cn(
-              "h-10 w-10 text-muted-foreground",
-              activeTool === tool.id && "text-foreground"
-            )}
             onClick={() => handleToolClick(tool.id)}
             title={tool.label}
+            className={cn(
+              "relative h-10 w-10 text-muted-foreground",
+              activeTool === tool.id && "text-foreground"
+            )}
           >
             <tool.icon className="h-5 w-5" />
+            {tool.badge ? (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">
+                {tool.badge}
+              </span>
+            ) : null}
           </Button>
         ))}
       </div>

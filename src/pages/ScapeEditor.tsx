@@ -36,10 +36,11 @@ import {
   RotateCw,
   Loader2,
   MonitorPlay,
-  FileCode,
   Search,
   Lock,
   Box,
+  Files,
+  GitBranch,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
@@ -63,6 +64,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { LoadingOverlay } from "@/components/ui/spinner"
+import { SourceControlPane } from "@/components/editor/SourceControlPane"
+import { initFromSupabase } from "@/lib/git/sync"
+import { useGitManager } from "@/hooks/useGitManager"
 
 // --- Helper for Persistence ---
 function usePersistentState<T>(
@@ -249,6 +253,31 @@ export default function ScapeEditor() {
   const activeFile = useMemo(
     () => files.find((f) => f.name === activeFilePath) || null,
     [files, activeFilePath]
+  )
+
+  // Git Initialization
+  useEffect(() => {
+    if (id && source === "cloud") {
+      initFromSupabase(id).catch((err) => console.error("Git init failed:", err))
+    }
+  }, [id, source])
+
+  const git = useGitManager(id, files, source === "cloud")
+
+  const topTools = useMemo(
+    () => [
+      { id: "explorer", icon: Files, label: "Explorer" },
+      { id: "search", icon: Search, label: "Search" },
+      {
+        id: "source-control",
+        icon: GitBranch,
+        label: "Source Control",
+        badge: git.changedFiles.length > 0 ? git.changedFiles.length : undefined,
+      },
+      { id: "packages", icon: Box, label: "Packages" },
+      { id: "secrets", icon: Lock, label: "Secrets" },
+    ],
+    [git.changedFiles]
   )
 
   // --- INITIALIZATION ---
@@ -1142,18 +1171,6 @@ export default function ScapeEditor() {
       </div>
     )
 
-  // 5. TOOLBOX CONFIG
-  const defaultTools = [
-    { id: "explorer", icon: FileCode, label: "Explorer" },
-    { id: "search", icon: Search, label: "Search" },
-    { id: "secrets", icon: Lock, label: "Secrets" }, // Moved Secrets here
-  ]
-
-  const showPackages = scape && ENVIRONMENTS[scape.environment]?.capabilities.packages
-  const tools = showPackages
-    ? [...defaultTools, { id: "packages", icon: Box, label: "Packages" }]
-    : defaultTools
-
   return (
     <>
       <ScapeLayout
@@ -1162,7 +1179,7 @@ export default function ScapeEditor() {
             activeTool={activeTool}
             onToolSelect={setActiveTool}
             onSettingsClick={() => setIsSettingsOpen(true)}
-            topTools={tools}
+            topTools={topTools}
           />
         }
         headerTitle={
@@ -1370,11 +1387,26 @@ export default function ScapeEditor() {
                     />
                   )}
                 {activeTool === "secrets" && (
-                  <SecretsPanel
+                  <SecretsPanel scapeId={id} isOpen={true} ref={secretsPanelRef} />
+                )}
+                {activeTool === "source-control" && (
+                  <SourceControlPane
                     scapeId={id}
-                    isOpen={true}
-                    ref={secretsPanelRef}
-                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                    files={files}
+                    git={git}
+                    onRestoreFiles={async (restoredFiles) => {
+                      // Apply restored files to file system
+                      for (const file of restoredFiles) {
+                        await updateFile(file.name, file.content)
+                      }
+
+                      // Also refresh the UI
+                      setDebouncedFiles([...files])
+                      if (previewRef.current?.restart) {
+                        previewRef.current.restart()
+                      }
+                      toast({ title: "Restored", description: "Files restored to selected commit" })
+                    }}
                   />
                 )}
               </ResizablePanel>
