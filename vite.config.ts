@@ -14,6 +14,37 @@ export default defineConfig(({ mode }) => ({
           // res.setHeader("Cross-Origin-Opener-Policy", "same-origin")
           next()
         })
+
+        // Localhost CORS Proxy Middleware
+        server.middlewares.use("/api/cors-proxy", async (req, res) => {
+          const urlObj = new URL(req.url || "", `http://${req.headers.host}`)
+          const targetUrl = urlObj.searchParams.get("url")
+
+          if (!targetUrl) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: "Missing url parameter" }))
+            return
+          }
+
+          try {
+            const response = await fetch(targetUrl)
+
+            // Forward headers
+            res.setHeader("Access-Control-Allow-Origin", "*")
+            res.setHeader(
+              "Content-Type",
+              response.headers.get("Content-Type") || "application/octet-stream"
+            )
+
+            // Stream response
+            const buffer = await response.arrayBuffer()
+            res.end(Buffer.from(buffer))
+          } catch (error) {
+            console.error("Proxy error:", error)
+            res.statusCode = 500
+            res.end(JSON.stringify({ error: "Proxy failed" }))
+          }
+        })
       },
     },
     mode === "production" &&

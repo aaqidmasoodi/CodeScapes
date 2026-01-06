@@ -60,7 +60,13 @@ export const PythonRunner = memo(
       const sharedArrayRef = useRef<Int32Array | null>(null)
 
       const [previewItems, setPreviewItems] = useState<
-        { type: "image" | "html"; content: string }[]
+        {
+          type: "image" | "html" | "pil_image"
+          content: string
+          title?: string
+          width?: number
+          height?: number
+        }[]
       >([])
       const lastFigureRef = useRef<string | null>(null)
 
@@ -298,6 +304,18 @@ export const PythonRunner = memo(
                 lastFigureRef.current = payload
               }
               break
+            case "PIL_IMAGE": {
+              const { data, title, width, height } = payload
+              setPreviewItems((prev) => [
+                ...prev,
+                { type: "pil_image", content: data, title, width, height },
+              ])
+              // Store for thumbnail if first graphical output
+              if (!lastFigureRef.current) {
+                lastFigureRef.current = data
+              }
+              break
+            }
             case "TURTLE_CMD":
               // Forward turtle command to canvas
               debug.log("[PythonRunner] TURTLE_CMD received:", JSON.stringify(payload))
@@ -1294,7 +1312,8 @@ export const PythonRunner = memo(
                     <Box className="h-8 w-8 opacity-20" />
                     <p className="mt-2 text-xs">No graphical output generated.</p>
                     <p className="mt-1 text-[10px] opacity-75">
-                      Plots (matplotlib), Turtle graphics, and DataFrames (pandas) will appear here.
+                      Plots (matplotlib), Images (PIL), Turtle graphics, and DataFrames (pandas)
+                      will appear here.
                     </p>
                   </>
                 )}
@@ -1302,13 +1321,28 @@ export const PythonRunner = memo(
             ) : previewItems.length > 0 ? (
               <div className="flex flex-col gap-6">
                 {previewItems.map((item, i) => (
-                  <div key={i} className="flex justify-center overflow-auto">
+                  <div key={i} className="flex flex-col items-center gap-2 overflow-auto">
                     {item.type === "image" ? (
                       <img
                         src={`data:image/png;base64,${item.content}`}
                         alt={`Plot ${i + 1}`}
                         className="max-w-full rounded border border-border shadow-sm"
                       />
+                    ) : item.type === "pil_image" ? (
+                      <figure className="flex flex-col items-center gap-1">
+                        <img
+                          src={`data:image/png;base64,${item.content}`}
+                          alt={item.title || `Image ${i + 1}`}
+                          className="max-w-full rounded border border-border shadow-sm"
+                        />
+                        {(item.title || item.width) && (
+                          <figcaption className="text-xs text-muted-foreground">
+                            {item.title}
+                            {item.title && item.width && " · "}
+                            {item.width && item.height && `${item.width}×${item.height}`}
+                          </figcaption>
+                        )}
+                      </figure>
                     ) : (
                       <div
                         className="prose prose-sm max-w-none overflow-x-auto rounded border border-border bg-card p-4 shadow-sm dark:prose-invert"

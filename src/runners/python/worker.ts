@@ -72,6 +72,134 @@ const loadPyodide = async (): Promise<PyodideInterface> => {
         pyodide_http.patch_all()
       `)
 
+      // Define CORS proxy patch function (called after requests is installed)
+      await pyodide.runPythonAsync(`
+        import js
+        
+        def _apply_cors_proxy_patch():
+            """
+            Apply the CORS proxy patch to the requests module.
+            Call this after installing 'requests' via pip.
+            """
+            try:
+                import requests
+                import js
+                from urllib.parse import quote, urlparse
+                
+                # Check if already patched
+                if hasattr(requests.Session, '_cors_proxy_patched'):
+                    return
+                
+                # Store original request method
+                _original_request = requests.Session.request
+                
+                def _proxied_request(self, method, url, **kwargs):
+                    parsed = urlparse(str(url))
+                    
+                    # Only proxy external URLs (http/https with a host)
+                    if parsed.scheme in ('http', 'https') and parsed.netloc:
+                        # Construct absolute proxy URL using current origin
+                        # requests requires a schema (http/https)
+                        origin = js.location.origin
+                        proxy_url = f"{origin}/api/cors-proxy?url={quote(str(url), safe='')}"
+                        return _original_request(self, method, proxy_url, **kwargs)
+                    
+                    return _original_request(self, method, url, **kwargs)
+                
+                # Monkey-patch Session.request
+                requests.Session.request = _proxied_request
+                requests.Session._cors_proxy_patched = True
+                
+            except ImportError:
+                pass  # requests not installed yet, that's fine
+        
+        def _apply_pil_patch():
+            """
+            Patch PIL.Image for:
+            1. save() - sync filesystem immediately
+            2. show() - display in CodeScapes preview pane
+            """
+            try:
+                from PIL import Image
+                import io
+                import base64
+                import json
+                
+                # --- Patch save() for filesystem sync ---
+                if not getattr(Image.Image, '_sync_patched', False):
+                    _original_save = Image.Image.save
+                    
+                    def _synced_save(self, fp, format=None, **params):
+                        # Robustness: Auto-convert RGBA/P to RGB if saving as JPEG
+                        # This prevents "OSError: cannot write mode RGBA as JPEG"
+                        target_format = format
+                        if not target_format and isinstance(fp, str):
+                            import os
+                            ext = os.path.splitext(fp)[1].lower()
+                            if ext in ['.jpg', '.jpeg']:
+                                target_format = 'JPEG'
+                                
+                        if str(target_format).upper() == 'JPEG' and self.mode in ('RGBA', 'P'):
+                            # Create a converted copy and save that instead
+                            converted = self.convert('RGB')
+                            result = _original_save(converted, fp, format, **params)
+                        else:
+                            result = _original_save(self, fp, format, **params)
+                            
+                        # Trigger filesystem sync via JS
+                        try:
+                            js.sync_file_system()
+                        except:
+                            pass
+                        return result
+
+                    Image.Image.save = _synced_save
+                    Image.Image._sync_patched = True
+                
+                # --- Patch show() for preview display ---
+                if not getattr(Image.Image, '_show_patched', False):
+                    
+                    def _preview_show(self, title=None, **kwargs):
+                        """Display image in CodeScapes preview pane."""
+                        try:
+                            # Convert to PNG bytes
+                            buf = io.BytesIO()
+                            
+                            # Handle mode conversion for compatibility
+                            img_to_save = self
+                            if self.mode not in ('RGB', 'RGBA', 'L', '1', 'P', 'LA', 'PA'):
+                                img_to_save = self.convert('RGB')
+                            
+                            img_to_save.save(buf, format='PNG')
+                            img_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+                            
+                            # Post to preview with optional title and metadata
+                            payload = {
+                                'type': 'PIL_IMAGE',
+                                'payload': {
+                                    'data': img_data,
+                                    'title': title,
+                                    'width': self.width,
+                                    'height': self.height,
+                                    'mode': self.mode
+                                }
+                            }
+                            js.postMessage(js.JSON.parse(json.dumps(payload)))
+                        except Exception as e:
+                            print(f"[PIL] Failed to show image: {e}")
+                    
+                    Image.Image.show = _preview_show
+                    Image.Image._show_patched = True
+                    
+            except ImportError:
+                pass 
+
+        # Store in builtins so it's accessible from anywhere
+        import builtins
+        builtins._apply_cors_proxy_patch = _apply_cors_proxy_patch
+        builtins._apply_pil_patch = _apply_pil_patch
+      `)
+
       // Verify imports (optional but good for stability)
       await pyodide.runPythonAsync(`
         import sys
@@ -176,6 +304,9 @@ self.onmessage = async (e: MessageEvent) => {
         return 0 // os.system returns exit code, assume 0 for success
       }
 
+      // Expose syncFileSystem to global scope for Python
+      ;(self as any).sync_file_system = syncFileSystem
+
       // Install initial dependencies
       if (
         payload.dependencies &&
@@ -190,6 +321,12 @@ self.onmessage = async (e: MessageEvent) => {
           await py.runPythonAsync(`
             import micropip
             await micropip.install(${JSON.stringify(payload.dependencies)})
+            # Apply CORS proxy patch if requests was installed
+            if hasattr(__builtins__, '_apply_cors_proxy_patch'):
+                _apply_cors_proxy_patch()
+            # Apply PIL patch if pillow/PIL was installed
+            if hasattr(__builtins__, '_apply_pil_patch'):
+                _apply_pil_patch()
           `)
           postMessage({ type: "STATUS", payload: "Packages installed" })
         } catch (err: any) {
@@ -255,6 +392,12 @@ self.onmessage = async (e: MessageEvent) => {
         await py.runPythonAsync(`
             import micropip
             await micropip.install(${requirementsJson}${kwargsStr})
+            # Apply CORS proxy patch if requests was installed
+            if hasattr(__builtins__, '_apply_cors_proxy_patch'):
+                _apply_cors_proxy_patch()
+            # Apply PIL patch if pillow/PIL was installed
+            if hasattr(__builtins__, '_apply_pil_patch'):
+                _apply_pil_patch()
             `)
 
         // Send "Ready" status via onProgress (STATUS) before final success signal?
