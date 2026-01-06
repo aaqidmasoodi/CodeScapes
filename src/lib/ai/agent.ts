@@ -41,8 +41,9 @@ const COMMON_RULES = `
    - Don't consider a task done until the code runs without errors
 
 **WORKFLOW for editing existing files**:
-1. \`view_file_outline\` to see structure and line numbers
-2. \`apply_diff\` with precise line ranges
+1. \`read_file\` to see the current content
+2. \`apply_diff\` with search/replace changes
+   Example: apply_diff("main.py", [{search: "old_code", replace: "new_code"}])
 3. \`verify_and_run\` to check the code works
 4. If error: analyze and fix with \`apply_diff\`, then verify again
 

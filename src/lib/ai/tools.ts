@@ -8,6 +8,7 @@ import type { GroqTool } from "./groqClient"
 import type { ScapeFile } from "@/types/file"
 import { searchFiles, replaceInFile } from "@/lib/search"
 import { getLanguageFromFilename } from "@/lib/language-utils"
+import { applySafeChanges, type SafeChange } from "./safe-diff"
 
 // --- Base Tool Definitions (sent to LLM) ---
 
@@ -157,7 +158,7 @@ const AGENTIC_TOOLS: GroqTool[] = [
     function: {
       name: "apply_diff",
       description:
-        "Apply precise line-based changes to a file. PREFERRED over edit_file for accuracy. Changes are applied from bottom to top to preserve line numbers.",
+        "Apply search/replace changes to a file. SAFER than line-based edits - uses fuzzy matching. The search text must exist in the file or the edit will fail safely (preventing accidental overwrites).",
       parameters: {
         type: "object",
         properties: {
@@ -168,26 +169,22 @@ const AGENTIC_TOOLS: GroqTool[] = [
           changes: {
             type: "array",
             description:
-              "Array of changes to apply. Each change has startLine (1-indexed), endLine (1-indexed, inclusive), and content (replacement text, can be empty to delete lines).",
+              "Array of search/replace changes. Each must have 'search' (exact text to find) and 'replace' (text to replace with).",
             items: {
               type: "object",
               properties: {
-                startLine: {
-                  type: "number",
-                  description: "Starting line number (1-indexed, inclusive)",
-                },
-                endLine: {
-                  type: "number",
-                  description:
-                    "Ending line number (1-indexed, inclusive). Use same as startLine for single-line edits.",
-                },
-                content: {
+                search: {
                   type: "string",
                   description:
-                    "New content to replace the line range. Use empty string to delete lines.",
+                    "The exact text to find in the file. Must match existing content. Include enough context to be unique.",
+                },
+                replace: {
+                  type: "string",
+                  description:
+                    "The new text to replace the search text with. Use empty string to delete.",
                 },
               },
-              required: ["startLine", "endLine", "content"],
+              required: ["search", "replace"],
             },
           },
         },
@@ -344,6 +341,26 @@ export function getToolsForEnvironment(capabilities: {
 
 function normalizePath(path: string): string {
   return path.replace(/^\/+/, "")
+}
+
+/**
+ * Normalize content from LLM responses.
+ * Handles common issues like:
+ * - Literal "\\n" strings that should be actual newlines
+ * - Literal "\\t" strings that should be actual tabs
+ */
+function normalizeContent(content: string): string {
+  if (!content) return content
+
+  // Check if content has actual newlines - if so, it's already correct
+  if (content.includes("\n")) {
+    return content
+  }
+
+  // Content has no newlines - likely the LLM returned literal \n sequences
+  // Replace literal \n (two chars) with actual newline
+  // Also handle \t for tabs
+  return content.replace(/\\n/g, "\n").replace(/\\t/g, "\t")
 }
 
 // Legacy export for backwards compatibility
@@ -532,19 +549,22 @@ async function executeCreateFile(
   // Detect language from extension
   const language = getLanguageFromFilename(path) as ScapeFile["language"]
 
+  // Normalize content to fix escaped newlines from LLM
+  const normalizedContent = normalizeContent(content)
+
   // Call the actual createFile callback FIRST
-  await ctx.createFile(path, language, content)
+  await ctx.createFile(path, language, normalizedContent)
 
   // Create file object for local context update AFTER callback succeeds
   // This prevents race condition where handleCreateFile sees file already exists
   const newFile: ScapeFile = {
     name: path,
     language,
-    content,
+    content: normalizedContent,
   }
   ctx.files.push(newFile)
 
-  const lines = content.split("\n").length
+  const lines = normalizedContent.split("\n").length
   return { success: true, output: `Created ${path} (${lines} lines)` }
 }
 
@@ -607,13 +627,16 @@ async function executeOverwriteFile(
   // Actually, we should probably use the matched file's name for the update to be safe
   const targetPath = file ? file.name : path
 
+  // Normalize content to fix escaped newlines from LLM
+  const normalizedContent = normalizeContent(content)
+
   // Call the update callback FIRST
-  await ctx.updateFile(targetPath, content)
+  await ctx.updateFile(targetPath, normalizedContent)
 
   // Update local context AFTER callback succeeds
-  ctx.files[fileIndex] = { ...file, content }
+  ctx.files[fileIndex] = { ...file, content: normalizedContent }
 
-  const lines = content.split("\n").length
+  const lines = normalizedContent.split("\n").length
   return { success: true, output: `Overwrote ${path} (${lines} lines)` }
 }
 
@@ -802,19 +825,13 @@ async function executeListPackages(ctx: ToolContext): Promise<ToolResult> {
 
 // --- Agentic Tool Executors ---
 
-interface DiffChange {
-  startLine: number
-  endLine: number
-  content: string
-}
-
 /**
- * Apply line-based diff changes to a file.
- * Changes are sorted and applied from bottom to top to preserve line numbers.
+ * Apply search/replace changes to a file using fuzzy matching.
+ * Much safer than line-based edits - search text must exist or edit fails.
  */
 async function executeApplyDiff(
   path: string,
-  changes: DiffChange[],
+  changes: SafeChange[],
   ctx: ToolContext
 ): Promise<ToolResult> {
   const fileIndex = ctx.files.findIndex((f) => normalizePath(f.name) === normalizePath(path))
@@ -832,57 +849,53 @@ async function executeApplyDiff(
     return { success: false, output: "", error: "No changes provided" }
   }
 
-  const lines = file.content.split("\n")
-  const totalLines = lines.length
-
-  // Validate all changes first
-  for (const change of changes) {
-    if (
-      typeof change.startLine !== "number" ||
-      typeof change.endLine !== "number" ||
-      change.startLine < 1 ||
-      change.endLine < change.startLine ||
-      change.startLine > totalLines + 1
-    ) {
-      return {
-        success: false,
-        output: "",
-        error: `Invalid line range: ${change.startLine}-${change.endLine} (file has ${totalLines} lines)`,
-      }
+  // Validate changes have required fields
+  for (let i = 0; i < changes.length; i++) {
+    const change = changes[i]
+    if (typeof change.search !== "string") {
+      return { success: false, output: "", error: `Change ${i + 1}: missing 'search' field` }
+    }
+    if (typeof change.replace !== "string" && change.replace !== undefined) {
+      return { success: false, output: "", error: `Change ${i + 1}: 'replace' must be a string` }
+    }
+    // Default empty replace to empty string
+    if (change.replace === undefined) {
+      change.replace = ""
     }
   }
 
-  // Sort changes by startLine descending (apply from bottom to top)
-  const sortedChanges = [...changes].sort((a, b) => b.startLine - a.startLine)
+  const originalContent = file.content
+  const originalLines = originalContent.split("\n").length
 
-  // Apply changes
-  for (const change of sortedChanges) {
-    const startIdx = change.startLine - 1 // Convert to 0-indexed
-    const endIdx = Math.min(change.endLine, totalLines) // Clamp to file length
-    const deleteCount = endIdx - startIdx + 1
+  // Apply changes using safe-diff utility
+  const result = applySafeChanges(originalContent, changes, {
+    allowPartial: false, // All changes must succeed
+    fuzzyMatch: true, // Enable fuzzy matching for resilience
+  })
 
-    // Split new content into lines (handle empty content for deletions)
-    const newLines = change.content === "" ? [] : change.content.split("\n")
-
-    // Replace the lines
-    lines.splice(startIdx, deleteCount, ...newLines)
+  if (!result.success) {
+    // Build a helpful error message
+    const failedList = result.failedChanges.map((f) => `  - "${f.search}": ${f.reason}`).join("\n")
+    return {
+      success: false,
+      output: "",
+      error: `Failed to apply changes:\n${failedList}`,
+    }
   }
 
-  const newContent = lines.join("\n")
-
   // Update local context
-  ctx.files[fileIndex] = { ...file, content: newContent }
+  ctx.files[fileIndex] = { ...file, content: result.newContent }
 
   // Persist change
-  await ctx.updateFile(file.name, newContent)
+  await ctx.updateFile(file.name, result.newContent)
 
-  const changeCount = changes.length
-  const linesDelta = newContent.split("\n").length - totalLines
+  const newLines = result.newContent.split("\n").length
+  const linesDelta = newLines - originalLines
   const deltaStr = linesDelta >= 0 ? `+${linesDelta}` : `${linesDelta}`
 
   return {
     success: true,
-    output: `Applied ${changeCount} change${changeCount > 1 ? "s" : ""} to ${path} (${deltaStr} lines)`,
+    output: `Applied ${result.appliedChanges} change${result.appliedChanges > 1 ? "s" : ""} to ${path} (${deltaStr} lines)`,
   }
 }
 
