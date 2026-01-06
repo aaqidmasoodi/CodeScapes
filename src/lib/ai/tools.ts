@@ -149,6 +149,103 @@ const BASE_TOOLS: GroqTool[] = [
   },
 ]
 
+// --- Agentic Tools (always available) ---
+
+const AGENTIC_TOOLS: GroqTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "apply_diff",
+      description:
+        "Apply precise line-based changes to a file. PREFERRED over edit_file for accuracy. Changes are applied from bottom to top to preserve line numbers.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The file path to edit",
+          },
+          changes: {
+            type: "array",
+            description:
+              "Array of changes to apply. Each change has startLine (1-indexed), endLine (1-indexed, inclusive), and content (replacement text, can be empty to delete lines).",
+            items: {
+              type: "object",
+              properties: {
+                startLine: {
+                  type: "number",
+                  description: "Starting line number (1-indexed, inclusive)",
+                },
+                endLine: {
+                  type: "number",
+                  description:
+                    "Ending line number (1-indexed, inclusive). Use same as startLine for single-line edits.",
+                },
+                content: {
+                  type: "string",
+                  description:
+                    "New content to replace the line range. Use empty string to delete lines.",
+                },
+              },
+              required: ["startLine", "endLine", "content"],
+            },
+          },
+        },
+        required: ["path", "changes"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "analyze_codebase",
+      description:
+        "Analyze the project structure and get an overview of all files with their sizes and types. Use this to understand the project before making changes.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "view_file_outline",
+      description:
+        "Get the structure of a file (functions, classes, imports) with line numbers. Useful for understanding file structure without reading the entire content.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The file path to analyze",
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ask_user",
+      description:
+        "Ask the user a clarifying question when you need more information to proceed correctly. Use this when the request is ambiguous or you need to confirm something important.",
+      parameters: {
+        type: "object",
+        properties: {
+          question: {
+            type: "string",
+            description: "The question to ask the user",
+          },
+        },
+        required: ["question"],
+      },
+    },
+  },
+]
+
 // --- Execution Tools (conditionally available) ---
 
 const RUN_FILE_TOOL: GroqTool = {
@@ -203,16 +300,38 @@ const LIST_PACKAGES_TOOL: GroqTool = {
   },
 }
 
+const VERIFY_AND_RUN_TOOL: GroqTool = {
+  type: "function",
+  function: {
+    name: "verify_and_run",
+    description:
+      "Run the code to verify it works. Returns structured result with any errors detected. Use after making changes to verify they work correctly.",
+    parameters: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description:
+            "Optional file path to run. If not provided, runs the entry point (e.g., main.py, index.html)",
+        },
+      },
+      required: [],
+    },
+  },
+}
+
 // --- Dynamic Tool List Builder ---
 
 export function getToolsForEnvironment(capabilities: {
   packages?: boolean
   terminal?: boolean
 }): GroqTool[] {
-  const tools = [...BASE_TOOLS]
+  // Start with base file tools, then add agentic tools
+  const tools = [...BASE_TOOLS, ...AGENTIC_TOOLS]
 
   if (capabilities.terminal) {
     tools.push(RUN_FILE_TOOL)
+    tools.push(VERIFY_AND_RUN_TOOL)
   }
 
   if (capabilities.packages) {
@@ -273,6 +392,9 @@ export interface ToolContext {
   runFile?: (path: string) => Promise<RunResult>
   installPackage?: (name: string, onProgress?: (msg: string) => void) => Promise<InstallResult>
   listPackages?: () => Promise<{ name: string; version: string }[]>
+
+  // Agentic capabilities
+  askUser?: (question: string) => Promise<string>
 }
 
 // --- Tool Result Type ---
@@ -287,7 +409,8 @@ export interface ToolResult {
 
 export async function executeTool(
   toolName: string,
-  args: Record<string, string>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  args: Record<string, any>,
   ctx: ToolContext,
   onProgress?: (message: string) => void
 ): Promise<ToolResult> {
@@ -322,6 +445,23 @@ export async function executeTool(
 
       case "list_packages":
         return await executeListPackages(ctx)
+
+      // --- Agentic Tools ---
+
+      case "apply_diff":
+        return await executeApplyDiff(args.path, args.changes, ctx)
+
+      case "analyze_codebase":
+        return executeAnalyzeCodebase(ctx)
+
+      case "view_file_outline":
+        return executeViewFileOutline(args.path, ctx)
+
+      case "ask_user":
+        return await executeAskUser(args.question, ctx)
+
+      case "verify_and_run":
+        return await executeVerifyAndRun(args.path, ctx)
 
       default:
         return { success: false, output: "", error: `Unknown tool: ${toolName}` }
@@ -657,5 +797,462 @@ async function executeListPackages(ctx: ToolContext): Promise<ToolResult> {
       output: "",
       error: error instanceof Error ? error.message : String(error),
     }
+  }
+}
+
+// --- Agentic Tool Executors ---
+
+interface DiffChange {
+  startLine: number
+  endLine: number
+  content: string
+}
+
+/**
+ * Apply line-based diff changes to a file.
+ * Changes are sorted and applied from bottom to top to preserve line numbers.
+ */
+async function executeApplyDiff(
+  path: string,
+  changes: DiffChange[],
+  ctx: ToolContext
+): Promise<ToolResult> {
+  const fileIndex = ctx.files.findIndex((f) => normalizePath(f.name) === normalizePath(path))
+  const file = ctx.files[fileIndex]
+
+  if (!file) {
+    return { success: false, output: "", error: `File not found: ${path}` }
+  }
+
+  if (typeof file.content !== "string") {
+    return { success: false, output: "", error: `Cannot edit binary file: ${path}` }
+  }
+
+  if (!changes || !Array.isArray(changes) || changes.length === 0) {
+    return { success: false, output: "", error: "No changes provided" }
+  }
+
+  const lines = file.content.split("\n")
+  const totalLines = lines.length
+
+  // Validate all changes first
+  for (const change of changes) {
+    if (
+      typeof change.startLine !== "number" ||
+      typeof change.endLine !== "number" ||
+      change.startLine < 1 ||
+      change.endLine < change.startLine ||
+      change.startLine > totalLines + 1
+    ) {
+      return {
+        success: false,
+        output: "",
+        error: `Invalid line range: ${change.startLine}-${change.endLine} (file has ${totalLines} lines)`,
+      }
+    }
+  }
+
+  // Sort changes by startLine descending (apply from bottom to top)
+  const sortedChanges = [...changes].sort((a, b) => b.startLine - a.startLine)
+
+  // Apply changes
+  for (const change of sortedChanges) {
+    const startIdx = change.startLine - 1 // Convert to 0-indexed
+    const endIdx = Math.min(change.endLine, totalLines) // Clamp to file length
+    const deleteCount = endIdx - startIdx + 1
+
+    // Split new content into lines (handle empty content for deletions)
+    const newLines = change.content === "" ? [] : change.content.split("\n")
+
+    // Replace the lines
+    lines.splice(startIdx, deleteCount, ...newLines)
+  }
+
+  const newContent = lines.join("\n")
+
+  // Update local context
+  ctx.files[fileIndex] = { ...file, content: newContent }
+
+  // Persist change
+  await ctx.updateFile(file.name, newContent)
+
+  const changeCount = changes.length
+  const linesDelta = newContent.split("\n").length - totalLines
+  const deltaStr = linesDelta >= 0 ? `+${linesDelta}` : `${linesDelta}`
+
+  return {
+    success: true,
+    output: `Applied ${changeCount} change${changeCount > 1 ? "s" : ""} to ${path} (${deltaStr} lines)`,
+  }
+}
+
+/**
+ * Analyze the codebase structure and provide an overview.
+ */
+function executeAnalyzeCodebase(ctx: ToolContext): ToolResult {
+  const files = ctx.files.filter((f) => f.language !== "folder")
+  const folders = ctx.files.filter((f) => f.language === "folder")
+
+  // Group files by type
+  const byType: Record<string, string[]> = {}
+  for (const file of files) {
+    const type = file.language || "unknown"
+    if (!byType[type]) byType[type] = []
+    byType[type].push(file.name)
+  }
+
+  // Build output
+  const lines: string[] = []
+  lines.push(`📁 Project Overview`)
+  lines.push(`Total: ${files.length} files, ${folders.length} folders`)
+  lines.push(`Entry Point: ${ctx.environment.entryPoint}`)
+  lines.push(`Environment: ${ctx.environment.name}`)
+  lines.push("")
+
+  // Files by type
+  lines.push("Files by type:")
+  for (const [type, fileNames] of Object.entries(byType).sort()) {
+    lines.push(`  ${type}: ${fileNames.length} file${fileNames.length > 1 ? "s" : ""}`)
+    for (const name of fileNames.slice(0, 5)) {
+      const file = ctx.files.find((f) => f.name === name)
+      const size = typeof file?.content === "string" ? file.content.length : 0
+      lines.push(`    - ${name} (${size} bytes)`)
+    }
+    if (fileNames.length > 5) {
+      lines.push(`    ... and ${fileNames.length - 5} more`)
+    }
+  }
+
+  // List dependencies if any
+  if (ctx.dependencies.length > 0) {
+    lines.push("")
+    lines.push(`Dependencies: ${ctx.dependencies.join(", ")}`)
+  }
+
+  return { success: true, output: lines.join("\n") }
+}
+
+/**
+ * Extract an outline of a file (functions, classes, imports).
+ * Works for Python, JavaScript, TypeScript.
+ */
+function executeViewFileOutline(path: string, ctx: ToolContext): ToolResult {
+  const file = ctx.files.find((f) => normalizePath(f.name) === normalizePath(path))
+
+  if (!file) {
+    return { success: false, output: "", error: `File not found: ${path}` }
+  }
+
+  if (typeof file.content !== "string") {
+    return { success: false, output: "", error: `Cannot analyze binary file: ${path}` }
+  }
+
+  const lines = file.content.split("\n")
+  const outline: string[] = []
+  outline.push(`📄 ${path} (${lines.length} lines)`)
+  outline.push("")
+
+  const lang = file.language || ""
+
+  // Python patterns
+  if (lang === "python" || path.endsWith(".py")) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const trimmed = line.trim()
+
+      // Imports
+      if (trimmed.startsWith("import ") || trimmed.startsWith("from ")) {
+        outline.push(`  L${i + 1}: ${trimmed}`)
+      }
+      // Functions
+      else if (trimmed.startsWith("def ")) {
+        const match = trimmed.match(/^def\s+(\w+)\s*\(/)
+        if (match) {
+          outline.push(`  L${i + 1}: def ${match[1]}()`)
+        }
+      }
+      // Classes
+      else if (trimmed.startsWith("class ")) {
+        const match = trimmed.match(/^class\s+(\w+)/)
+        if (match) {
+          outline.push(`  L${i + 1}: class ${match[1]}`)
+        }
+      }
+    }
+  }
+  // JavaScript/TypeScript patterns (check by file extension)
+  else if (
+    path.endsWith(".js") ||
+    path.endsWith(".ts") ||
+    path.endsWith(".jsx") ||
+    path.endsWith(".tsx") ||
+    path.endsWith(".mjs") ||
+    path.endsWith(".cjs")
+  ) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      const trimmed = line.trim()
+
+      // Imports
+      if (trimmed.startsWith("import ")) {
+        const short = trimmed.length > 60 ? trimmed.slice(0, 57) + "..." : trimmed
+        outline.push(`  L${i + 1}: ${short}`)
+      }
+      // Exports
+      else if (trimmed.startsWith("export ")) {
+        if (
+          trimmed.includes("function ") ||
+          trimmed.includes("const ") ||
+          trimmed.includes("class ")
+        ) {
+          const short = trimmed.length > 60 ? trimmed.slice(0, 57) + "..." : trimmed
+          outline.push(`  L${i + 1}: ${short}`)
+        }
+      }
+      // Functions
+      else if (trimmed.startsWith("function ") || trimmed.match(/^(async\s+)?function\s+\w+/)) {
+        const match = trimmed.match(/function\s+(\w+)/)
+        if (match) {
+          outline.push(`  L${i + 1}: function ${match[1]}()`)
+        }
+      }
+      // Arrow functions assigned to const/let
+      else if (trimmed.match(/^(const|let|var)\s+\w+\s*=\s*(async\s+)?\(/)) {
+        const match = trimmed.match(/^(const|let|var)\s+(\w+)/)
+        if (match) {
+          outline.push(`  L${i + 1}: ${match[1]} ${match[2]} = () => ...`)
+        }
+      }
+      // Classes
+      else if (trimmed.startsWith("class ")) {
+        const match = trimmed.match(/^class\s+(\w+)/)
+        if (match) {
+          outline.push(`  L${i + 1}: class ${match[1]}`)
+        }
+      }
+    }
+  }
+  // HTML/CSS - simpler outline
+  else if (lang === "html" || path.endsWith(".html")) {
+    outline.push("  (HTML file - use read_file for full content)")
+  } else if (lang === "css" || path.endsWith(".css")) {
+    // Count selectors
+    const selectorCount = (file.content.match(/\{/g) || []).length
+    outline.push(`  ${selectorCount} CSS rule(s)`)
+  } else {
+    outline.push("  (Outline not available for this file type)")
+  }
+
+  if (outline.length <= 2) {
+    outline.push("  (No notable structures found)")
+  }
+
+  return { success: true, output: outline.join("\n") }
+}
+
+/**
+ * Ask the user a clarifying question.
+ */
+async function executeAskUser(question: string, ctx: ToolContext): Promise<ToolResult> {
+  if (!ctx.askUser) {
+    return {
+      success: false,
+      output: "",
+      error: "ask_user is not available in this context",
+    }
+  }
+
+  if (!question || question.trim() === "") {
+    return { success: false, output: "", error: "No question provided" }
+  }
+
+  try {
+    const answer = await ctx.askUser(question)
+    return {
+      success: true,
+      output: `User responded: ${answer}`,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      output: "",
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+// --- Verification Result Type ---
+
+export interface VerificationResult extends ToolResult {
+  hasError: boolean
+  errorType?: "syntax" | "import" | "runtime" | "timeout" | "unknown"
+  errorMessage?: string
+}
+
+/**
+ * Run code and return structured result with error detection.
+ * Used for automatic verification after making changes.
+ */
+async function executeVerifyAndRun(
+  path: string | undefined,
+  ctx: ToolContext
+): Promise<ToolResult> {
+  if (!ctx.runFile) {
+    return {
+      success: false,
+      output: "",
+      error: "Run capability not available in this environment",
+    }
+  }
+
+  // Use provided path or fall back to entry point
+  const targetPath = path || ctx.environment.entryPoint
+
+  // Verify the file exists
+  const file = ctx.files.find((f) => normalizePath(f.name) === normalizePath(targetPath))
+  if (!file) {
+    return {
+      success: false,
+      output: "",
+      error: `File not found: ${targetPath}`,
+    }
+  }
+
+  try {
+    // Run with timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Execution timed out after 30 seconds")), 30000)
+    })
+
+    const result = await Promise.race([ctx.runFile(targetPath), timeoutPromise])
+
+    // Analyze the output for errors
+    const hasError = detectError(result.stdout, result.stderr)
+    const errorInfo = hasError ? classifyError(result.stdout, result.stderr) : null
+
+    // Build structured output
+    let output = ""
+
+    if (result.stdout) {
+      output += result.stdout
+    }
+
+    if (result.stderr) {
+      if (output) output += "\n"
+      output += `[STDERR]\n${result.stderr}`
+    }
+
+    if (hasError && errorInfo) {
+      // Add error summary for the AI
+      output += `\n\n[ERROR DETECTED]\nType: ${errorInfo.type}\nMessage: ${errorInfo.message}`
+    }
+
+    // Return appropriate success status
+    // If there's an error, we still return success: true but include error info
+    // This allows the AI to see the error and attempt to fix it
+    return {
+      success: true,
+      output: output || "(No output - execution completed silently)",
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    // Check if it's a timeout
+    if (errorMessage.includes("timed out")) {
+      return {
+        success: false,
+        output: "",
+        error: `Execution timed out. The code may have an infinite loop or is waiting for input.`,
+      }
+    }
+
+    return {
+      success: false,
+      output: "",
+      error: errorMessage,
+    }
+  }
+}
+
+/**
+ * Detect if the output contains an error.
+ */
+function detectError(stdout: string, stderr: string): boolean {
+  const combined = `${stdout}\n${stderr}`.toLowerCase()
+
+  // Python error patterns
+  if (combined.includes("traceback (most recent call last)")) return true
+  if (combined.includes("syntaxerror:")) return true
+  if (combined.includes("nameerror:")) return true
+  if (combined.includes("typeerror:")) return true
+  if (combined.includes("valueerror:")) return true
+  if (combined.includes("importerror:")) return true
+  if (combined.includes("modulenotfounderror:")) return true
+  if (combined.includes("attributeerror:")) return true
+  if (combined.includes("indentationerror:")) return true
+
+  // JavaScript error patterns
+  if (combined.includes("uncaught")) return true
+  if (combined.includes("referenceerror:")) return true
+  if (combined.includes("syntaxerror:")) return true
+  if (combined.includes("typeerror:")) return true
+
+  // Generic error patterns
+  if (stderr.trim().length > 0 && !stderr.includes("warning")) return true
+
+  return false
+}
+
+/**
+ * Classify the type of error for better AI understanding.
+ */
+function classifyError(
+  stdout: string,
+  stderr: string
+): { type: "syntax" | "import" | "runtime" | "unknown"; message: string } {
+  const combined = `${stdout}\n${stderr}`
+  const lowerCombined = combined.toLowerCase()
+
+  // Syntax errors
+  if (lowerCombined.includes("syntaxerror") || lowerCombined.includes("indentationerror")) {
+    const match = combined.match(/(?:SyntaxError|IndentationError):\s*(.+)/i)
+    return {
+      type: "syntax",
+      message: match ? match[1].trim() : "Syntax error in code",
+    }
+  }
+
+  // Import errors
+  if (lowerCombined.includes("importerror") || lowerCombined.includes("modulenotfounderror")) {
+    const match = combined.match(/(?:ImportError|ModuleNotFoundError):\s*(.+)/i)
+    return {
+      type: "import",
+      message: match ? match[1].trim() : "Import/module error",
+    }
+  }
+
+  // Runtime errors (NameError, TypeError, ValueError, etc.)
+  const runtimePatterns = [
+    "nameerror",
+    "typeerror",
+    "valueerror",
+    "attributeerror",
+    "referenceerror",
+  ]
+  for (const pattern of runtimePatterns) {
+    if (lowerCombined.includes(pattern)) {
+      const regex = new RegExp(`${pattern}:\\s*(.+)`, "i")
+      const match = combined.match(regex)
+      return {
+        type: "runtime",
+        message: match ? match[1].trim() : "Runtime error",
+      }
+    }
+  }
+
+  // Unknown error
+  return {
+    type: "unknown",
+    message: stderr.slice(0, 200) || "Unknown error occurred",
   }
 }

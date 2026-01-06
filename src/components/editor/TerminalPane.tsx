@@ -128,6 +128,12 @@ export function TerminalPane({
   const [scapperConversation, setScapperConversation] =
     useState<GroqMessage[]>(createEmptyConversation())
 
+  // --- ASK USER STATE ---
+  // Used when Scapper needs to ask the user a question during execution
+  const [scapperQuestion, setScapperQuestion] = useState<string | null>(null)
+  const [scapperAnswerInput, setScapperAnswerInput] = useState("")
+  const scapperAnswerResolverRef = useRef<((answer: string) => void) | null>(null)
+
   // --- CTRL+C CANCELLATION ---
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -520,6 +526,33 @@ export function TerminalPane({
           runFile,
           installPackage,
           listPackages,
+          // Agentic capabilities
+          askUser: async (question: string): Promise<string> => {
+            // Show the question in the terminal
+            setHistory((prev) => [
+              ...prev,
+              {
+                type: "output",
+                content: (
+                  <div className="my-2 rounded border border-yellow-500/30 bg-yellow-500/10 px-3 py-2">
+                    <div className="font-semibold text-yellow-400">
+                      ❓ Scapper needs clarification:
+                    </div>
+                    <div className="mt-1 text-foreground">{question}</div>
+                  </div>
+                ),
+              },
+            ])
+
+            // Set up the question state and wait for user response
+            setScapperQuestion(question)
+            setScapperAnswerInput("")
+
+            // Return a promise that resolves when user answers
+            return new Promise<string>((resolve) => {
+              scapperAnswerResolverRef.current = resolve
+            })
+          },
         },
         (progress) => {
           // Show progress in terminal
@@ -868,8 +901,48 @@ export function TerminalPane({
                       </div>
                     )}
 
-                    {/* Normal Command Prompt (hidden when waiting for input OR Python running) */}
-                    {!isWaitingForTerminalInput && !isPythonRunning && (
+                    {/* Scapper Ask User Input (when waiting for user answer) */}
+                    {scapperQuestion && (
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="text-yellow-500">❯</span>
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault()
+                            if (scapperAnswerResolverRef.current) {
+                              const answer = scapperAnswerInput.trim() || "(no response)"
+                              // Add the answer to history
+                              setHistory((prev) => [
+                                ...prev,
+                                {
+                                  type: "output",
+                                  content: <span className="text-yellow-400">↳ {answer}</span>,
+                                },
+                              ])
+                              // Resolve the promise with the answer
+                              scapperAnswerResolverRef.current(answer)
+                              scapperAnswerResolverRef.current = null
+                              setScapperQuestion(null)
+                              setScapperAnswerInput("")
+                            }
+                          }}
+                          className="flex-1"
+                        >
+                          <input
+                            type="text"
+                            value={scapperAnswerInput}
+                            onChange={(e) => setScapperAnswerInput(e.target.value)}
+                            placeholder="Type your answer..."
+                            className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none placeholder:text-muted-foreground"
+                            autoFocus
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                        </form>
+                      </div>
+                    )}
+
+                    {/* Normal Command Prompt (hidden when waiting for input OR Python running OR answering Scapper) */}
+                    {!isWaitingForTerminalInput && !isPythonRunning && !scapperQuestion && (
                       <div className="mt-1 flex items-start gap-2">
                         {!isScapperMode && !partialPrefix && (
                           <>
