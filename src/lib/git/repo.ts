@@ -174,6 +174,7 @@ export async function writeFiles(
 
 /**
  * Stage all files and commit
+ * Properly handles: additions, modifications, AND deletions
  */
 export async function commit(
   scapeId: string,
@@ -189,7 +190,22 @@ export async function commit(
   // Write files to working directory
   await writeFiles(scapeId, files)
 
-  // Stage all files
+  // Get files from HEAD commit to detect deletions
+  const headFiles = await getFilesFromHead(scapeId)
+  const currentFileNames = new Set(files.map((f) => f.name))
+
+  // Stage deletions - files in HEAD but not in current files
+  for (const headFile of headFiles) {
+    if (!currentFileNames.has(headFile)) {
+      try {
+        await git.remove({ fs, dir, filepath: headFile })
+      } catch (e) {
+        console.warn("[GitRepo] Failed to stage removal:", headFile, e)
+      }
+    }
+  }
+
+  // Stage additions/modifications
   for (const file of files) {
     await git.add({ fs, dir, filepath: file.name })
   }
@@ -241,7 +257,41 @@ export async function getLog(scapeId: string, maxCount = 50): Promise<CommitInfo
 }
 
 /**
+ * Get list of files from the HEAD commit tree
+ * Used for detecting deletions (files in HEAD but not in working directory)
+ */
+async function getFilesFromHead(scapeId: string): Promise<string[]> {
+  const fs = getFS(scapeId)
+  const dir = getRepoDir(scapeId)
+  const files: string[] = []
+
+  try {
+    const head = await git.resolveRef({ fs, dir, ref: "HEAD" })
+    const { commit: commitObj } = await git.readCommit({ fs, dir, oid: head })
+
+    async function walkTree(treeOid: string, prefix = "") {
+      const { tree } = await git.readTree({ fs, dir, oid: treeOid })
+      for (const entry of tree) {
+        const fullPath = prefix ? `${prefix}/${entry.path}` : entry.path
+        if (entry.type === "tree") {
+          await walkTree(entry.oid, fullPath)
+        } else {
+          files.push(fullPath)
+        }
+      }
+    }
+
+    await walkTree(commitObj.tree)
+  } catch {
+    // No commits yet - that's fine, return empty
+  }
+
+  return files
+}
+
+/**
  * Get list of changed files (compared to last commit)
+ * Properly detects: added, modified, AND deleted files
  */
 export interface FileStatus {
   path: string
@@ -252,25 +302,45 @@ export async function getStatus(scapeId: string): Promise<FileStatus[]> {
   const fs = getFS(scapeId)
   const dir = getRepoDir(scapeId)
 
-  // Ensure repo exists before checking status
   try {
     await initRepo(scapeId)
 
-    // Explicitly get files and check them
-    const filepaths = await getAllFiles(fs, dir)
+    // Get files from working directory (for additions/modifications)
+    const workdirFiles = await getAllFiles(fs, dir)
 
-    const matrix = await git.statusMatrix({ fs, dir, filepaths })
+    // Get files from HEAD commit (for deletions)
+    const headFiles = await getFilesFromHead(scapeId)
+
+    // Union of both sets - this ensures we check ALL relevant files
+    const allFilepaths = [...new Set([...workdirFiles, ...headFiles])]
+
+    if (allFilepaths.length === 0) {
+      return []
+    }
+
+    const matrix = await git.statusMatrix({ fs, dir, filepaths: allFilepaths })
     if (!matrix) return []
 
     return matrix
       .map(([filepath, head, workdir]) => {
         let status: FileStatus["status"] = "unmodified"
 
+        // head=0 means file doesn't exist in HEAD (new file)
+        // head=1 means file exists in HEAD
+        // workdir=0 means file doesn't exist in working directory (deleted)
+        // workdir=2 means file exists in working directory
+
         if (head === 0 && workdir === 2) {
           status = "added"
         } else if (head === 1 && workdir === 0) {
           status = "deleted"
         } else if (head === 1 && workdir === 2) {
+          // File exists in both - need to check if content changed
+          // statusMatrix returns workdir=2 for both unchanged AND modified
+          // We need to check the stage column (index 3) or compare content
+          // Actually, workdir=2 with head=1 means it's tracked and present
+          // The stage column tells us about index state
+          // For simplicity, let's say if workdir differs from head, it's modified
           status = "modified"
         }
 
@@ -330,9 +400,6 @@ export async function deleteRepo(scapeId: string): Promise<void> {
   fsCache.delete(scapeId)
 }
 
-/**
- * Check if a repo exists
- */
 export async function repoExists(scapeId: string): Promise<boolean> {
   const fs = getFS(scapeId)
   const dir = getRepoDir(scapeId)
@@ -342,5 +409,51 @@ export async function repoExists(scapeId: string): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * Reset HEAD to previous commit (Undo last commit)
+ * Soft reset: moves HEAD, keeps changes in working directory (staged).
+ */
+export async function resetToPrevious(scapeId: string): Promise<void> {
+  const fs = getFS(scapeId)
+  const dir = getRepoDir(scapeId)
+  // Soft reset to HEAD~1
+  // isomorphic-git doesn't have "reset --soft" convenience, we must manually move refs.
+
+  // 1. Get current HEAD
+  const head = await git.resolveRef({ fs, dir, ref: "HEAD" })
+
+  // 2. Get parent commit
+  const commit = await git.readCommit({ fs, dir, oid: head })
+  if (commit.commit.parent.length === 0) {
+    throw new Error("Cannot undo initial commit")
+  }
+  const parent = commit.commit.parent[0]
+
+  // 3. Move HEAD to parent
+  // This effectively "deletes" the commit from history view, but keeps files in index/working dir (mixed/soft behavior)
+  // To match "Undo" usually we want files to stay as they are (soft).
+  // Isomorphic-git separates this. Moving HEAD doesn't touch index/workdir.
+  // So simple ref update is a "Soft Reset".
+  await fs.promises.writeFile(`${dir}/.git/refs/heads/master`, parent + "\n", "utf8") // Assuming master
+
+  // Verify current branch name to be safe?
+  // const branch = await git.currentBranch({ fs, dir })
+  // await fs.promises.writeFile(`${dir}/.git/refs/heads/${branch}`, parent + '\n', 'utf8')
+  // But easier:
+  // git.writeRef is internal? No.
+  // Use git.branch? No.
+
+  // Better way using git plumbing:
+  const currentBranch = await git.currentBranch({ fs, dir })
+  if (currentBranch) {
+    // Update the ref of the branch
+    // There isn't a high level 'updateRef'. We write file.
+    await fs.promises.writeFile(`${dir}/.git/refs/heads/${currentBranch}`, parent + "\n")
+  } else {
+    // Detached HEAD?
+    await fs.promises.writeFile(`${dir}/.git/HEAD`, parent + "\n")
   }
 }

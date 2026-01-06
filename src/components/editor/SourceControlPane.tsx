@@ -9,7 +9,17 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { GitCommit, RefreshCw, RotateCcw, Plus, Minus, Edit3, Clock, Check } from "lucide-react"
+import {
+  GitCommit,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+  Plus,
+  Minus,
+  Edit3,
+  Clock,
+  Check,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ScapeFile } from "@/types/file"
 import type { FileStatus } from "@/lib/git/repo"
@@ -158,18 +168,29 @@ export function SourceControlPane({ scapeId, onRestoreFiles, git }: SourceContro
                       <p className="text-[10px] text-muted-foreground">
                         {new Date(c.timestamp).toLocaleString()} &middot; {c.sha.slice(0, 7)}
                       </p>
+                      {idx > 0 && onRestoreFiles && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 opacity-0 group-hover:opacity-100"
+                          onClick={() => handleRestore(c.sha)}
+                          title="Restore to this commit"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                        </Button>
+                      )}
+                      {idx === 0 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-destructive opacity-0 hover:text-destructive group-hover:opacity-100"
+                          onClick={() => git.undoCommit()}
+                          title="Undo this commit"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
-                    {idx > 0 && onRestoreFiles && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 opacity-0 group-hover:opacity-100"
-                        onClick={() => handleRestore(c.sha)}
-                        title="Restore to this commit"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                      </Button>
-                    )}
                   </div>
                 ))}
               </div>

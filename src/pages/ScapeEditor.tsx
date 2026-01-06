@@ -1395,16 +1395,48 @@ export default function ScapeEditor() {
                     files={files}
                     git={git}
                     onRestoreFiles={async (restoredFiles) => {
-                      // Apply restored files to file system
+                      // 1. Identify files to delete (present in current `files`, absent in `restoredFiles`)
+                      const restoredNames = new Set(restoredFiles.map((f) => f.name))
+                      const filesToDelete = files.filter(
+                        (f) => !restoredNames.has(f.name) && f.language !== "folder"
+                      )
+                      for (const f of filesToDelete) {
+                        if (f.name) await deleteFile(f.name)
+                      }
+
+                      // 2. Identify files to create/update
                       for (const file of restoredFiles) {
-                        await updateFile(file.name, file.content)
+                        const existing = files.find((f) => f.name === file.name)
+                        if (existing) {
+                          await updateFile(file.name, file.content)
+                        } else {
+                          // Infer language from extension
+                          const ext = file.name.split(".").pop()?.toLowerCase()
+                          type LangType = Parameters<typeof createFile>[1]
+                          let lang: LangType = "plaintext"
+                          if (ext === "html") lang = "html"
+                          else if (ext === "css") lang = "css"
+                          else if (ext === "js") lang = "javascript"
+                          else if (ext === "ts") lang = "javascript"
+                          else if (ext === "json") lang = "json"
+                          else if (ext === "py") lang = "python"
+                          else if (ext === "md") lang = "markdown"
+                          else if (ext === "csv") lang = "csv"
+                          else if (ext === "r") lang = "r"
+
+                          await createFile(file.name, lang, file.content)
+                        }
                       }
 
                       // Also refresh the UI
-                      setDebouncedFiles([...files])
-                      if (previewRef.current?.restart) {
-                        previewRef.current.restart()
-                      }
+                      // Force a small delay to allow async states to settle if needed, though await should suffice
+                      setTimeout(() => {
+                        setDebouncedFiles([...files]) // Trigger re-render if needed
+                        if (previewRef.current?.restart) {
+                          previewRef.current.restart()
+                        }
+                      }, 100)
+
                       toast({ title: "Restored", description: "Files restored to selected commit" })
                     }}
                   />

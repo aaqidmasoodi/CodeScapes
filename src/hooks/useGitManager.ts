@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useDebounce } from "@/hooks/useDebounce"
 import {
   syncFileSystem,
   getLog,
   getStatus,
+  resetToPrevious,
   commit as gitCommit,
   checkout,
   type CommitInfo,
@@ -20,7 +21,20 @@ export interface GitManager {
   history: CommitInfo[]
   commit: (message: string) => Promise<void>
   checkout: (sha: string) => Promise<Array<{ name: string; content: string }>>
+  undoCommit: () => Promise<void>
   refresh: (sync?: boolean) => Promise<void>
+}
+
+/**
+ * Helper to convert ScapeFile[] to simple file data for git operations
+ */
+function toFileData(files: ScapeFile[]): Array<{ name: string; content: string }> {
+  return files
+    .filter((f) => f.language !== "folder" && f.content !== undefined)
+    .map((f) => ({
+      name: f.name,
+      content: typeof f.content === "string" ? f.content : "",
+    }))
 }
 
 export function useGitManager(
@@ -34,18 +48,26 @@ export function useGitManager(
   const [changedFiles, setChangedFiles] = useState<FileStatus[]>([])
   const [history, setHistory] = useState<CommitInfo[]>([])
 
+  // Keep a ref to the latest files to avoid dependency issues
+  // This allows refresh() to always access current files without being in deps
+  const latestFilesRef = useRef<ScapeFile[]>(files)
+  useEffect(() => {
+    latestFilesRef.current = files
+  }, [files])
+
   // Debounce file changes (1s)
   const debouncedFiles = useDebounce(files, 1000)
 
-  // Refresh Status & History
+  // Core refresh function - always uses latestFilesRef when sync=true
   const refresh = useCallback(
-    async (sync = false, filesSnapshot?: Array<{ name: string; content: string }>) => {
+    async (sync = false) => {
       if (!scapeId) return
 
       setIsLoading(true)
       try {
-        if (sync && filesSnapshot) {
-          await syncFileSystem(scapeId, filesSnapshot)
+        if (sync) {
+          const fileData = toFileData(latestFilesRef.current)
+          await syncFileSystem(scapeId, fileData)
         }
 
         const [status, log] = await Promise.all([getStatus(scapeId), getLog(scapeId)])
@@ -62,56 +84,70 @@ export function useGitManager(
     [scapeId]
   )
 
-  // Initial Load
+  // Initial Load - sync files to git on first mount
   useEffect(() => {
-    if (scapeId) {
-      refresh(true)
+    if (scapeId && files.length > 0) {
+      // Wait a tick for latestFilesRef to be populated
+      const timer = setTimeout(() => {
+        refresh(true)
+      }, 100)
+      return () => clearTimeout(timer)
     }
-  }, [scapeId, refresh])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scapeId]) // Only run once when scapeId is set, files are handled by ref
 
-  // Auto-Sync on File Change
+  // Auto-Sync on File Change (debounced)
   useEffect(() => {
-    if (isReady && debouncedFiles.length > 0) {
-      const fileData = debouncedFiles
-        .filter((f) => f.language !== "folder" && f.content !== undefined)
-        .map((f) => ({
-          name: f.name,
-          content: typeof f.content === "string" ? f.content : "",
-        }))
-      refresh(true, fileData)
+    if (isReady && debouncedFiles.length >= 0) {
+      // Allow empty array to trigger sync (for deletion detection)
+      refresh(true)
     }
   }, [debouncedFiles, isReady, refresh])
 
   // Commit Action
-  const commit = async (message: string) => {
-    if (!scapeId) return
-    setIsCommitting(true)
-    try {
-      const fileData = files
-        .filter((f) => f.language !== "folder" && f.content !== undefined)
-        .map((f) => ({
-          name: f.name,
-          content: typeof f.content === "string" ? f.content : "",
-        }))
+  const commit = useCallback(
+    async (message: string) => {
+      if (!scapeId) return
+      setIsCommitting(true)
+      try {
+        const fileData = toFileData(latestFilesRef.current)
 
-      await gitCommit(scapeId, message, fileData)
+        await gitCommit(scapeId, message, fileData)
 
-      if (isCloud) {
-        await syncToCloud(scapeId)
+        if (isCloud) {
+          await syncToCloud(scapeId)
+        }
+
+        await refresh(false) // Just refresh status, files already in sync
+      } catch (e) {
+        console.error("[Git] Commit failed", e)
+      } finally {
+        setIsCommitting(false)
       }
+    },
+    [scapeId, isCloud, refresh]
+  )
 
-      await refresh(false) // No need to sync files again, just status
+  const checkoutCommit = useCallback(
+    async (sha: string) => {
+      if (!scapeId) return []
+      return checkout(scapeId, sha)
+    },
+    [scapeId]
+  )
+
+  const undoCommit = useCallback(async () => {
+    if (!scapeId) return
+    setIsLoading(true)
+    try {
+      await resetToPrevious(scapeId)
+      await refresh(false)
     } catch (e) {
-      console.error("[Git] Commit failed", e)
+      console.error("Undo failed", e)
     } finally {
-      setIsCommitting(false)
+      setIsLoading(false)
     }
-  }
-
-  const checkoutCommit = async (sha: string) => {
-    if (!scapeId) return []
-    return checkout(scapeId, sha)
-  }
+  }, [scapeId, refresh])
 
   return {
     isReady,
@@ -121,6 +157,7 @@ export function useGitManager(
     history,
     commit,
     checkout: checkoutCommit,
+    undoCommit,
     refresh,
   }
 }
