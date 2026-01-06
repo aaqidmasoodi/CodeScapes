@@ -37,7 +37,7 @@ export function ScapeCard({ scapeIndex = 0, delay = 0, className }: ScapeCardPro
     >
       <Link
         to={`/community/scape/${scape.id}`}
-        className="group relative block aspect-[4/3] overflow-hidden rounded-2xl border border-black/10 shadow-sm transition-all hover:shadow-lg dark:border-white/5"
+        className="group relative block aspect-[4/3] overflow-hidden rounded-2xl border border-white/20 shadow-lg shadow-black/5 backdrop-blur-xl transition-all hover:shadow-xl dark:border-white/10"
       >
         {scape.thumbnail ? (
           <img

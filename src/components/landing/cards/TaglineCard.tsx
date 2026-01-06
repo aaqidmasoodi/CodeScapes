@@ -13,7 +13,7 @@ export function TaglineCard() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay: 0.2, ease: appleEase }}
     >
-      <div className="flex h-full flex-col justify-center rounded-2xl border border-black/10 bg-white/80 p-6 shadow-sm dark:border-white/5 dark:bg-white/[0.02] dark:shadow-none lg:p-8">
+      <div className="flex h-full flex-col justify-center rounded-2xl border border-white/20 bg-white/60 p-6 shadow-lg shadow-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none lg:p-8">
         <h1 className="text-3xl font-bold tracking-tight lg:text-4xl">
           Code.
           <br />

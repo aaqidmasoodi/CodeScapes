@@ -39,7 +39,7 @@ export function SectionCard({
       viewport={{ once: true }}
       transition={{ duration: 0.6, delay, ease: appleEase }}
     >
-      <div className="flex h-full flex-col justify-center rounded-2xl border border-black/10 bg-gradient-to-br from-emerald-500/10 via-white/80 to-white/60 p-8 shadow-sm dark:border-white/5 dark:from-emerald-500/10 dark:via-zinc-900/80 dark:to-zinc-900/60 lg:p-10">
+      <div className="flex h-full flex-col justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-emerald-500/10 via-white/60 to-white/40 p-8 shadow-lg shadow-black/5 backdrop-blur-xl dark:border-white/10 dark:from-emerald-500/5 dark:via-white/[0.03] dark:to-white/[0.02] dark:shadow-none lg:p-10">
         <h2 className="text-3xl font-bold tracking-tight lg:text-4xl">
           {words.map((word, i) => (
             <span key={i}>

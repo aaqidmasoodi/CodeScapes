@@ -13,7 +13,7 @@ export function CTACard() {
       viewport={{ once: true }}
       transition={{ duration: 0.6, ease: appleEase }}
     >
-      <div className="relative overflow-hidden rounded-2xl border border-black/5 bg-gradient-to-br from-background via-emerald-500/5 to-background py-16 text-center dark:border-white/5 lg:py-24">
+      <div className="relative overflow-hidden rounded-2xl border border-white/20 bg-white/60 py-16 text-center shadow-lg shadow-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none lg:py-24">
         {/* Subtle Background Elements */}
         <div className="absolute inset-0 -z-10">
           <div className="absolute left-1/4 top-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/5 blur-[100px]" />

@@ -27,7 +27,7 @@ export function FeatureCard({
       viewport={{ once: true, margin: "-30px" }}
       transition={{ duration: 0.5, delay, ease: appleEase }}
     >
-      <div className="group relative h-full overflow-hidden rounded-2xl border border-black/10 bg-white/80 p-5 shadow-sm transition-all hover:border-emerald-500/30 hover:shadow-md dark:border-white/5 dark:bg-white/[0.02] dark:shadow-none dark:hover:bg-white/[0.04]">
+      <div className="group relative h-full overflow-hidden rounded-2xl border border-white/20 bg-white/60 p-5 shadow-lg shadow-black/5 backdrop-blur-xl transition-all hover:border-emerald-500/30 hover:shadow-xl dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none dark:hover:bg-white/[0.06]">
         <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 transition-colors group-hover:bg-emerald-500 group-hover:text-white">
           <Icon className="h-4 w-4" />
         </div>
