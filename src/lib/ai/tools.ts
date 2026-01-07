@@ -892,12 +892,12 @@ async function executeInstallPackage(
     const result = await Promise.race([ctx.installPackage(payload), timeoutPromise])
 
     if (result.success) {
-      results.push(`✓ Installed ${packages.join(", ")}`)
+      results.push(`Installed ${packages.join(", ")}`)
     } else {
-      errors.push(`✗ Failed: ${result.error}`)
+      errors.push(`Failed: ${result.error}`)
     }
   } catch (error) {
-    errors.push(`✗ Error: ${error instanceof Error ? error.message : String(error)}`)
+    errors.push(`Error: ${error instanceof Error ? error.message : String(error)}`)
   }
 
   const success = errors.length === 0
@@ -1078,7 +1078,7 @@ function executeViewFileOutline(path: string, ctx: ToolContext): ToolResult {
 
   const lines = file.content.split("\n")
   const outline: string[] = []
-  outline.push(`📄 ${path} (${lines.length} lines)`)
+  outline.push(`${path} (${lines.length} lines)`)
   outline.push("")
 
   const lang = file.language || ""
