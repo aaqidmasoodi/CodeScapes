@@ -198,7 +198,7 @@ export function usePreviewBridge(
   const lastSentVersion = useRef<number | undefined>(versionKey)
 
   useLayoutEffect(() => {
-    if (envRef.current?.hotUpdate === "true" && bridgeState.ready && iframeRef?.current) {
+    if (env?.hotUpdate === "true" && bridgeState.ready && iframeRef?.current) {
       if (lastSentHash.current !== filesHash || lastSentVersion.current !== versionKey) {
         lastSentHash.current = filesHash
         lastSentVersion.current = versionKey
@@ -213,16 +213,18 @@ export function usePreviewBridge(
         }
 
         debug.log("[Bridge] Hot Swapping Files...")
+        // Use `files` prop directly instead of filesRef.current to avoid stale data
+        // (useLayoutEffect runs before the useEffect that updates filesRef)
         iframeRef.current.contentWindow?.postMessage(
           {
             type: "COMPILE_FILES",
-            payload: { scapeId, socketId, files: filesRef.current, env: envRef.current },
+            payload: { scapeId, socketId, files, env },
           },
           bootloaderOrigin
         )
       }
     }
-  }, [filesHash, versionKey, bridgeState.ready, scapeId, socketId, iframeRef])
+  }, [filesHash, versionKey, bridgeState.ready, scapeId, socketId, iframeRef, files, env])
 
   return bridgeState
 }
