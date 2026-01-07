@@ -594,6 +594,10 @@ export function TerminalPane({
               },
             ])
           } else if (progress.type === "result") {
+            // Skip PLAN_PROPOSAL messages - they're handled separately in final message
+            if (progress.message?.includes("[PLAN_PROPOSAL]")) {
+              return // Don't show raw JSON, will be rendered as PlanProposal
+            }
             setHistory((prev) => [
               ...prev,
               {

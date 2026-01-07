@@ -833,8 +833,13 @@ export default function ScapeEditor() {
   const handleFileSystemUpdate = useCallback(
     async (updatedFiles: ScapeFile[]) => {
       // Sync logic: Worker -> Editor
+      // IMPORTANT: Skip source code files that the user might be editing.
+      // Only sync: (1) NEW files created by Python, (2) non-source files like data outputs
+      const sourceExtensions = [".py", ".js", ".ts", ".html", ".css", ".jsx", ".tsx", ".md"]
+
       for (const newFile of updatedFiles) {
         const existing = files.find((f) => f.name === newFile.name)
+        const isSourceFile = sourceExtensions.some((ext) => newFile.name.endsWith(ext))
 
         // Check for Base64 encoding
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -852,18 +857,13 @@ export default function ScapeEditor() {
         }
 
         if (!existing) {
-          // New File Created by Script
+          // New File Created by Script - always add
           const lang = getLanguageFromFilename(newFile.name)
           await createFile(newFile.name, lang as ScapeFile["language"], content)
-        } else {
-          // Existing File
-          // Compare content? Difficult with Uint8Array vs String vs DB types.
-          // For now, assume update if it came from worker.
-          // We can do a quick length check or just overwrite.
-          // Overwriting is safer for correctness.
-
+        } else if (!isSourceFile) {
+          // Existing non-source file (like data.csv, output.txt, image.png)
+          // Safe to overwrite since user probably isn't editing these in the code editor
           if (typeof existing.content !== typeof content || existing.content !== content) {
-            // Deep equality for Uint8Array?
             if (content instanceof Uint8Array && existing.content instanceof Uint8Array) {
               // Compare bytes
               let changed = false
@@ -882,6 +882,7 @@ export default function ScapeEditor() {
             }
           }
         }
+        // else: Existing source file - SKIP to preserve user edits
       }
     },
     [files, createFile, updateFile]

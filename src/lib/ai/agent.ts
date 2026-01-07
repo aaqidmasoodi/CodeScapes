@@ -65,7 +65,10 @@ const COMMON_RULES = `
 **WORKFLOW for complex/multi-file changes**:
 1. Use \`propose_plan\` to show the user what you intend to do
 2. Wait for user to approve the plan
-3. Once approved (user says yes/approve/continue), proceed with execution
+3. Once approved (user says yes/approve/continue/proceed), IMMEDIATELY EXECUTE the plan
+   - CRITICAL: Do NOT call propose_plan again after approval
+   - CRITICAL: Do NOT ask for confirmation again - just DO IT
+   - Start creating/modifying files according to the approved plan
 4. For simple single-file edits, you can skip planning and edit directly
 
 **OUTPUT FORMAT**: 
