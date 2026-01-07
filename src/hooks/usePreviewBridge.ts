@@ -32,19 +32,16 @@ export function usePreviewBridge(
   const filesHash = useMemo(() => {
     return files
       .map((f) => {
-        let size = 0
-        let preview = ""
+        let contentHash = ""
         if (typeof f.content === "string") {
-          size = f.content.length
-          preview = f.content.slice(0, 20)
+          // Hash the FULL content for reliable change detection
+          contentHash = computeHash(f.content)
         } else if (f.content instanceof Blob) {
-          size = f.content.size
-          preview = "blob"
+          contentHash = `blob:${f.content.size}`
         } else if (f.content instanceof Uint8Array || f.content instanceof ArrayBuffer) {
-          size = f.content.byteLength
-          preview = "bin"
+          contentHash = `bin:${f.content.byteLength}`
         }
-        return `${f.name}:${size}:${preview}`
+        return `${f.name}:${contentHash}`
       })
       .sort()
       .join("|")
