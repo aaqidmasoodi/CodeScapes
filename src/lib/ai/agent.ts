@@ -8,6 +8,7 @@ import { chatCompletion, parseToolArguments, GroqAPIError } from "./groqClient"
 import type { GroqMessage, GroqToolCall } from "./groqClient"
 import { getToolsForEnvironment, executeTool } from "./tools"
 import type { ToolContext, ToolResult } from "./tools"
+import { buildProjectContext, formatContextForPrompt } from "./context"
 
 // --- Dynamic System Prompt Builder ---
 
@@ -158,17 +159,36 @@ ${COMMON_RULES}
 `
 }
 
-function buildSystemPrompt(ctx: ToolContext): string {
+async function buildSystemPrompt(ctx: ToolContext): Promise<string> {
+  // Build the base prompt based on environment
+  let basePrompt: string
   switch (ctx.environment.id) {
     case "web":
-      return buildWebPrompt(ctx)
+      basePrompt = buildWebPrompt(ctx)
+      break
     case "python":
-      return buildPythonPrompt(ctx)
+      basePrompt = buildPythonPrompt(ctx)
+      break
     case "r":
-      return buildRPrompt(ctx)
+      basePrompt = buildRPrompt(ctx)
+      break
     default:
-      return buildGenericPrompt(ctx)
+      basePrompt = buildGenericPrompt(ctx)
   }
+
+  // Inject project context (file tree, dependencies, memories)
+  try {
+    const projectContext = await buildProjectContext(ctx.scapeId, ctx.files, ctx.dependencies)
+    const contextSection = formatContextForPrompt(projectContext)
+
+    if (contextSection) {
+      basePrompt += `\n\n---\n${contextSection}`
+    }
+  } catch (e) {
+    console.warn("[Agent] Failed to build context:", e)
+  }
+
+  return basePrompt
 }
 
 // --- History Compression ---
@@ -218,7 +238,7 @@ export async function runScapper(
   signal?: AbortSignal
 ): Promise<{ result: ScapperResult; updatedHistory: GroqMessage[] }> {
   // Build dynamic system prompt based on environment
-  const systemPrompt = buildSystemPrompt(toolContext)
+  const systemPrompt = await buildSystemPrompt(toolContext)
 
   // Get tools based on environment capabilities
   const tools = getToolsForEnvironment(toolContext.environment.capabilities)

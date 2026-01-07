@@ -517,6 +517,7 @@ export function TerminalPane({
         trimmed,
         scapperConversation,
         {
+          scapeId: scapeId || "",
           files,
           createFile: async (name, type, content) => {
             if (onCreateFile) await onCreateFile(name, type, content)

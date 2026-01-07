@@ -9,6 +9,7 @@ import type { ScapeFile } from "@/types/file"
 import { searchFiles, replaceInFile } from "@/lib/search"
 import { getLanguageFromFilename } from "@/lib/language-utils"
 import { applySafeChanges, type SafeChange } from "./safe-diff"
+import { saveMemory } from "./memory"
 
 // --- Base Tool Definitions (sent to LLM) ---
 
@@ -306,6 +307,29 @@ const PLANNING_TOOLS: GroqTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "save_memory",
+      description:
+        "Save a summary of important decisions or context for future sessions. Use this when the user makes a significant preference known, or after completing a major task.",
+      parameters: {
+        type: "object",
+        properties: {
+          summary: {
+            type: "string",
+            description: "Brief summary of what was discussed or accomplished",
+          },
+          keyDecisions: {
+            type: "array",
+            items: { type: "string" },
+            description: "List of key decisions or preferences the user expressed",
+          },
+        },
+        required: ["summary"],
+      },
+    },
+  },
 ]
 
 // --- Execution Tools (conditionally available) ---
@@ -460,6 +484,9 @@ export interface InstallResult {
 // --- Tool Executor Context ---
 
 export interface ToolContext {
+  // Scape identification (for memory storage)
+  scapeId: string
+
   // File operations
   files: ScapeFile[]
   createFile: (name: string, type: ScapeFile["language"], content?: string) => Promise<void>
@@ -552,6 +579,9 @@ export async function executeTool(
 
       case "execute_plan":
         return executeExecutePlan(args.confirmation)
+
+      case "save_memory":
+        return await executeSaveMemory(args.summary, args.keyDecisions, ctx)
 
       default:
         return { success: false, output: "", error: `Unknown tool: ${toolName}` }
@@ -1381,5 +1411,29 @@ function executeExecutePlan(confirmation: string): ToolResult {
   return {
     success: true,
     output: "[PLAN_APPROVED] Proceeding with execution...",
+  }
+}
+
+async function executeSaveMemory(
+  summary: string,
+  keyDecisions: string[] = [],
+  ctx: ToolContext
+): Promise<ToolResult> {
+  try {
+    // Get list of files that were likely modified this session
+    const filesChanged = ctx.files.filter((f) => f.language !== "folder").map((f) => f.name)
+
+    await saveMemory(ctx.scapeId, summary, filesChanged, keyDecisions)
+
+    return {
+      success: true,
+      output: `Memory saved: "${summary}"`,
+    }
+  } catch (e) {
+    return {
+      success: false,
+      output: "",
+      error: `Failed to save memory: ${e instanceof Error ? e.message : String(e)}`,
+    }
   }
 }
