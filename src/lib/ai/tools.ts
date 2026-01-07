@@ -10,6 +10,7 @@ import { searchFiles, replaceInFile } from "@/lib/search"
 import { getLanguageFromFilename } from "@/lib/language-utils"
 import { applySafeChanges, type SafeChange } from "./safe-diff"
 import { saveMemory } from "./memory"
+import { updateFileCache } from "./fileCache"
 
 // --- Base Tool Definitions (sent to LLM) ---
 
@@ -631,6 +632,9 @@ function executeReadFile(path: string, ctx: ToolContext): ToolResult {
       `\n\n[...File truncated. Displaying first ${MAX_CHARS} of ${file.content.length} characters. Use chunked reading if needed.]`
   }
 
+  // Update Cache
+  updateFileCache(file.name, content)
+
   return { success: true, output: content }
 }
 
@@ -666,6 +670,9 @@ async function executeCreateFile(
     content: normalizedContent,
   }
   ctx.files.push(newFile)
+
+  // Update Cache
+  updateFileCache(path, normalizedContent)
 
   const lines = normalizedContent.split("\n").length
   return { success: true, output: `Created ${path} (${lines} lines)` }
@@ -738,6 +745,9 @@ async function executeOverwriteFile(
 
   // Update local context AFTER callback succeeds
   ctx.files[fileIndex] = { ...file, content: normalizedContent }
+
+  // Update Cache
+  updateFileCache(targetPath, normalizedContent)
 
   const lines = normalizedContent.split("\n").length
   return { success: true, output: `Overwrote ${path} (${lines} lines)` }
@@ -991,6 +1001,9 @@ async function executeApplyDiff(
 
   // Persist change
   await ctx.updateFile(file.name, result.newContent)
+
+  // Update Cache
+  updateFileCache(file.name, result.newContent)
 
   const newLines = result.newContent.split("\n").length
   const linesDelta = newLines - originalLines

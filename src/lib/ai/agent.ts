@@ -9,6 +9,7 @@ import type { GroqMessage, GroqToolCall } from "./groqClient"
 import { getToolsForEnvironment, executeTool } from "./tools"
 import type { ToolContext, ToolResult } from "./tools"
 import { buildProjectContext, formatContextForPrompt } from "./context"
+import { formatFileCacheForPrompt } from "./fileCache"
 
 // --- Dynamic System Prompt Builder ---
 
@@ -274,7 +275,13 @@ export async function runScapper(
   signal?: AbortSignal
 ): Promise<{ result: ScapperResult; updatedHistory: GroqMessage[] }> {
   // Build dynamic system prompt based on environment
-  const systemPrompt = await buildSystemPrompt(toolContext)
+  let systemPrompt = await buildSystemPrompt(toolContext)
+
+  // Inject File Cache
+  const fileCacheContext = formatFileCacheForPrompt()
+  if (fileCacheContext) {
+    systemPrompt += fileCacheContext
+  }
 
   // Get tools based on environment capabilities
   const tools = getToolsForEnvironment(toolContext.environment.capabilities)
@@ -297,7 +304,7 @@ export async function runScapper(
   try {
     // Agent loop - keep going until no more tool calls
     let loopCount = 0
-    const MAX_LOOPS = 15 // Safety limit
+    const MAX_LOOPS = 30 // Safety limit
 
     while (loopCount < MAX_LOOPS) {
       loopCount++
@@ -363,7 +370,7 @@ export async function runScapper(
         }
 
         // Small delay between iterations to avoid rate limits
-        await sleep(3000)
+        await sleep(4000)
 
         // Continue the loop to let the model process tool results
         continue
