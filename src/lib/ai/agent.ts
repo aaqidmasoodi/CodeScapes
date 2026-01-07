@@ -9,7 +9,7 @@ import type { GroqMessage, GroqToolCall } from "./groqClient"
 import { getToolsForEnvironment, executeTool } from "./tools"
 import type { ToolContext, ToolResult } from "./tools"
 import { buildProjectContext, formatContextForPrompt } from "./context"
-import { formatFileCacheForPrompt } from "./fileCache"
+import { formatFileCacheForPrompt, clearFileCache } from "./fileCache"
 
 // --- Dynamic System Prompt Builder ---
 
@@ -36,10 +36,10 @@ const COMMON_RULES = `
 6. **CODE DELIVERY**: 
    - ALWAYS put code into files. NEVER just dump code blocks in chat.
 7. **VERIFICATION** (IMPORTANT):
-   - ALWAYS use \`verify_and_run\` after making changes to check they work
-   - If errors are detected, analyze the error and FIX IT immediately
-   - Self-correct up to 3 times before asking user for help
-   - Don't consider a task done until the code runs without errors
+   - NEVER run \`verify_and_run\` automatically after creating/editing code
+   - ALWAYS ask the user: "Would you like me to run/verify this code?"
+   - Only run verification if the user explicitly says YES
+   - You can still statically analyze syntax, but do not execute code without permission
 8. **SELF-CORRECTION** (CRITICAL):
    - If apply_diff FAILS with "Text not found": RE-READ the file to see actual content, then try again
    - NEVER claim success if edits failed - be honest and keep trying
@@ -55,13 +55,12 @@ const COMMON_RULES = `
 2. \`apply_diff\` with search/replace changes
    Example: apply_diff("main.py", [{search: "old_code", replace: "new_code"}])
 3. If apply_diff FAILS: \`read_file\` again to see what's actually there, then retry
-4. \`verify_and_run\` to check the code works
+4. Ask user to verify (or use \`verify_and_run\` if permitted)
 5. If error: analyze and fix with \`apply_diff\`, then verify again
 
 **WORKFLOW for new files**:
 1. \`create_file\` with the content
-2. \`verify_and_run\` to check the code works
-3. If error: analyze and fix, verify again
+2. If error: analyze and fix, verify again
 
 **WORKFLOW for complex/multi-file changes**:
 1. Use \`propose_plan\` to show the user what you intend to do
@@ -113,7 +112,7 @@ function buildWebPrompt(ctx: ToolContext): string {
 **WORKFLOW FOR WEB PROJECTS**:
 1. For NEW files or complete rewrites: Use \`overwrite_file\` (NOT apply_diff for initial creation)
 2. Create files in order: index.html → style.css → script.js
-3. After creation, use \`verify_and_run\` to check output
+3. Ask user if they want to run/preview the website
 4. For small targeted edits to existing files: Use \`apply_diff\`
 
 **WEB RULES**:
@@ -274,6 +273,11 @@ export async function runScapper(
   onProgress: (progress: ScapperProgress) => void,
   signal?: AbortSignal
 ): Promise<{ result: ScapperResult; updatedHistory: GroqMessage[] }> {
+  // Clear file cache if this is a new conversation
+  if (conversationHistory.length === 0) {
+    clearFileCache()
+  }
+
   // Build dynamic system prompt based on environment
   let systemPrompt = await buildSystemPrompt(toolContext)
 
