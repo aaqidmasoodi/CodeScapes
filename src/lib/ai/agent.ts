@@ -65,11 +65,15 @@ const COMMON_RULES = `
 **WORKFLOW for complex/multi-file changes**:
 1. Use \`propose_plan\` to show the user what you intend to do
 2. Wait for user to approve the plan
-3. Once approved (user says yes/approve/continue), proceed with execution
+3. Once approved (user says yes/approve/continue/proceed), IMMEDIATELY EXECUTE the plan
+   - CRITICAL: Do NOT call propose_plan again after approval
+   - CRITICAL: Do NOT ask for confirmation again - just DO IT
+   - Start creating/modifying files according to the approved plan
 4. For simple single-file edits, you can skip planning and edit directly
 
 **OUTPUT FORMAT**: 
 - Brief summary with ✓ bullets. NO XML tags. 1-3 lines max.
+- NEVER use emojis. Use plain text only.
 - Keep responses SIMPLE and user-friendly
 - NEVER expose internal details like "Pyodide", "entry point", or system architecture
 - NEVER mention tool names to users
@@ -466,18 +470,18 @@ async function executeToolCall(
     // For read_file, show compact summary instead of full content
     if (toolName === "read_file") {
       const lineCount = result.output.split("\n").length
-      progressMessage = `📄 Analyzed ${args.path} (${lineCount} lines)`
+      progressMessage = `Analyzed ${args.path} (${lineCount} lines)`
     }
     // For list_files, show count instead of full list if many files
     else if (toolName === "list_files" && result.output.split("\n").length > 5) {
       const fileCount = result.output.split("\n").length
-      progressMessage = `📁 Found ${fileCount} files in project`
+      progressMessage = `Found ${fileCount} files in project`
     }
     // For search_files, show match count
     else if (toolName === "search_files") {
       const matchCount = (result.output.match(/\n/g) || []).length + 1
       if (matchCount > 5) {
-        progressMessage = `🔍 Found ${matchCount} matches for "${args.query}"`
+        progressMessage = `Found ${matchCount} matches for "${args.query}"`
       }
     }
     // For analyze_codebase, show compact summary
@@ -488,7 +492,7 @@ async function executeToolCall(
     // For view_file_outline, show compact summary
     else if (toolName === "view_file_outline") {
       const lines = result.output.split("\n").filter((l) => l.trim())
-      progressMessage = `📄 ${lines[0] || safePath}`
+      progressMessage = `${lines[0] || safePath}`
     }
     // For apply_diff, the output is already formatted nicely
     else if (toolName === "apply_diff") {
@@ -506,7 +510,7 @@ async function executeToolCall(
         const msgMatch = result.output.match(/Message: (.+)/)
         const errorType = typeMatch ? typeMatch[1] : "error"
         const errorMsg = msgMatch ? msgMatch[1].slice(0, 60) : "See output for details"
-        progressMessage = `⚠️ Code ran but has ${errorType}: ${errorMsg}`
+        progressMessage = `Code ran but has ${errorType}: ${errorMsg}`
       } else if (result.output.includes("(No output")) {
         progressMessage = "✓ Code ran successfully (no output)"
       } else {

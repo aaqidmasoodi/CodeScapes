@@ -3,6 +3,7 @@ import {
   Terminal as TerminalIcon,
   X,
   AlertCircle,
+  AlertTriangle,
   ChevronUp,
   FileText,
   FilePlus,
@@ -10,7 +11,10 @@ import {
   Trash2,
   Play,
   Package,
+  XCircle,
+  CheckCircle,
 } from "lucide-react"
+import { ScapperIcon } from "@/components/brand/ScapperIcon"
 import { PlanProposal, type ScapperPlan } from "./PlanProposal"
 import { useShell } from "@/hooks/useShell"
 import { useAuth } from "@/hooks/useAuth"
@@ -158,7 +162,11 @@ export function TerminalPane({
             ...prev,
             {
               type: "output",
-              content: <span className="text-yellow-400">⚠ Operation cancelled (Ctrl+C)</span>,
+              content: (
+                <span className="flex items-center gap-1.5 text-yellow-400">
+                  <AlertTriangle className="h-3.5 w-3.5" /> Operation cancelled (Ctrl+C)
+                </span>
+              ),
             },
           ])
           setIsProcessing(false)
@@ -478,7 +486,9 @@ export function TerminalPane({
         type: "output",
         content: (
           <div className="my-2 rounded border border-blue-500/30 bg-blue-500/10 px-3 py-2">
-            <div className="font-semibold text-blue-400">🤖 Scapper - AI Coding Assistant</div>
+            <div className="flex items-center gap-2 font-semibold text-emerald-400">
+              <ScapperIcon size={18} /> Scapper - AI Coding Assistant
+            </div>
             <div className="text-muted-foreground">Type /quit or /exit to leave</div>
           </div>
         ),
@@ -594,11 +604,20 @@ export function TerminalPane({
               },
             ])
           } else if (progress.type === "result") {
+            // Skip PLAN_PROPOSAL messages - they're handled separately in final message
+            if (progress.message?.includes("[PLAN_PROPOSAL]")) {
+              return // Don't show raw JSON, will be rendered as PlanProposal
+            }
             setHistory((prev) => [
               ...prev,
               {
                 type: "output",
-                content: <span className="text-green-400">{progress.message}</span>,
+                content: (
+                  <span className="flex items-center gap-1.5 text-green-400">
+                    <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+                    {progress.message?.replace(/^✓\s*/, "")}
+                  </span>
+                ),
               },
             ])
           } else if (progress.type === "error") {
@@ -606,7 +625,11 @@ export function TerminalPane({
               ...prev,
               {
                 type: "output",
-                content: <span className="text-red-400">✗ {progress.message}</span>,
+                content: (
+                  <span className="flex items-center gap-1.5 text-red-400">
+                    <XCircle className="h-3.5 w-3.5" /> {progress.message}
+                  </span>
+                ),
               },
             ])
           }
@@ -681,7 +704,11 @@ export function TerminalPane({
           ...prev,
           {
             type: "output",
-            content: <span className="text-yellow-400">⚠ Operation cancelled by user</span>,
+            content: (
+              <span className="flex items-center gap-1.5 text-yellow-400">
+                <AlertTriangle className="h-3.5 w-3.5" /> Operation cancelled by user
+              </span>
+            ),
           },
         ])
       } else {
@@ -712,9 +739,9 @@ export function TerminalPane({
       const idStr = String(scapeId)
       // if it looks like a UUID (long string), shorten it
       if (idStr.length > 10) {
-        idSuffix = `- ${idStr.slice(0, 8)} `
+        idSuffix = `-${idStr.slice(0, 8)}`
       } else {
-        idSuffix = `- ${idStr} `
+        idSuffix = `-${idStr}`
       }
     }
     return `~/${nameSlug}${idSuffix}`

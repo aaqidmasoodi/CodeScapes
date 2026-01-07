@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Check, XCircle } from "lucide-react"
+import { Check, XCircle, ClipboardList } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export interface PlanStep {
@@ -30,7 +30,9 @@ export function PlanProposal({ plan, onResponse, getActionIcon }: PlanProposalPr
 
   return (
     <div className="my-2 rounded-lg border border-border bg-card p-4">
-      <div className="mb-3 font-semibold text-foreground">📋 Proposed Plan</div>
+      <div className="mb-3 flex items-center gap-2 font-semibold text-foreground">
+        <ClipboardList className="h-4 w-4 text-emerald-400" /> Proposed Plan
+      </div>
       <p className="mb-3 text-sm text-muted-foreground">{plan.summary}</p>
       <div className="mb-4 space-y-2">
         {plan.steps.map((step, i) => (
