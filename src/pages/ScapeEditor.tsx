@@ -264,8 +264,8 @@ export default function ScapeEditor() {
 
   const git = useGitManager(id, files, source === "cloud")
 
-  const topTools = useMemo(
-    () => [
+  const topTools = useMemo(() => {
+    const tools = [
       { id: "explorer", icon: Files, label: "Explorer" },
       { id: "search", icon: Search, label: "Search" },
       {
@@ -274,11 +274,18 @@ export default function ScapeEditor() {
         label: "Source Control",
         badge: git.changedFiles.length > 0 ? git.changedFiles.length : undefined,
       },
-      { id: "packages", icon: Box, label: "Packages" },
-      { id: "secrets", icon: Lock, label: "Secrets" },
-    ],
-    [git.changedFiles]
-  )
+    ]
+
+    // Only show Packages for environments that support it (Node/Python/R)
+    // Web environment is static so it doesn't need package management
+    if (scape?.environment !== "web") {
+      tools.push({ id: "packages", icon: Box, label: "Packages" })
+    }
+
+    tools.push({ id: "secrets", icon: Lock, label: "Secrets" })
+
+    return tools
+  }, [git.changedFiles, scape?.environment])
 
   // --- INITIALIZATION ---
   // File sync is handled by useFileSystem hook
@@ -1387,7 +1394,12 @@ export default function ScapeEditor() {
                     />
                   )}
                 {activeTool === "secrets" && (
-                  <SecretsPanel scapeId={id} isOpen={true} ref={secretsPanelRef} />
+                  <SecretsPanel
+                    scapeId={id}
+                    isOpen={true}
+                    ref={secretsPanelRef}
+                    environment={scape?.environment}
+                  />
                 )}
                 {activeTool === "source-control" && (
                   <SourceControlPane
