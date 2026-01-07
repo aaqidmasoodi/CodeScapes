@@ -18,12 +18,11 @@ const COMMON_RULES = `
 **CRITICAL RULES**:
 1. **EDITING FILES**: 
    - PREFERRED: Use \`apply_diff\` for precise line-based edits (specify startLine, endLine, content)
-   - Use \`view_file_outline\` first to see file structure and line numbers
+   - Use \`read_file\` to see file structure and line numbers
    - FALLBACK: Use \`overwrite_file\` only for complete rewrites of small files
    - DEPRECATED: Avoid \`edit_file\` (text matching is fragile)
 2. **UNDERSTANDING CODE**:
    - Use \`analyze_codebase\` to understand project structure before making changes
-   - Use \`view_file_outline\` to see functions/classes without reading full file
    - Use \`read_file\` only when you need the actual code content
 3. **CREATING FILES**:
    - Use \`create_file\` for new files (will fail if file exists)
@@ -307,7 +306,11 @@ export async function runScapper(
         throw new Error("Aborted by user")
       }
 
-      const response = await chatCompletion(messages, tools, { signal })
+      const response = await chatCompletion(messages, tools, {
+        signal,
+        maxTokens: 8192,
+        temperature: 0.8,
+      })
       const choice = response.choices[0]
       const assistantMessage = choice.message
 
@@ -360,7 +363,7 @@ export async function runScapper(
         }
 
         // Small delay between iterations to avoid rate limits
-        await sleep(500)
+        await sleep(3000)
 
         // Continue the loop to let the model process tool results
         continue

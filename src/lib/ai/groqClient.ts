@@ -73,6 +73,7 @@ export async function chatCompletion(
     model?: string
     maxTokens?: number
     temperature?: number
+    reasoning_effort?: "low" | "medium" | "high"
     signal?: AbortSignal
   }
 ): Promise<GroqResponse> {
@@ -86,12 +87,18 @@ export async function chatCompletion(
     )
   }
 
-  const { model = "qwen/qwen3-32b", maxTokens, temperature = 0.6 } = options || {}
+  const {
+    model = "openai/gpt-oss-120b",
+    maxTokens,
+    temperature = 0.6,
+    reasoning_effort = "medium",
+  } = options || {}
 
   const body: Record<string, unknown> = {
     model,
     messages,
     temperature,
+    reasoning_effort,
   }
 
   if (maxTokens) {
@@ -112,7 +119,6 @@ export async function chatCompletion(
       // Add delay between attempts (and before first request to slow things down)
       if (attempt > 0) {
         const delay = Math.min(5000 * Math.pow(2, attempt), 30000) // 5s, 10s, 20s max 30s
-        console.log(`[Scapper] Rate limited, waiting ${delay / 1000}s before retry...`)
         await sleep(delay)
       }
 
@@ -133,16 +139,40 @@ export async function chatCompletion(
         // Check if rate limited or generation failed (e.g. invalid tool call hallucination)
         if (
           response.status === 429 ||
+          response.status >= 500 ||
           (response.status === 400 && errorData.error?.code === "failed_generation") ||
           (response.status === 400 && JSON.stringify(errorData).includes("failed_generation"))
         ) {
           const isRateLimit = response.status === 429
+          const isServerError = response.status >= 500
+          const errorType = isRateLimit
+            ? "rate_limit"
+            : isServerError
+              ? "server_error"
+              : "generation_failed"
+
+          console.log(
+            `[Scapper] ${
+              isRateLimit
+                ? "Rate limited"
+                : isServerError
+                  ? "Groq server error"
+                  : "Generation failed"
+            }, waiting ${Math.min(5000 * Math.pow(2, attempt + 1), 30000) / 1000}s before retry...`
+          )
+
+          if (attempt === MAX_RETRIES - 1) {
+            // Don't wait on the very last attempt if we're measuring straight away
+          }
+
           lastError = new GroqAPIError(
             isRateLimit
               ? "Rate limited - waiting before retry..."
-              : "Model generation failed - retrying...",
+              : isServerError
+                ? "Groq server error - retrying..."
+                : "Model generation failed - retrying...",
             response.status,
-            isRateLimit ? "rate_limit" : "generation_failed"
+            errorType
           )
           // Exponential backoff handles the wait
           continue
