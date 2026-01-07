@@ -16,6 +16,7 @@ import { secretsService } from "@/services/secrets"
 import { useSocketBridge } from "@/hooks/useSocketBridge"
 import { debug } from "@/lib/debug"
 import { TurtleCanvas, type TurtleCanvasHandle } from "./TurtleCanvas"
+import PythonWorker from "./worker?worker"
 
 interface PythonRunnerProps {
   files: ScapeFile[]
@@ -239,7 +240,7 @@ export const PythonRunner = memo(
           // Don't show error to user
         }
 
-        const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
+        const worker = new PythonWorker()
         workerRef.current = worker
         isReadyRef.current = false
         setBusy(true)
