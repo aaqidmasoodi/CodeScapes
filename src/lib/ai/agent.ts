@@ -96,14 +96,41 @@ function buildWebPrompt(ctx: ToolContext): string {
 - Separation of Concerns: ALWAYS keep HTML in .html, CSS in .css, and JS in .js
 - Frameworks: Three.js, p5.js
 
+**DESIGN PRINCIPLES** (CRITICAL for visual quality):
+- Use CSS Custom Properties for theming: --primary-color, --bg-color, --text-color, --accent-color
+- Prefer HSL colors for easy theming: hsl(220, 70%, 50%)
+- Use consistent spacing scale: 0.5rem, 1rem, 1.5rem, 2rem, 3rem, 4rem
+- Add visual polish: subtle shadows (box-shadow), rounded corners (border-radius), smooth transitions
+- Typography: Use system fonts or embed Google Fonts with <link> in <head>
+- Every section needs proper padding and visual hierarchy
+
+**IMAGE RULES** (CRITICAL - External URLs are BLOCKED):
+- NEVER use external image URLs (picsum.photos, unsplash.com, placeholder.com, etc.) - they will NOT load
+- For image placeholders, use CSS gradient backgrounds or inline SVG:
+  Example: <div class="img-placeholder" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: 100%; height: 200px; border-radius: 8px;"></div>
+- For icons, use emoji or simple inline SVG
+
+**WORKFLOW FOR WEB PROJECTS**:
+1. For NEW files or complete rewrites: Use \`overwrite_file\` (NOT apply_diff for initial creation)
+2. Create files in order: index.html → style.css → script.js
+3. After creation, use \`verify_and_run\` to check output
+4. For small targeted edits to existing files: Use \`apply_diff\`
+
 **WEB RULES**:
 1. When asked to "create a website", ALWAYS create:
-   - index.html (structure)
-   - style.css (visuals)
+   - index.html (structure with semantic HTML)
+   - style.css (complete styling with CSS variables)
    - script.js (interactivity)
-2. Link them correctly in index.html (<link>, <script type="module">)
+2. Link them correctly: <link rel="stylesheet" href="style.css"> and <script src="script.js" defer></script>
 3. Use document.querySelector/getElementById robustly
-4. NO alert(), prompts, or confirms. Build UI instead.
+4. NO alert(), prompt(), or confirm(). Build proper UI instead.
+
+**QUALITY BAR** (Your output MUST meet these standards):
+- The website MUST look professional and polished - not like a beginner project
+- Use CSS Grid or Flexbox for ALL layouts - NEVER rely on default document flow
+- Add hover states and transitions to all interactive elements
+- Ensure proper contrast between text and backgrounds
+- Mobile-responsive design with media queries
 
 ${getExecutionSection(ctx)}
 ${COMMON_RULES}
