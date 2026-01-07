@@ -77,25 +77,33 @@ export function applySafeChanges(
     }
 
     // Try fuzzy match if enabled
-    if (fuzzyMatch) {
-      const fuzzyIndex = dmp.match_main(workingContent, change.search, 0)
+    // Note: diff-match-patch uses browser regex which has max pattern length
+    const MAX_PATTERN_LENGTH = 1000 // Conservative limit to avoid browser issues
 
-      if (fuzzyIndex !== -1) {
-        // Fuzzy match found - we need to figure out the actual matched length
-        // For safety, we'll use the search length and verify similarity
-        const potentialMatch = workingContent.slice(fuzzyIndex, fuzzyIndex + change.search.length)
-        const diffs = dmp.diff_main(change.search, potentialMatch)
-        const levenshtein = dmp.diff_levenshtein(diffs)
+    if (fuzzyMatch && change.search.length <= MAX_PATTERN_LENGTH) {
+      try {
+        const fuzzyIndex = dmp.match_main(workingContent, change.search, 0)
 
-        // Only accept if similarity is high enough (< 20% different)
-        if (levenshtein < change.search.length * 0.2) {
-          workingContent =
-            workingContent.slice(0, fuzzyIndex) +
-            change.replace +
-            workingContent.slice(fuzzyIndex + change.search.length)
-          appliedCount++
-          continue
+        if (fuzzyIndex !== -1) {
+          // Fuzzy match found - we need to figure out the actual matched length
+          // For safety, we'll use the search length and verify similarity
+          const potentialMatch = workingContent.slice(fuzzyIndex, fuzzyIndex + change.search.length)
+          const diffs = dmp.diff_main(change.search, potentialMatch)
+          const levenshtein = dmp.diff_levenshtein(diffs)
+
+          // Only accept if similarity is high enough (< 20% different)
+          if (levenshtein < change.search.length * 0.2) {
+            workingContent =
+              workingContent.slice(0, fuzzyIndex) +
+              change.replace +
+              workingContent.slice(fuzzyIndex + change.search.length)
+            appliedCount++
+            continue
+          }
         }
+      } catch (e) {
+        // Pattern too long or other regex error - fall through to failure
+        console.warn("[SafeDiff] Fuzzy match failed:", e)
       }
     }
 
@@ -174,11 +182,18 @@ export function findSearchLocation(
     return { found: true, lineNumber, fuzzy: false }
   }
 
-  // Try fuzzy match
-  const fuzzyIndex = dmp.match_main(content, search, 0)
-  if (fuzzyIndex !== -1) {
-    const lineNumber = content.slice(0, fuzzyIndex).split("\n").length
-    return { found: true, lineNumber, fuzzy: true }
+  // Try fuzzy match (only if pattern is short enough for browser regex)
+  const MAX_PATTERN_LENGTH = 1000
+  if (search.length <= MAX_PATTERN_LENGTH) {
+    try {
+      const fuzzyIndex = dmp.match_main(content, search, 0)
+      if (fuzzyIndex !== -1) {
+        const lineNumber = content.slice(0, fuzzyIndex).split("\n").length
+        return { found: true, lineNumber, fuzzy: true }
+      }
+    } catch {
+      // Pattern too long or regex error - not found
+    }
   }
 
   return { found: false, lineNumber: -1, fuzzy: false }
