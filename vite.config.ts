@@ -49,33 +49,24 @@ export default defineConfig(({ mode }) => ({
     },
     mode === "production" &&
       obfuscator({
-        global: true,
+        global: false, // Critical: Only obfuscate user code, not vendor bundles (fixes "N is not a function")
+        include: ["src/**/*.{ts,tsx,js,jsx}"],
+        exclude: [/node_modules/, /\.test\./],
         options: {
           compact: true,
-          controlFlowFlattening: true,
-          controlFlowFlatteningThreshold: 0.3, // Lowered for stability
+          controlFlowFlattening: false, // Disabled for stability
           deadCodeInjection: false,
-          debugProtection: false, // Disabled to prevent runtime freezes
-          debugProtectionInterval: 4000,
+          debugProtection: false,
           disableConsoleOutput: true,
           identifierNamesGenerator: "hexadecimal",
           log: false,
-          numbersToExpressions: true,
+          numbersToExpressions: false, // Disabled for performance/stability
           renameGlobals: false,
-          selfDefending: false, // Disabled to prevent loops
+          selfDefending: false,
           simplify: true,
           splitStrings: false,
           stringArray: true,
-          stringArrayCallsTransform: true,
-          stringArrayCallsTransformThreshold: 0.3, // Lowered
-          stringArrayEncoding: ["base64"],
-          stringArrayIndexShift: true,
-          stringArrayRotate: true,
-          stringArrayShuffle: true,
-          stringArrayWrappersCount: 1,
-          stringArrayWrappersChainedCalls: true,
-          stringArrayWrappersType: "function",
-          stringArrayThreshold: 0.3, // Lowered
+          stringArrayThreshold: 0.3,
           transformObjectKeys: false,
           unicodeEscapeSequence: false,
         },
