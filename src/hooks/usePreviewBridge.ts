@@ -32,19 +32,16 @@ export function usePreviewBridge(
   const filesHash = useMemo(() => {
     return files
       .map((f) => {
-        let size = 0
-        let preview = ""
+        let contentHash = ""
         if (typeof f.content === "string") {
-          size = f.content.length
-          preview = f.content.slice(0, 20)
+          // Hash the FULL content for reliable change detection
+          contentHash = computeHash(f.content)
         } else if (f.content instanceof Blob) {
-          size = f.content.size
-          preview = "blob"
+          contentHash = `blob:${f.content.size}`
         } else if (f.content instanceof Uint8Array || f.content instanceof ArrayBuffer) {
-          size = f.content.byteLength
-          preview = "bin"
+          contentHash = `bin:${f.content.byteLength}`
         }
-        return `${f.name}:${size}:${preview}`
+        return `${f.name}:${contentHash}`
       })
       .sort()
       .join("|")
@@ -201,7 +198,7 @@ export function usePreviewBridge(
   const lastSentVersion = useRef<number | undefined>(versionKey)
 
   useLayoutEffect(() => {
-    if (envRef.current?.hotUpdate === "true" && bridgeState.ready && iframeRef?.current) {
+    if (env?.hotUpdate === "true" && bridgeState.ready && iframeRef?.current) {
       if (lastSentHash.current !== filesHash || lastSentVersion.current !== versionKey) {
         lastSentHash.current = filesHash
         lastSentVersion.current = versionKey
@@ -216,16 +213,18 @@ export function usePreviewBridge(
         }
 
         debug.log("[Bridge] Hot Swapping Files...")
+        // Use `files` prop directly instead of filesRef.current to avoid stale data
+        // (useLayoutEffect runs before the useEffect that updates filesRef)
         iframeRef.current.contentWindow?.postMessage(
           {
             type: "COMPILE_FILES",
-            payload: { scapeId, socketId, files: filesRef.current, env: envRef.current },
+            payload: { scapeId, socketId, files, env },
           },
           bootloaderOrigin
         )
       }
     }
-  }, [filesHash, versionKey, bridgeState.ready, scapeId, socketId, iframeRef])
+  }, [filesHash, versionKey, bridgeState.ready, scapeId, socketId, iframeRef, files, env])
 
   return bridgeState
 }

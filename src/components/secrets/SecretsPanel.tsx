@@ -13,11 +13,13 @@ export interface SecretsPanelHandle {
 interface SecretsPanelProps {
   scapeId: string
   isOpen: boolean
+  environment?: string
 }
 
 export const SecretsPanel = forwardRef<SecretsPanelHandle, SecretsPanelProps>(
-  ({ scapeId, isOpen }, ref) => {
+  ({ scapeId, isOpen, environment }, ref) => {
     const [secrets, setSecrets] = useState<Secret[]>([])
+
     const [loading, setLoading] = useState(false)
     const [newKey, setNewKey] = useState("")
     const [newValue, setNewValue] = useState("")
@@ -162,9 +164,21 @@ export const SecretsPanel = forwardRef<SecretsPanelHandle, SecretsPanelProps>(
           </div>
 
           <div className="px-2 pb-2 text-[10px] text-muted-foreground">
-            Access via <code className="rounded bg-muted px-1">process.env.KEY</code> for web
-            environment and <code className="rounded bg-muted px-1">os.environ["KEY"]</code> for
-            python environment.
+            {environment === "web" ? (
+              <>
+                Access via <code className="rounded bg-muted px-1">process.env.KEY</code>
+              </>
+            ) : environment === "python" ? (
+              <>
+                Access via <code className="rounded bg-muted px-1">os.environ["KEY"]</code>
+              </>
+            ) : (
+              <>
+                Access via <code className="rounded bg-muted px-1">process.env.KEY</code> for web
+                environment and <code className="rounded bg-muted px-1">os.environ["KEY"]</code> for
+                python environment.
+              </>
+            )}
           </div>
 
           {/* List */}

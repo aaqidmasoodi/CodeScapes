@@ -36,10 +36,11 @@ import {
   RotateCw,
   Loader2,
   MonitorPlay,
-  FileCode,
   Search,
   Lock,
   Box,
+  Files,
+  GitBranch,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
@@ -63,6 +64,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { LoadingOverlay } from "@/components/ui/spinner"
+import { SourceControlPane } from "@/components/editor/SourceControlPane"
+import { initFromSupabase } from "@/lib/git/sync"
+import { useGitManager } from "@/hooks/useGitManager"
 
 // --- Helper for Persistence ---
 function usePersistentState<T>(
@@ -250,6 +254,38 @@ export default function ScapeEditor() {
     () => files.find((f) => f.name === activeFilePath) || null,
     [files, activeFilePath]
   )
+
+  // Git Initialization
+  useEffect(() => {
+    if (id && source === "cloud") {
+      initFromSupabase(id).catch((err) => console.error("Git init failed:", err))
+    }
+  }, [id, source])
+
+  const git = useGitManager(id, files, source === "cloud")
+
+  const topTools = useMemo(() => {
+    const tools = [
+      { id: "explorer", icon: Files, label: "Explorer" },
+      { id: "search", icon: Search, label: "Search" },
+      {
+        id: "source-control",
+        icon: GitBranch,
+        label: "Source Control",
+        badge: git.changedFiles.length > 0 ? git.changedFiles.length : undefined,
+      },
+    ]
+
+    // Only show Packages for environments that support it (Node/Python/R)
+    // Web environment is static so it doesn't need package management
+    if (scape?.environment !== "web") {
+      tools.push({ id: "packages", icon: Box, label: "Packages" })
+    }
+
+    tools.push({ id: "secrets", icon: Lock, label: "Secrets" })
+
+    return tools
+  }, [git.changedFiles, scape?.environment])
 
   // --- INITIALIZATION ---
   // File sync is handled by useFileSystem hook
@@ -1142,18 +1178,6 @@ export default function ScapeEditor() {
       </div>
     )
 
-  // 5. TOOLBOX CONFIG
-  const defaultTools = [
-    { id: "explorer", icon: FileCode, label: "Explorer" },
-    { id: "search", icon: Search, label: "Search" },
-    { id: "secrets", icon: Lock, label: "Secrets" }, // Moved Secrets here
-  ]
-
-  const showPackages = scape && ENVIRONMENTS[scape.environment]?.capabilities.packages
-  const tools = showPackages
-    ? [...defaultTools, { id: "packages", icon: Box, label: "Packages" }]
-    : defaultTools
-
   return (
     <>
       <ScapeLayout
@@ -1162,7 +1186,7 @@ export default function ScapeEditor() {
             activeTool={activeTool}
             onToolSelect={setActiveTool}
             onSettingsClick={() => setIsSettingsOpen(true)}
-            topTools={tools}
+            topTools={topTools}
           />
         }
         headerTitle={
@@ -1374,7 +1398,59 @@ export default function ScapeEditor() {
                     scapeId={id}
                     isOpen={true}
                     ref={secretsPanelRef}
-                    // ref={secretsPanelRef} // TODO: Expose handlePasteEnv via ref in component
+                    environment={scape?.environment}
+                  />
+                )}
+                {activeTool === "source-control" && (
+                  <SourceControlPane
+                    scapeId={id}
+                    files={files}
+                    git={git}
+                    onRestoreFiles={async (restoredFiles) => {
+                      // 1. Identify files to delete (present in current `files`, absent in `restoredFiles`)
+                      const restoredNames = new Set(restoredFiles.map((f) => f.name))
+                      const filesToDelete = files.filter(
+                        (f) => !restoredNames.has(f.name) && f.language !== "folder"
+                      )
+                      for (const f of filesToDelete) {
+                        if (f.name) await deleteFile(f.name)
+                      }
+
+                      // 2. Identify files to create/update
+                      for (const file of restoredFiles) {
+                        const existing = files.find((f) => f.name === file.name)
+                        if (existing) {
+                          await updateFile(file.name, file.content)
+                        } else {
+                          // Infer language from extension
+                          const ext = file.name.split(".").pop()?.toLowerCase()
+                          type LangType = Parameters<typeof createFile>[1]
+                          let lang: LangType = "plaintext"
+                          if (ext === "html") lang = "html"
+                          else if (ext === "css") lang = "css"
+                          else if (ext === "js") lang = "javascript"
+                          else if (ext === "ts") lang = "javascript"
+                          else if (ext === "json") lang = "json"
+                          else if (ext === "py") lang = "python"
+                          else if (ext === "md") lang = "markdown"
+                          else if (ext === "csv") lang = "csv"
+                          else if (ext === "r") lang = "r"
+
+                          await createFile(file.name, lang, file.content)
+                        }
+                      }
+
+                      // Also refresh the UI
+                      // Force a small delay to allow async states to settle if needed, though await should suffice
+                      setTimeout(() => {
+                        setDebouncedFiles([...files]) // Trigger re-render if needed
+                        if (previewRef.current?.restart) {
+                          previewRef.current.restart()
+                        }
+                      }, 100)
+
+                      toast({ title: "Restored", description: "Files restored to selected commit" })
+                    }}
                   />
                 )}
               </ResizablePanel>

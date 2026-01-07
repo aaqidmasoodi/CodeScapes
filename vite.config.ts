@@ -14,37 +14,59 @@ export default defineConfig(({ mode }) => ({
           // res.setHeader("Cross-Origin-Opener-Policy", "same-origin")
           next()
         })
+
+        // Localhost CORS Proxy Middleware
+        server.middlewares.use("/api/cors-proxy", async (req, res) => {
+          const urlObj = new URL(req.url || "", `http://${req.headers.host}`)
+          const targetUrl = urlObj.searchParams.get("url")
+
+          if (!targetUrl) {
+            res.statusCode = 400
+            res.end(JSON.stringify({ error: "Missing url parameter" }))
+            return
+          }
+
+          try {
+            const response = await fetch(targetUrl)
+
+            // Forward headers
+            res.setHeader("Access-Control-Allow-Origin", "*")
+            res.setHeader(
+              "Content-Type",
+              response.headers.get("Content-Type") || "application/octet-stream"
+            )
+
+            // Stream response
+            const buffer = await response.arrayBuffer()
+            res.end(Buffer.from(buffer))
+          } catch (error) {
+            console.error("Proxy error:", error)
+            res.statusCode = 500
+            res.end(JSON.stringify({ error: "Proxy failed" }))
+          }
+        })
       },
     },
     mode === "production" &&
       obfuscator({
-        global: true,
+        global: false, // Critical: Only obfuscate user code, not vendor bundles (fixes "N is not a function")
+        include: ["src/**/*.{ts,tsx,js,jsx}"],
+        exclude: [/node_modules/, /\.test\./],
         options: {
           compact: true,
-          controlFlowFlattening: true,
-          controlFlowFlatteningThreshold: 0.3, // Lowered for stability
+          controlFlowFlattening: false, // Disabled for stability
           deadCodeInjection: false,
-          debugProtection: false, // Disabled to prevent runtime freezes
-          debugProtectionInterval: 4000,
+          debugProtection: false,
           disableConsoleOutput: true,
           identifierNamesGenerator: "hexadecimal",
           log: false,
-          numbersToExpressions: true,
+          numbersToExpressions: false, // Disabled for performance/stability
           renameGlobals: false,
-          selfDefending: false, // Disabled to prevent loops
+          selfDefending: false,
           simplify: true,
           splitStrings: false,
           stringArray: true,
-          stringArrayCallsTransform: true,
-          stringArrayCallsTransformThreshold: 0.3, // Lowered
-          stringArrayEncoding: ["base64"],
-          stringArrayIndexShift: true,
-          stringArrayRotate: true,
-          stringArrayShuffle: true,
-          stringArrayWrappersCount: 1,
-          stringArrayWrappersChainedCalls: true,
-          stringArrayWrappersType: "function",
-          stringArrayThreshold: 0.3, // Lowered
+          stringArrayThreshold: 0.3,
           transformObjectKeys: false,
           unicodeEscapeSequence: false,
         },

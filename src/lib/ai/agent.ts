@@ -8,6 +8,7 @@ import { chatCompletion, parseToolArguments, GroqAPIError } from "./groqClient"
 import type { GroqMessage, GroqToolCall } from "./groqClient"
 import { getToolsForEnvironment, executeTool } from "./tools"
 import type { ToolContext, ToolResult } from "./tools"
+import { buildProjectContext, formatContextForPrompt } from "./context"
 
 // --- Dynamic System Prompt Builder ---
 
@@ -15,35 +16,65 @@ import type { ToolContext, ToolResult } from "./tools"
 
 const COMMON_RULES = `
 **CRITICAL RULES**:
-1. To COMPLETELY REWRITE a file: use overwrite_file (no need to match text)
-2. To make SMALL CHANGES: use edit_file with search/replace
-   (Tip: For small files, just use overwrite_file instead - it's safer)
-3. NEVER use create_file on a file that already exists - it will fail
-4. If you need packages, INSTALL THEM FIRST. Verify via \`list_packages\` and install via \`install_package\`.
-5. **CODE DELIVERY**: ALWAYS put generated code into a file using \`create_file\` or \`overwrite_file\`. NEVER just dump code blocks in the chat. Use the main entry point if the user doesn't specify a file name.
+1. **EDITING FILES**: 
+   - PREFERRED: Use \`apply_diff\` for precise line-based edits (specify startLine, endLine, content)
+   - Use \`view_file_outline\` first to see file structure and line numbers
+   - FALLBACK: Use \`overwrite_file\` only for complete rewrites of small files
+   - DEPRECATED: Avoid \`edit_file\` (text matching is fragile)
+2. **UNDERSTANDING CODE**:
+   - Use \`analyze_codebase\` to understand project structure before making changes
+   - Use \`view_file_outline\` to see functions/classes without reading full file
+   - Use \`read_file\` only when you need the actual code content
+3. **CREATING FILES**:
+   - Use \`create_file\` for new files (will fail if file exists)
+   - NEVER use create_file on existing files
+4. **PACKAGES**: 
+   - Verify via \`list_packages\`, install via \`install_package\` BEFORE writing code
+5. **CLARIFICATION**:
+   - Use \`ask_user\` when the request is ambiguous or you need confirmation
+   - Don't guess - ask when uncertain about important details
+6. **CODE DELIVERY**: 
+   - ALWAYS put code into files. NEVER just dump code blocks in chat.
+7. **VERIFICATION** (IMPORTANT):
+   - ALWAYS use \`verify_and_run\` after making changes to check they work
+   - If errors are detected, analyze the error and FIX IT immediately
+   - Self-correct up to 3 times before asking user for help
+   - Don't consider a task done until the code runs without errors
+8. **SELF-CORRECTION** (CRITICAL):
+   - If apply_diff FAILS with "Text not found": RE-READ the file to see actual content, then try again
+   - NEVER claim success if edits failed - be honest and keep trying
+   - After multiple failures, use \`overwrite_file\` as a fallback
+   - Check for syntax errors: mismatched quotes, brackets, tags
+9. **HONESTY**:
+   - NEVER say "Fixed!" unless you have VERIFIED the code works
+   - If unsure, say "I've made changes, but please test to confirm"
+   - Admit when you don't know or when something unexpected happened
 
-
-**WORKFLOW for rewriting an existing file**:
-1. Use overwrite_file with the new content (no need to read first)
-   Example: overwrite_file("hello.py", "print('New content')")
-
-**WORKFLOW for small edits**:
-1. read_file to see current content
-2. edit_file with search=exact text to change, replace=new text
-   Example: edit_file("hello.py", "print('Old')", "print('New')")
+**WORKFLOW for editing existing files**:
+1. \`read_file\` to see the current content
+2. \`apply_diff\` with search/replace changes
+   Example: apply_diff("main.py", [{search: "old_code", replace: "new_code"}])
+3. If apply_diff FAILS: \`read_file\` again to see what's actually there, then retry
+4. \`verify_and_run\` to check the code works
+5. If error: analyze and fix with \`apply_diff\`, then verify again
 
 **WORKFLOW for new files**:
-1. create_file with the content
+1. \`create_file\` with the content
+2. \`verify_and_run\` to check the code works
+3. If error: analyze and fix, verify again
+
+**WORKFLOW for complex/multi-file changes**:
+1. Use \`propose_plan\` to show the user what you intend to do
+2. Wait for user to approve the plan
+3. Once approved (user says yes/approve/continue), proceed with execution
+4. For simple single-file edits, you can skip planning and edit directly
 
 **OUTPUT FORMAT**: 
 - Brief summary with ✓ bullets. NO XML tags. 1-3 lines max.
 - Keep responses SIMPLE and user-friendly
 - NEVER expose internal details like "Pyodide", "entry point", or system architecture
-- NEVER mention tool names (e.g. don't say "use run_file")
-- Example BAD: "You can use run_file to execute it"
-- Example GOOD: "Would you like me to run this code for you?"
-- Example BAD response: "You're in Python 3 using Pyodide"
-- Example GOOD response: "You're in a Python environment!"`
+- NEVER mention tool names to users
+- Example GOOD: "Would you like me to run this code for you?"`
 
 function getExecutionSection(ctx: ToolContext): string {
   const { environment } = ctx
@@ -138,17 +169,36 @@ ${COMMON_RULES}
 `
 }
 
-function buildSystemPrompt(ctx: ToolContext): string {
+async function buildSystemPrompt(ctx: ToolContext): Promise<string> {
+  // Build the base prompt based on environment
+  let basePrompt: string
   switch (ctx.environment.id) {
     case "web":
-      return buildWebPrompt(ctx)
+      basePrompt = buildWebPrompt(ctx)
+      break
     case "python":
-      return buildPythonPrompt(ctx)
+      basePrompt = buildPythonPrompt(ctx)
+      break
     case "r":
-      return buildRPrompt(ctx)
+      basePrompt = buildRPrompt(ctx)
+      break
     default:
-      return buildGenericPrompt(ctx)
+      basePrompt = buildGenericPrompt(ctx)
   }
+
+  // Inject project context (file tree, dependencies, memories)
+  try {
+    const projectContext = await buildProjectContext(ctx.scapeId, ctx.files, ctx.dependencies)
+    const contextSection = formatContextForPrompt(projectContext)
+
+    if (contextSection) {
+      basePrompt += `\n\n---\n${contextSection}`
+    }
+  } catch (e) {
+    console.warn("[Agent] Failed to build context:", e)
+  }
+
+  return basePrompt
 }
 
 // --- History Compression ---
@@ -198,7 +248,7 @@ export async function runScapper(
   signal?: AbortSignal
 ): Promise<{ result: ScapperResult; updatedHistory: GroqMessage[] }> {
   // Build dynamic system prompt based on environment
-  const systemPrompt = buildSystemPrompt(toolContext)
+  const systemPrompt = await buildSystemPrompt(toolContext)
 
   // Get tools based on environment capabilities
   const tools = getToolsForEnvironment(toolContext.environment.capabilities)
@@ -255,6 +305,31 @@ export async function runScapper(
               : `Error: ${toolResult.error}\nDetails:\n${toolResult.output}`,
             tool_call_id: toolCall.id,
           })
+
+          // Check for plan proposal - pause for user approval
+          if (toolResult.output.includes("[PLAN_PROPOSAL]")) {
+            // Extract plan JSON
+            const planMatch = toolResult.output.match(/\[PLAN_PROPOSAL\](.*?)\[\/PLAN_PROPOSAL\]/s)
+            if (planMatch) {
+              const planJson = planMatch[1]
+
+              // Add to history so context is preserved
+              updatedHistory.push({
+                role: "assistant",
+                content: `I've proposed a plan. Waiting for your approval.`,
+              })
+
+              onProgress({ type: "done", message: `[PLAN_PROPOSAL]${planJson}[/PLAN_PROPOSAL]` })
+
+              return {
+                result: {
+                  success: true,
+                  message: `[PLAN_PROPOSAL]${planJson}[/PLAN_PROPOSAL]`,
+                },
+                updatedHistory: compressHistory(updatedHistory),
+              }
+            }
+          }
         }
 
         // Small delay between iterations to avoid rate limits
@@ -315,7 +390,8 @@ async function executeToolCall(
   onProgress: (progress: ScapperProgress) => void
 ): Promise<ToolResult> {
   const toolName = toolCall.function.name
-  const args = parseToolArguments<Record<string, string>>(toolCall) || {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const args = parseToolArguments<Record<string, any>>(toolCall) || {}
 
   // Show progress based on tool
   const safePath = args.path || "file"
@@ -327,6 +403,13 @@ async function executeToolCall(
     edit_file: `Editing ${safePath}...`,
     delete_file: `Deleting ${safePath}...`,
     search_files: `Searching for "${args.query || "query"}"...`,
+    // Agentic tools
+    apply_diff: `Applying changes to ${safePath}...`,
+    analyze_codebase: "Analyzing project structure...",
+    view_file_outline: `Analyzing structure of ${safePath}...`,
+    ask_user: "Asking for clarification...",
+    // Verification tools
+    verify_and_run: `Verifying ${safePath || "code"}...`,
   }
 
   onProgress({ type: "tool", message: progressMessages[toolName] || `Running ${toolName}...` })
@@ -354,6 +437,41 @@ async function executeToolCall(
       const matchCount = (result.output.match(/\n/g) || []).length + 1
       if (matchCount > 5) {
         progressMessage = `🔍 Found ${matchCount} matches for "${args.query}"`
+      }
+    }
+    // For analyze_codebase, show compact summary
+    else if (toolName === "analyze_codebase") {
+      const lines = result.output.split("\n")
+      progressMessage = lines.slice(0, 2).join(" | ")
+    }
+    // For view_file_outline, show compact summary
+    else if (toolName === "view_file_outline") {
+      const lines = result.output.split("\n").filter((l) => l.trim())
+      progressMessage = `📄 ${lines[0] || safePath}`
+    }
+    // For apply_diff, the output is already formatted nicely
+    else if (toolName === "apply_diff") {
+      progressMessage = result.output
+    }
+    // For ask_user, show the response received
+    else if (toolName === "ask_user") {
+      progressMessage = result.output
+    }
+    // For verify_and_run, show pass/fail with error summary if applicable
+    else if (toolName === "verify_and_run") {
+      if (result.output.includes("[ERROR DETECTED]")) {
+        // Extract error type and message for display
+        const typeMatch = result.output.match(/Type: (\w+)/)
+        const msgMatch = result.output.match(/Message: (.+)/)
+        const errorType = typeMatch ? typeMatch[1] : "error"
+        const errorMsg = msgMatch ? msgMatch[1].slice(0, 60) : "See output for details"
+        progressMessage = `⚠️ Code ran but has ${errorType}: ${errorMsg}`
+      } else if (result.output.includes("(No output")) {
+        progressMessage = "✓ Code ran successfully (no output)"
+      } else {
+        // Show truncated output
+        const firstLine = result.output.split("\n")[0] || ""
+        progressMessage = `✓ Code ran: ${firstLine.slice(0, 50)}${firstLine.length > 50 ? "..." : ""}`
       }
     }
 
