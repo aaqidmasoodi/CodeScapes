@@ -52,6 +52,12 @@ const COMMON_RULES = `
 2. \`verify_and_run\` to check the code works
 3. If error: analyze and fix, verify again
 
+**WORKFLOW for complex/multi-file changes**:
+1. Use \`propose_plan\` to show the user what you intend to do
+2. Wait for user to approve the plan
+3. Once approved (user says yes/approve/continue), proceed with execution
+4. For simple single-file edits, you can skip planning and edit directly
+
 **OUTPUT FORMAT**: 
 - Brief summary with ✓ bullets. NO XML tags. 1-3 lines max.
 - Keep responses SIMPLE and user-friendly
@@ -269,6 +275,31 @@ export async function runScapper(
               : `Error: ${toolResult.error}\nDetails:\n${toolResult.output}`,
             tool_call_id: toolCall.id,
           })
+
+          // Check for plan proposal - pause for user approval
+          if (toolResult.output.includes("[PLAN_PROPOSAL]")) {
+            // Extract plan JSON
+            const planMatch = toolResult.output.match(/\[PLAN_PROPOSAL\](.*?)\[\/PLAN_PROPOSAL\]/s)
+            if (planMatch) {
+              const planJson = planMatch[1]
+
+              // Add to history so context is preserved
+              updatedHistory.push({
+                role: "assistant",
+                content: `I've proposed a plan. Waiting for your approval.`,
+              })
+
+              onProgress({ type: "done", message: `[PLAN_PROPOSAL]${planJson}[/PLAN_PROPOSAL]` })
+
+              return {
+                result: {
+                  success: true,
+                  message: `[PLAN_PROPOSAL]${planJson}[/PLAN_PROPOSAL]`,
+                },
+                updatedHistory: compressHistory(updatedHistory),
+              }
+            }
+          }
         }
 
         // Small delay between iterations to avoid rate limits

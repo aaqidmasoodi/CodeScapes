@@ -1,5 +1,18 @@
 import { useState, useEffect, useRef, type FormEvent } from "react"
-import { Terminal as TerminalIcon, X, AlertCircle, ChevronUp } from "lucide-react"
+import {
+  Terminal as TerminalIcon,
+  X,
+  AlertCircle,
+  ChevronUp,
+  Check,
+  XCircle,
+  FileText,
+  FilePlus,
+  FileEdit,
+  Trash2,
+  Play,
+  Package,
+} from "lucide-react"
 import { useShell } from "@/hooks/useShell"
 import { useAuth } from "@/hooks/useAuth"
 import {
@@ -16,7 +29,7 @@ import type { ScapeFile } from "@/types/file"
 import type { LogEntry } from "@/types/log"
 import { runScapper, createEmptyConversation } from "@/lib/ai/agent"
 import type { GroqMessage } from "@/lib/ai/groqClient"
-import type { EnvironmentInfo, RunResult, InstallResult } from "@/lib/ai/tools"
+import type { EnvironmentInfo, RunResult, InstallResult, ProposedPlan } from "@/lib/ai/tools"
 
 export type TerminalTab = "terminal" | "output" | "problems"
 
@@ -604,7 +617,78 @@ export function TerminalPane({
       // Update conversation
       setScapperConversation(updatedHistory)
 
-      // Show final message
+      // Check for plan proposal
+      if (result.message?.includes("[PLAN_PROPOSAL]")) {
+        const planMatch = result.message.match(/\[PLAN_PROPOSAL\](.*?)\[\/PLAN_PROPOSAL\]/s)
+        if (planMatch) {
+          try {
+            const plan: ProposedPlan = JSON.parse(planMatch[1])
+
+            // Get icon for action type
+            const getActionIcon = (action: string) => {
+              switch (action) {
+                case "create":
+                  return <FilePlus className="h-4 w-4 text-green-400" />
+                case "modify":
+                  return <FileEdit className="h-4 w-4 text-yellow-400" />
+                case "delete":
+                  return <Trash2 className="h-4 w-4 text-red-400" />
+                case "run":
+                  return <Play className="h-4 w-4 text-blue-400" />
+                case "install":
+                  return <Package className="h-4 w-4 text-purple-400" />
+                default:
+                  return <FileText className="h-4 w-4 text-muted-foreground" />
+              }
+            }
+
+            setHistory((prev) => [
+              ...prev,
+              {
+                type: "output",
+                content: (
+                  <div className="my-2 rounded-lg border border-border bg-card p-4">
+                    <div className="mb-3 font-semibold text-foreground">📋 Proposed Plan</div>
+                    <p className="mb-3 text-sm text-muted-foreground">{plan.summary}</p>
+                    <div className="mb-4 space-y-2">
+                      {plan.steps.map((step, i) => (
+                        <div key={i} className="flex items-start gap-2 text-sm">
+                          <span className="mt-0.5">{getActionIcon(step.action)}</span>
+                          <div>
+                            <span className="font-medium text-foreground">{step.target}</span>
+                            <span className="text-muted-foreground"> — {step.description}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleScapperInput("Yes, proceed with the plan")}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Check className="mr-1 h-4 w-4" /> Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleScapperInput("No, cancel the plan")}
+                      >
+                        <XCircle className="mr-1 h-4 w-4" /> Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ),
+              },
+            ])
+            return // Don't show raw message
+          } catch {
+            // JSON parse failed, show raw message
+          }
+        }
+      }
+
+      // Show final message (normal case)
       if (result.success && result.message) {
         setHistory((prev) => [
           ...prev,

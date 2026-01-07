@@ -84,25 +84,22 @@ export function useGitManager(
     [scapeId]
   )
 
-  // Initial Load - sync files to git on first mount
+  // Initial Load - just fetch status and history (no file sync yet)
+  // File sync will be triggered by the debounced effect once files are loaded
   useEffect(() => {
-    if (scapeId && files.length > 0) {
-      // Wait a tick for latestFilesRef to be populated
-      const timer = setTimeout(() => {
-        refresh(true)
-      }, 100)
-      return () => clearTimeout(timer)
+    if (scapeId) {
+      refresh(false) // Don't sync files, just get current git state
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scapeId]) // Only run once when scapeId is set, files are handled by ref
+  }, [scapeId])
 
-  // Auto-Sync on File Change (debounced)
+  // Auto-Sync on File Change (debounced 1s)
+  // This handles both initial sync and subsequent changes
   useEffect(() => {
-    if (isReady && debouncedFiles.length >= 0) {
-      // Allow empty array to trigger sync (for deletion detection)
-      refresh(true)
+    if (scapeId && debouncedFiles.length > 0) {
+      refresh(true) // Sync files to git, then update status
     }
-  }, [debouncedFiles, isReady, refresh])
+  }, [debouncedFiles, scapeId, refresh])
 
   // Commit Action
   const commit = useCallback(

@@ -243,6 +243,71 @@ const AGENTIC_TOOLS: GroqTool[] = [
   },
 ]
 
+// --- Planning Tools (for structured planning before execution) ---
+
+const PLANNING_TOOLS: GroqTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "propose_plan",
+      description:
+        "Propose a plan of changes before executing. Use this for multi-file changes or complex operations. The user will see the plan and can approve, edit, or cancel it.",
+      parameters: {
+        type: "object",
+        properties: {
+          summary: {
+            type: "string",
+            description: "Brief 1-2 sentence summary of what will be done",
+          },
+          steps: {
+            type: "array",
+            description: "List of steps in the plan",
+            items: {
+              type: "object",
+              properties: {
+                action: {
+                  type: "string",
+                  enum: ["create", "modify", "delete", "run", "install"],
+                  description:
+                    "Type of action: create file, modify file, delete file, run code, or install package",
+                },
+                target: {
+                  type: "string",
+                  description: "File path or package name this step affects",
+                },
+                description: {
+                  type: "string",
+                  description: "Human-readable description of what this step does",
+                },
+              },
+              required: ["action", "target", "description"],
+            },
+          },
+        },
+        required: ["summary", "steps"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "execute_plan",
+      description:
+        "Execute an approved plan. Only call this AFTER the user has approved the plan from propose_plan. This signals you should proceed with the changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          confirmation: {
+            type: "string",
+            description: "Set to 'approved' to confirm execution",
+          },
+        },
+        required: ["confirmation"],
+      },
+    },
+  },
+]
+
 // --- Execution Tools (conditionally available) ---
 
 const RUN_FILE_TOOL: GroqTool = {
@@ -323,8 +388,8 @@ export function getToolsForEnvironment(capabilities: {
   packages?: boolean
   terminal?: boolean
 }): GroqTool[] {
-  // Start with base file tools, then add agentic tools
-  const tools = [...BASE_TOOLS, ...AGENTIC_TOOLS]
+  // Start with base file tools, then add agentic and planning tools
+  const tools = [...BASE_TOOLS, ...AGENTIC_TOOLS, ...PLANNING_TOOLS]
 
   if (capabilities.terminal) {
     tools.push(RUN_FILE_TOOL)
@@ -479,6 +544,14 @@ export async function executeTool(
 
       case "verify_and_run":
         return await executeVerifyAndRun(args.path, ctx)
+
+      // --- Planning Tools ---
+
+      case "propose_plan":
+        return executeProposePlan(args.summary, args.steps)
+
+      case "execute_plan":
+        return executeExecutePlan(args.confirmation)
 
       default:
         return { success: false, output: "", error: `Unknown tool: ${toolName}` }
@@ -1267,5 +1340,46 @@ function classifyError(
   return {
     type: "unknown",
     message: stderr.slice(0, 200) || "Unknown error occurred",
+  }
+}
+
+// --- Planning Tool Types ---
+
+export interface PlanStep {
+  action: "create" | "modify" | "delete" | "run" | "install"
+  target: string
+  description: string
+}
+
+export interface ProposedPlan {
+  summary: string
+  steps: PlanStep[]
+}
+
+// --- Planning Tool Execution ---
+
+function executeProposePlan(summary: string, steps: PlanStep[]): ToolResult {
+  // Encode the plan as JSON in the output so the UI can parse and display it
+  const plan: ProposedPlan = { summary, steps }
+
+  return {
+    success: true,
+    output: `[PLAN_PROPOSAL]${JSON.stringify(plan)}[/PLAN_PROPOSAL]`,
+    // The agent.ts and UI will detect this special format and handle it
+  }
+}
+
+function executeExecutePlan(confirmation: string): ToolResult {
+  if (confirmation !== "approved") {
+    return {
+      success: false,
+      output: "",
+      error: "Plan not approved. User must approve the plan before execution.",
+    }
+  }
+
+  return {
+    success: true,
+    output: "[PLAN_APPROVED] Proceeding with execution...",
   }
 }
