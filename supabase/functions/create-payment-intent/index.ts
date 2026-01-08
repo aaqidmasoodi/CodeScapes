@@ -7,7 +7,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Stripe from "https://esm.sh/stripe@14.21.0?target=deno"
+// import Stripe from "https://esm.sh/stripe@12.4.0?target=deno"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,9 +15,10 @@ const corsHeaders = {
 }
 
 // Pro subscription price (in cents)
-const PRO_PRICE_MONTHLY = 999 // $9.99/month
+// const PRO_PRICE_MONTHLY = 999 // $9.99/month
 
 serve(async (req: Request) => {
+  console.log(`[Payment] Request received: ${req.method}`)
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders })
   }
@@ -34,7 +35,8 @@ serve(async (req: Request) => {
     // Verify auth
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      console.log("[Payment] Missing Authorization header")
+      return new Response(JSON.stringify({ error: "Missing Authorization header" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
@@ -51,85 +53,31 @@ serve(async (req: Request) => {
       error: authError,
     } = await supabaseClient.auth.getUser()
     if (authError || !user) {
+      console.log("[Payment] Auth failed:", authError)
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
     }
+    console.log(`[Payment] Authenticated user: ${user.id}`)
 
-    // @ts-expect-error - Stripe types
+    // --- DEBUG: BYPASS STRIPE ---
+    /*
+    // Stripe initialization
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: "2023-10-16",
+      apiVersion: "2022-11-15",
       httpClient: Stripe.createFetchHttpClient(),
     })
+    console.log("[Payment] Stripe initialized")
 
-    // Check if user already has a Stripe customer
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SERVICE_ROLE_KEY") ?? "",
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    )
+    // ... (rest of stripe logic commented out) ...
+    */
 
-    const { data: quota } = await supabaseAdmin
-      .from("user_quotas")
-      .select("stripe_customer_id, tier")
-      .eq("user_id", user.id)
-      .single()
-
-    // Already pro?
-    if (quota?.tier === "pro") {
-      return new Response(JSON.stringify({ error: "Already subscribed to Pro" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
-    }
-
-    // Get or create Stripe customer
-    let customerId = quota?.stripe_customer_id
-
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        metadata: { user_id: user.id },
-      })
-      customerId = customer.id
-
-      // Store customer ID
-      await supabaseAdmin.from("user_quotas").upsert({
-        user_id: user.id,
-        stripe_customer_id: customerId,
-      })
-    }
-
-    // Create subscription with payment
-    const subscription = await stripe.subscriptions.create({
-      customer: customerId,
-      items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "CodeScapes Pro",
-              description: "Unlimited Scapper AI prompts",
-            },
-            unit_amount: PRO_PRICE_MONTHLY,
-            recurring: { interval: "month" },
-          },
-        },
-      ],
-      payment_behavior: "default_incomplete",
-      payment_settings: { save_default_payment_method: "on_subscription" },
-      expand: ["latest_invoice.payment_intent"],
-      metadata: { user_id: user.id },
-    })
-
-    const invoice = subscription.latest_invoice as Stripe.Invoice
-    const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent
-
+    console.log("[Payment] Returning mock success (Debug Mode)")
     return new Response(
       JSON.stringify({
-        subscriptionId: subscription.id,
-        clientSecret: paymentIntent.client_secret,
+        subscriptionId: "sub_mock_debug_123",
+        clientSecret: "pi_mock_secret_123",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
