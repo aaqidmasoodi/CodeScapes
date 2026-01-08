@@ -426,7 +426,7 @@ export async function runScapper(
         signal,
         maxTokens: 8192,
         temperature: 0.8,
-        promptType: loopCount === 1 ? promptType : "follow_up", // Only first iteration counts for quota
+        promptType: loopCount === 1 ? promptType : "scapper_response", // Only first iteration counts for quota
       })
       const choice = response.choices[0]
       const assistantMessage = choice.message
