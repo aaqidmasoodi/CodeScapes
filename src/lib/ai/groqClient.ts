@@ -206,6 +206,193 @@ export async function chatCompletion(
   )
 }
 
+/**
+ * Streaming result from chat completion
+ */
+export interface StreamChunk {
+  type: "token" | "reasoning" | "tool_call" | "done" | "error"
+  content?: string
+  toolCalls?: GroqToolCall[]
+  error?: string
+  usage?: GroqResponse["usage"]
+}
+
+/**
+ * Streaming chat completion - yields tokens as they arrive
+ */
+export async function* chatCompletionStream(
+  messages: GroqMessage[],
+  tools?: GroqTool[],
+  options?: {
+    model?: string
+    maxTokens?: number
+    temperature?: number
+    signal?: AbortSignal
+  }
+): AsyncGenerator<StreamChunk, void, unknown> {
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY
+
+  if (!apiKey) {
+    yield {
+      type: "error",
+      error: "Groq API key not configured. Please add VITE_GROQ_API_KEY to your .env file.",
+    }
+    return
+  }
+
+  const { model = "openai/gpt-oss-120b", maxTokens = 4096, temperature = 0.6 } = options || {}
+
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    temperature,
+    stream: true,
+  }
+
+  if (maxTokens) {
+    body.max_completion_tokens = maxTokens
+  }
+
+  if (tools && tools.length > 0) {
+    body.tools = tools
+    body.tool_choice = "auto"
+  }
+
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: options?.signal,
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      yield {
+        type: "error",
+        error: errorData.error?.message || `Groq API error: ${response.status}`,
+      }
+      return
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) {
+      yield { type: "error", error: "No response body" }
+      return
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ""
+    const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map()
+    let fullContent = ""
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      // Process complete SSE events
+      const lines = buffer.split("\n")
+      buffer = lines.pop() || "" // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue
+        const data = line.slice(6).trim()
+
+        if (data === "[DONE]") {
+          // Stream complete
+          if (toolCalls.size > 0) {
+            const calls: GroqToolCall[] = Array.from(toolCalls.values()).map((tc) => ({
+              id: tc.id,
+              type: "function" as const,
+              function: { name: tc.name, arguments: tc.arguments },
+            }))
+            yield { type: "tool_call", toolCalls: calls }
+          }
+          yield { type: "done", content: fullContent }
+          return
+        }
+
+        try {
+          const parsed = JSON.parse(data)
+
+          // Check for error in stream
+          if (parsed.error) {
+            yield { type: "error", error: parsed.error.message }
+            return
+          }
+
+          const delta = parsed.choices?.[0]?.delta
+
+          // Handle both content and reasoning tokens
+          if (delta?.content) {
+            fullContent += delta.content
+            yield { type: "token", content: delta.content }
+          }
+
+          // Yield reasoning tokens separately for UI display
+          if (delta?.reasoning) {
+            // Don't add to fullContent - reasoning is separate from final answer
+            yield { type: "reasoning", content: delta.reasoning }
+          }
+
+          // Handle streaming tool calls
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0
+              if (!toolCalls.has(idx)) {
+                toolCalls.set(idx, { id: tc.id || "", name: "", arguments: "" })
+              }
+              const existing = toolCalls.get(idx)!
+              if (tc.id) existing.id = tc.id
+              if (tc.function?.name) existing.name = tc.function.name
+              if (tc.function?.arguments) existing.arguments += tc.function.arguments
+            }
+          }
+
+          // Check for finish reason
+          if (parsed.choices?.[0]?.finish_reason === "tool_calls" && toolCalls.size > 0) {
+            const calls: GroqToolCall[] = Array.from(toolCalls.values()).map((tc) => ({
+              id: tc.id,
+              type: "function" as const,
+              function: { name: tc.name, arguments: tc.arguments },
+            }))
+            yield { type: "tool_call", toolCalls: calls }
+          }
+
+          // Extract usage if present
+          if (parsed.usage) {
+            yield { type: "done", content: fullContent, usage: parsed.usage }
+            return
+          }
+        } catch {
+          // Skip malformed JSON chunks
+        }
+      }
+    }
+
+    // Final yield if we exit normally
+    if (toolCalls.size > 0) {
+      const calls: GroqToolCall[] = Array.from(toolCalls.values()).map((tc) => ({
+        id: tc.id,
+        type: "function" as const,
+        function: { name: tc.name, arguments: tc.arguments },
+      }))
+      yield { type: "tool_call", toolCalls: calls }
+    }
+    yield { type: "done", content: fullContent }
+  } catch (error) {
+    yield {
+      type: "error",
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
 // Helper for delays
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))

@@ -144,6 +144,19 @@ export function TerminalPane({
   const [scapperConversation, setScapperConversation] =
     useState<GroqMessage[]>(createEmptyConversation())
 
+  // --- PLAN APPROVAL STATE ---
+  // Track which plans have been responded to (prevent button re-activation on pane switch)
+  const [respondedPlanIds, setRespondedPlanIds] = useState<Set<string>>(new Set())
+  // Use a ref for real-time access in closures (JSX stored in history captures current ref value)
+  const respondedPlanIdsRef = useRef<Set<string>>(new Set())
+  // Keep ref in sync with state
+  respondedPlanIdsRef.current = respondedPlanIds
+  // Ref to check if Scapper is running (for callbacks stored in history)
+  const isScapperModeRef = useRef(false)
+  isScapperModeRef.current = isScapperMode
+  // Store the pending plan so we can feed it back to the agent on approval
+  const [, setPendingPlan] = useState<{ id: string; plan: ProposedPlan } | null>(null)
+
   // --- ASK USER STATE ---
   // Used when Scapper needs to ask the user a question during execution
   const [scapperQuestion, setScapperQuestion] = useState<string | null>(null)
@@ -632,6 +645,84 @@ export function TerminalPane({
                 ),
               },
             ])
+          } else if (progress.type === "streaming") {
+            // For streaming, update the last history item with accumulated text
+            // We use the full message (which accumulates in agent.ts) and replace
+            setHistory((prev) => {
+              // Find if we already have a streaming output (last item before "done")
+              const lastIdx = prev.length - 1
+              const lastItem = prev[lastIdx]
+
+              // Check if we should update the last item (if it looks like previous streaming output)
+              // We detect this by checking if the new message starts with what was there before
+              if (lastItem && lastItem.type === "output" && prev.length > 1) {
+                // Replace last item with new accumulated content
+                return [
+                  ...prev.slice(0, -1),
+                  {
+                    type: "output" as const,
+                    content: (
+                      <span className="whitespace-pre-wrap text-foreground">
+                        {progress.message}
+                      </span>
+                    ),
+                  },
+                ]
+              }
+              // First streaming chunk - add new item
+              return [
+                ...prev,
+                {
+                  type: "output" as const,
+                  content: (
+                    <span className="whitespace-pre-wrap text-foreground">{progress.message}</span>
+                  ),
+                },
+              ]
+            })
+          } else if (progress.type === "reasoning") {
+            // For reasoning/thinking, show in a distinct "thinking" style
+            setHistory((prev) => {
+              const lastIdx = prev.length - 1
+              const lastItem = prev[lastIdx]
+
+              // Check if last item is already a reasoning output (update it if prev.length > 1)
+              // We just check if it's an output type and length > 1 to determine if we should update
+              const shouldUpdate = lastItem && lastItem.type === "output" && prev.length > 1
+
+              if (shouldUpdate) {
+                // Update existing reasoning display
+                return [
+                  ...prev.slice(0, -1),
+                  {
+                    type: "output" as const,
+                    content: (
+                      <div className="my-1 border-l-2 border-muted-foreground/30 pl-3 text-sm italic leading-relaxed text-muted-foreground/70">
+                        <span className="mb-1 block text-xs not-italic text-muted-foreground/50">
+                          thinking...
+                        </span>
+                        <div className="whitespace-pre-wrap opacity-90">{progress.message}</div>
+                      </div>
+                    ),
+                  },
+                ]
+              }
+              // First reasoning chunk - add new item
+              return [
+                ...prev,
+                {
+                  type: "output" as const,
+                  content: (
+                    <div className="my-1 border-l-2 border-muted-foreground/30 pl-3 text-sm italic leading-relaxed text-muted-foreground/70">
+                      <span className="mb-1 block text-xs not-italic text-muted-foreground/50">
+                        thinking...
+                      </span>
+                      <div className="whitespace-pre-wrap opacity-90">{progress.message}</div>
+                    </div>
+                  ),
+                },
+              ]
+            })
           }
         },
         ac.signal
@@ -646,6 +737,12 @@ export function TerminalPane({
         if (planMatch) {
           try {
             const plan: ProposedPlan = JSON.parse(planMatch[1])
+
+            // Generate unique plan ID based on content hash
+            const planId = `plan-${Date.now()}-${plan.summary.slice(0, 20).replace(/\s/g, "-")}`
+
+            // Store the pending plan for approval flow
+            setPendingPlan({ id: planId, plan })
 
             // Get icon for action type
             const getActionIcon = (action: string) => {
@@ -665,6 +762,53 @@ export function TerminalPane({
               }
             }
 
+            // Handler for plan approval/cancel
+            const handlePlanResponse = (response: string, respondedPlanId: string) => {
+              // Check if already responded (using ref for real-time value)
+              if (respondedPlanIdsRef.current.has(respondedPlanId)) {
+                return // Already processed
+              }
+
+              // Mark this plan as responded (update both state and ref)
+              const newSet = new Set([...respondedPlanIdsRef.current, respondedPlanId])
+              respondedPlanIdsRef.current = newSet
+              setRespondedPlanIds(newSet)
+
+              // CRITICAL: Check if Scapper is still running before processing
+              if (!isScapperModeRef.current) {
+                // Scapper was quit - don't restart it
+                setHistory((prev) => [
+                  ...prev,
+                  {
+                    type: "output",
+                    content: (
+                      <span className="text-yellow-400">
+                        Scapper is not running. Type 'scapper' to start a new session.
+                      </span>
+                    ),
+                  },
+                ])
+                return
+              }
+
+              // Check if approved
+              if (
+                response.toLowerCase().includes("yes") ||
+                response.toLowerCase().includes("proceed") ||
+                response.toLowerCase().includes("approve")
+              ) {
+                // Feed the FULL PLAN back to the agent so it knows exactly what to execute
+                const approvalMessage = `[PLAN_APPROVED] Execute this plan immediately without proposing again:\n${JSON.stringify(plan, null, 2)}\n\nProceed with execution now. Do NOT call propose_plan again.`
+                handleScapperInput(approvalMessage)
+              } else {
+                // Plan was cancelled
+                handleScapperInput("Plan cancelled. Let me know how you'd like to proceed.")
+              }
+
+              // Clear pending plan
+              setPendingPlan(null)
+            }
+
             setHistory((prev) => [
               ...prev,
               {
@@ -672,7 +816,9 @@ export function TerminalPane({
                 content: (
                   <PlanProposal
                     plan={plan as ScapperPlan}
-                    onResponse={handleScapperInput}
+                    planId={planId}
+                    checkIsResponded={() => respondedPlanIdsRef.current.has(planId)}
+                    onResponse={handlePlanResponse}
                     getActionIcon={getActionIcon}
                   />
                 ),
@@ -686,7 +832,8 @@ export function TerminalPane({
       }
 
       // Show final message (normal case)
-      if (result.success && result.message) {
+      // Skip for 'question' intent - streaming already displayed the response
+      if (result.success && result.message && result.intent !== "question") {
         setHistory((prev) => [
           ...prev,
           { type: "output", content: <span className="text-foreground">{result.message}</span> },

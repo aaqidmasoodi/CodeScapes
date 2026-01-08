@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { Check, XCircle, ClipboardList } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -15,17 +14,28 @@ export interface ScapperPlan {
 
 interface PlanProposalProps {
   plan: ScapperPlan
-  onResponse: (response: string) => void
+  planId: string
+  /**
+   * Function to check if this plan has been responded to.
+   * Must be a function (not a boolean) so it reads from a ref at click time,
+   * not at element creation time.
+   */
+  checkIsResponded: () => boolean
+  onResponse: (response: string, planId: string) => void
   getActionIcon: (action: string) => React.ReactNode
 }
 
-export function PlanProposal({ plan, onResponse, getActionIcon }: PlanProposalProps) {
-  const [hasResponded, setHasResponded] = useState(false)
-
+export function PlanProposal({
+  plan,
+  planId,
+  checkIsResponded,
+  onResponse,
+  getActionIcon,
+}: PlanProposalProps) {
   const handleResponse = (response: string) => {
-    if (hasResponded) return
-    setHasResponded(true)
-    onResponse(response)
+    // Check ref at click time (not render time)
+    if (checkIsResponded()) return
+    onResponse(response, planId)
   }
 
   return (
@@ -50,7 +60,7 @@ export function PlanProposal({ plan, onResponse, getActionIcon }: PlanProposalPr
           size="sm"
           onClick={() => handleResponse("Yes, proceed with the plan")}
           className="bg-green-600 hover:bg-green-700"
-          disabled={hasResponded}
+          disabled={checkIsResponded()}
         >
           <Check className="mr-1 h-4 w-4" /> Approve
         </Button>
@@ -58,7 +68,7 @@ export function PlanProposal({ plan, onResponse, getActionIcon }: PlanProposalPr
           size="sm"
           variant="outline"
           onClick={() => handleResponse("No, cancel the plan")}
-          disabled={hasResponded}
+          disabled={checkIsResponded()}
         >
           <XCircle className="mr-1 h-4 w-4" /> Cancel
         </Button>
