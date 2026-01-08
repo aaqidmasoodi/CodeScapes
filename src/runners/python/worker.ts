@@ -1084,11 +1084,9 @@ if '/lib/python' not in sys.path:
       }
     } finally {
       // 3. Sync Filesystem Back to Main Thread
-      // REMOVED: syncFileSystem() was syncing ALL files (including user source files)
-      // back to the editor after execution, overwriting any edits made during runtime.
-      // Files created by Python (e.g., open('file.txt', 'w')) are still synced via
-      // explicit calls in save handlers. This only affects automatic post-run sync.
-      // syncFileSystem()
+      // Syncs all files to the editor. The handler in ScapeEditor (handleFileSystemUpdate)
+      // filters the update to only ADD new files; existing source files are NOT overwritten.
+      syncFileSystem()
       postMessage({ type: "DidRun" })
     }
   }
