@@ -19,6 +19,13 @@ const corsHeaders = {
 
 serve(async (req: Request) => {
   console.log(`[Payment] Request received: ${req.method}`)
+
+  // Log all headers for debugging
+  console.log("[Payment] Headers:")
+  for (const [key, value] of req.headers.entries()) {
+    console.log(`  ${key}: ${value}`)
+  }
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders })
   }
