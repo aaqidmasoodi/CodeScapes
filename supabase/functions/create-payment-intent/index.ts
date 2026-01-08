@@ -62,10 +62,16 @@ serve(async (req: Request) => {
     } = await supabaseClient.auth.getUser()
     if (authError || !user) {
       console.log("[Payment] Auth failed:", authError)
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
+      return new Response(
+        JSON.stringify({
+          error: `Auth failed: ${authError?.message || "Unknown error"}`,
+          details: authError,
+        }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      )
     }
     console.log(`[Payment] Authenticated user: ${user.id}`)
 
