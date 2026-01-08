@@ -2,14 +2,21 @@
  * Scapper Agent - Core AI Logic
  *
  * Manages conversation, tool execution loop, and progress reporting.
+ * Features: Streaming responses, intent classification, smart failure recovery.
  */
 
-import { chatCompletion, parseToolArguments, GroqAPIError } from "./groqClient"
+import {
+  chatCompletion,
+  chatCompletionStream,
+  parseToolArguments,
+  GroqAPIError,
+} from "./groqClient"
 import type { GroqMessage, GroqToolCall } from "./groqClient"
 import { getToolsForEnvironment, executeTool } from "./tools"
 import type { ToolContext, ToolResult } from "./tools"
 import { buildProjectContext, formatContextForPrompt } from "./context"
 import { formatFileCacheForPrompt, clearFileCache } from "./fileCache"
+import { classifyIntent, type Intent } from "./classifier"
 
 // --- Dynamic System Prompt Builder ---
 
@@ -146,7 +153,7 @@ ${COMMON_RULES}
 
 function buildPythonPrompt(ctx: ToolContext): string {
   const { dependencies } = ctx
-  return `You are Scapper, a Python Data Science Expert for CodeScapes.
+  return `You are Scapper, a Python Expert for CodeScapes.
 **ENVIRONMENT**: Python 3 (Pyodide Runtime)
 **INSTALLED**: ${dependencies.length > 0 ? dependencies.join(", ") : "None"}
 
@@ -274,14 +281,18 @@ function compressHistory(history: GroqMessage[]): GroqMessage[] {
 }
 
 export interface ScapperProgress {
-  type: "thinking" | "tool" | "result" | "error" | "done"
+  type: "thinking" | "tool" | "result" | "error" | "done" | "streaming" | "reasoning"
   message: string
+  /** For streaming type - the token delta */
+  token?: string
 }
 
 export interface ScapperResult {
   success: boolean
   message: string
   error?: string
+  /** Intent that was classified for this request */
+  intent?: Intent
 }
 
 // --- Main Agent Function ---
@@ -298,6 +309,18 @@ export async function runScapper(
     clearFileCache()
   }
 
+  // --- INTENT CLASSIFICATION ---
+  onProgress({ type: "thinking", message: "Understanding your request..." })
+
+  let intent: Intent = "complex_task" // Default to full tool suite
+  try {
+    const classification = await classifyIntent(userMessage)
+    intent = classification.intent
+    console.log(`[Scapper] Intent: ${intent} (confidence: ${classification.confidence})`)
+  } catch (e) {
+    console.warn("[Scapper] Intent classification failed, defaulting to complex_task:", e)
+  }
+
   // Build dynamic system prompt based on environment
   let systemPrompt = await buildSystemPrompt(toolContext)
 
@@ -307,8 +330,10 @@ export async function runScapper(
     systemPrompt += fileCacheContext
   }
 
-  // Get tools based on environment capabilities
-  const tools = getToolsForEnvironment(toolContext.environment.capabilities)
+  // Get tools based on environment capabilities and intent
+  // For questions, we can use no tools (faster response)
+  const tools =
+    intent === "question" ? [] : getToolsForEnvironment(toolContext.environment.capabilities)
 
   // Build messages array
   const messages: GroqMessage[] = [
@@ -323,7 +348,56 @@ export async function runScapper(
     updatedHistory.splice(0, updatedHistory.length - MAX_HISTORY_MESSAGES)
   }
 
-  onProgress({ type: "thinking", message: "Understanding your request..." })
+  // --- STREAMING PATH FOR QUESTIONS ---
+  if (intent === "question") {
+    try {
+      let fullResponse = ""
+      const stream = chatCompletionStream(messages, [], {
+        signal,
+        model: "llama-3.3-70b-versatile", // Use non-reasoning model - reasoning model forces tool calls even with no tools
+      })
+
+      let reasoningContent = ""
+
+      for await (const chunk of stream) {
+        if (signal?.aborted) {
+          throw new Error("Aborted by user")
+        }
+
+        if (chunk.type === "token" && chunk.content) {
+          fullResponse += chunk.content
+          onProgress({ type: "streaming", message: fullResponse, token: chunk.content })
+        } else if (chunk.type === "reasoning" && chunk.content) {
+          // Accumulate and display reasoning/thinking
+          reasoningContent += chunk.content
+          onProgress({ type: "reasoning", message: reasoningContent, token: chunk.content })
+        } else if (chunk.type === "error") {
+          throw new Error(chunk.error)
+        } else if (chunk.type === "done") {
+          break
+        }
+      }
+
+      updatedHistory.push({ role: "assistant", content: fullResponse })
+      onProgress({ type: "done", message: fullResponse })
+
+      return {
+        result: { success: true, message: fullResponse, intent },
+        updatedHistory: compressHistory(updatedHistory),
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Streaming error"
+      onProgress({ type: "error", message: errorMessage })
+      return {
+        result: { success: false, message: "", error: errorMessage, intent },
+        updatedHistory: compressHistory(updatedHistory),
+      }
+    }
+  }
+
+  // --- STANDARD AGENTIC PATH (simple_edit / complex_task) ---
+  // Track failures for recovery
+  const failureTracker: Map<string, number> = new Map() // path -> failure count
 
   try {
     // Agent loop - keep going until no more tool calls
@@ -356,7 +430,43 @@ export async function runScapper(
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         // Execute each tool call
         for (const toolCall of assistantMessage.tool_calls) {
+          const toolName = toolCall.function.name
+          const args = parseToolArguments<Record<string, unknown>>(toolCall) || {}
+
           const toolResult = await executeToolCall(toolCall, toolContext, onProgress)
+
+          // --- SMART FAILURE RECOVERY for apply_diff ---
+          if (!toolResult.success && toolName === "apply_diff" && typeof args.path === "string") {
+            const filePath = args.path
+            const failCount = (failureTracker.get(filePath) || 0) + 1
+            failureTracker.set(filePath, failCount)
+
+            // Auto-read the file to provide current content
+            try {
+              const readResult = await executeTool("read_file", { path: filePath }, toolContext)
+              if (readResult.success) {
+                const recoveryHint =
+                  failCount >= 3
+                    ? `\n\n[RECOVERY HINT] This edit has failed ${failCount} times. Consider using \`overwrite_file\` instead.`
+                    : ""
+
+                // Inject current file content to help the model retry correctly
+                messages.push({
+                  role: "tool",
+                  content: `Edit failed: ${toolResult.error}\n\nHere is the CURRENT file content for ${filePath}:\n\`\`\`\n${readResult.output}\n\`\`\`${recoveryHint}`,
+                  tool_call_id: toolCall.id,
+                })
+
+                onProgress({
+                  type: "error",
+                  message: `Edit failed - auto-reading file for retry...`,
+                })
+                continue // Skip normal tool result push
+              }
+            } catch {
+              // Read failed, fall through to normal error handling
+            }
+          }
 
           // Add tool result to messages
           messages.push({
@@ -386,6 +496,7 @@ export async function runScapper(
                 result: {
                   success: true,
                   message: `[PLAN_PROPOSAL]${planJson}[/PLAN_PROPOSAL]`,
+                  intent,
                 },
                 updatedHistory: compressHistory(updatedHistory),
               }
@@ -412,7 +523,7 @@ export async function runScapper(
       onProgress({ type: "done", message: finalMessage })
 
       return {
-        result: { success: true, message: finalMessage },
+        result: { success: true, message: finalMessage, intent },
         updatedHistory: compressHistory(updatedHistory),
       }
     }
@@ -423,6 +534,7 @@ export async function runScapper(
         success: false,
         message: "Task incomplete",
         error: "Maximum iterations reached. The task may be too complex.",
+        intent,
       },
       updatedHistory: compressHistory(updatedHistory),
     }
@@ -437,7 +549,7 @@ export async function runScapper(
     onProgress({ type: "error", message: errorMessage })
 
     return {
-      result: { success: false, message: "", error: errorMessage },
+      result: { success: false, message: "", error: errorMessage, intent },
       updatedHistory: compressHistory(updatedHistory),
     }
   }

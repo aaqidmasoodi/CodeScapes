@@ -645,6 +645,84 @@ export function TerminalPane({
                 ),
               },
             ])
+          } else if (progress.type === "streaming") {
+            // For streaming, update the last history item with accumulated text
+            // We use the full message (which accumulates in agent.ts) and replace
+            setHistory((prev) => {
+              // Find if we already have a streaming output (last item before "done")
+              const lastIdx = prev.length - 1
+              const lastItem = prev[lastIdx]
+
+              // Check if we should update the last item (if it looks like previous streaming output)
+              // We detect this by checking if the new message starts with what was there before
+              if (lastItem && lastItem.type === "output" && prev.length > 1) {
+                // Replace last item with new accumulated content
+                return [
+                  ...prev.slice(0, -1),
+                  {
+                    type: "output" as const,
+                    content: (
+                      <span className="whitespace-pre-wrap text-foreground">
+                        {progress.message}
+                      </span>
+                    ),
+                  },
+                ]
+              }
+              // First streaming chunk - add new item
+              return [
+                ...prev,
+                {
+                  type: "output" as const,
+                  content: (
+                    <span className="whitespace-pre-wrap text-foreground">{progress.message}</span>
+                  ),
+                },
+              ]
+            })
+          } else if (progress.type === "reasoning") {
+            // For reasoning/thinking, show in a distinct "thinking" style
+            setHistory((prev) => {
+              const lastIdx = prev.length - 1
+              const lastItem = prev[lastIdx]
+
+              // Check if last item is already a reasoning output (update it if prev.length > 1)
+              // We just check if it's an output type and length > 1 to determine if we should update
+              const shouldUpdate = lastItem && lastItem.type === "output" && prev.length > 1
+
+              if (shouldUpdate) {
+                // Update existing reasoning display
+                return [
+                  ...prev.slice(0, -1),
+                  {
+                    type: "output" as const,
+                    content: (
+                      <div className="my-1 border-l-2 border-muted-foreground/30 pl-3 text-sm italic leading-relaxed text-muted-foreground/70">
+                        <span className="mb-1 block text-xs not-italic text-muted-foreground/50">
+                          thinking...
+                        </span>
+                        <div className="whitespace-pre-wrap opacity-90">{progress.message}</div>
+                      </div>
+                    ),
+                  },
+                ]
+              }
+              // First reasoning chunk - add new item
+              return [
+                ...prev,
+                {
+                  type: "output" as const,
+                  content: (
+                    <div className="my-1 border-l-2 border-muted-foreground/30 pl-3 text-sm italic leading-relaxed text-muted-foreground/70">
+                      <span className="mb-1 block text-xs not-italic text-muted-foreground/50">
+                        thinking...
+                      </span>
+                      <div className="whitespace-pre-wrap opacity-90">{progress.message}</div>
+                    </div>
+                  ),
+                },
+              ]
+            })
           }
         },
         ac.signal
@@ -754,7 +832,8 @@ export function TerminalPane({
       }
 
       // Show final message (normal case)
-      if (result.success && result.message) {
+      // Skip for 'question' intent - streaming already displayed the response
+      if (result.success && result.message && result.intent !== "question") {
         setHistory((prev) => [
           ...prev,
           { type: "output", content: <span className="text-foreground">{result.message}</span> },
