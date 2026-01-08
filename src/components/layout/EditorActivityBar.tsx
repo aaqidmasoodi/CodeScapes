@@ -1,4 +1,4 @@
-import { Files, Search, Settings, Lock, MessageSquarePlus } from "lucide-react"
+import { Files, Search, Settings, Lock, MessageSquarePlus, HelpCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog"
@@ -14,6 +14,7 @@ interface EditorActivityBarProps {
   activeTool: string | null
   onToolSelect: (toolId: string | null) => void
   onSettingsClick: () => void
+  onHelpClick?: () => void
   className?: string
   topTools?: ActivityTool[]
   bottomTools?: ActivityTool[]
@@ -23,6 +24,7 @@ export function EditorActivityBar({
   activeTool,
   onToolSelect,
   onSettingsClick,
+  onHelpClick,
   className,
   topTools = [],
   bottomTools = [],
@@ -55,6 +57,7 @@ export function EditorActivityBar({
         {toolsToRender.map((tool) => (
           <Button
             key={tool.id}
+            data-tour={`sidebar-${tool.id}`}
             variant={activeTool === tool.id ? "secondary" : "ghost"}
             size="icon"
             onClick={() => handleToolClick(tool.id)}
@@ -103,6 +106,18 @@ export function EditorActivityBar({
             </Button>
           }
         />
+
+        {onHelpClick && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 text-muted-foreground"
+            title="Help / Restart Tour"
+            onClick={onHelpClick}
+          >
+            <HelpCircle className="h-5 w-5" />
+          </Button>
+        )}
 
         <Button
           variant="ghost"

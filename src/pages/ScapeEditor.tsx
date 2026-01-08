@@ -67,6 +67,8 @@ import { LoadingOverlay } from "@/components/ui/spinner"
 import { SourceControlPane } from "@/components/editor/SourceControlPane"
 import { initFromSupabase } from "@/lib/git/sync"
 import { useGitManager } from "@/hooks/useGitManager"
+import { TourProvider, TourStep, TourAutoStart, TourRestartButtonWrapper } from "@/components/tour"
+import { tourRegistry } from "@/lib/tours"
 
 // --- Helper for Persistence ---
 function usePersistentState<T>(
@@ -1180,13 +1182,23 @@ export default function ScapeEditor() {
     )
 
   return (
-    <>
+    <TourProvider tours={tourRegistry}>
+      <TourStep />
+      {scape?.environment && <TourAutoStart environment={scape.environment} />}
+      {/* TourRestartButton renders inside TourProvider to access context */}
+      {scape?.environment && (
+        <TourRestartButtonWrapper environment={scape.environment} />
+      )}
       <ScapeLayout
         sidebar={
           <EditorActivityBar
             activeTool={activeTool}
             onToolSelect={setActiveTool}
             onSettingsClick={() => setIsSettingsOpen(true)}
+            onHelpClick={() => {
+              // Trigger the restart button click programmatically
+              document.getElementById('tour-restart-btn')?.click()
+            }}
             topTools={topTools}
           />
         }
@@ -1217,6 +1229,7 @@ export default function ScapeEditor() {
           <>
             <div className="mr-2 flex items-center gap-1 border-r border-border/50 pr-4">
               <div
+                data-tour="auto-toggle"
                 className={cn(
                   "mr-2 flex items-center gap-2",
                   !isRunning && "pointer-events-none opacity-50"
@@ -1233,6 +1246,7 @@ export default function ScapeEditor() {
               {/* Refresh (Only when Running) */}
               {isRunning && (
                 <Button
+                  data-tour="quick-run-button"
                   variant="ghost"
                   size="sm"
                   onClick={handleManualRefresh}
@@ -1247,6 +1261,7 @@ export default function ScapeEditor() {
               <div className="flex items-center gap-2">
                 {/* Stop / Start with Rotate Effect on Run */}
                 <Button
+                  data-tour="run-button"
                   // Logic for Run button:
                   // Primary/default state is "Run" (Green)
                   // Active state is "Stop" (Red)
@@ -1630,17 +1645,19 @@ export default function ScapeEditor() {
                                   // 2. Handle Text Code
                                   if (typeof activeFile.content === "string") {
                                     return (
-                                      <CodeEditor
-                                        key={activeFile.name}
-                                        fileName={activeFile.name}
-                                        initialValue={activeFile.content as string}
-                                        language={activeFile.language}
-                                        onChange={handleCodeChange}
-                                        onValidate={handleValidate}
-                                        files={deferredFiles}
-                                        onRun={handleRun}
-                                        editorSettings={editorSettings}
-                                      />
+                                      <div data-tour="code-editor" className="h-full">
+                                        <CodeEditor
+                                          key={activeFile.name}
+                                          fileName={activeFile.name}
+                                          initialValue={activeFile.content as string}
+                                          language={activeFile.language}
+                                          onChange={handleCodeChange}
+                                          onValidate={handleValidate}
+                                          files={deferredFiles}
+                                          onRun={handleRun}
+                                          editorSettings={editorSettings}
+                                        />
+                                      </div>
                                     )
                                   }
 
@@ -1673,102 +1690,106 @@ export default function ScapeEditor() {
                               )}
                             </ResizablePanel>
                             <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
-                            {isTerminalOpen && (
-                              <ResizablePanel
-                                defaultSize={getLayout("codescape:layout:vertical", [75, 25])[1]}
-                                minSize={10}
-                              >
-                                <TerminalPane
-                                  activeTab={terminalTab}
-                                  onTabChange={handleTerminalTabChange}
-                                  onClose={() => setIsTerminalOpen(false)}
-                                  problems={problems}
-                                  isCollapsed={false}
-                                  files={files}
-                                  scapeName={scape?.name}
-                                  scapeId={id}
-                                  onDeleteFile={deleteFileDirectly}
-                                  onCreateFile={handleCreateFile}
-                                  onUpdateFile={async (name, content) => updateFile(name, content)}
-                                  outputLogs={outputLogs}
-                                  onExecCommand={handleExecCommand}
-                                  inputPrompt={inputPrompt}
-                                  onInputSubmit={handleInputSubmit}
-                                  isRunning={isRunning}
-                                  isWaitingForTerminalInput={isWaitingForTerminalInput}
-                                  terminalInputPrompt={terminalInputPrompt}
-                                  onTerminalInputSubmit={handleTerminalInputSubmit}
-                                  isPythonRunning={isPythonRunning}
-                                  // Scapper environment awareness
-                                  environment={
-                                    scape?.environment
-                                      ? {
-                                          id: scape.environment,
-                                          name:
-                                            ENVIRONMENTS[scape.environment]?.name ||
-                                            scape.environment,
-                                          entryPoint:
-                                            ENVIRONMENTS[scape.environment]?.entryPoint ||
-                                            "index.html",
-                                          capabilities:
-                                            ENVIRONMENTS[scape.environment]?.capabilities || {},
-                                        }
-                                      : undefined
-                                  }
-                                  dependencies={optimisticDependencies ?? scape?.dependencies ?? []}
-                                  // Scapper execution tools
-                                  runFile={
-                                    scape?.environment === "python"
-                                      ? async (path) => {
-                                          let stdout = ""
-                                          let stderr = ""
-                                          if (previewRef.current?.runFile) {
-                                            await previewRef.current.runFile(path, {
-                                              files: files
-                                                .filter((f) => typeof f.content === "string")
-                                                .map((f) => ({
-                                                  name: f.name,
-                                                  content: f.content as string,
-                                                  language: f.language,
-                                                })),
-                                              onOutput: (content, type) => {
-                                                if (type === "stderr") {
-                                                  stderr += content
-                                                } else {
-                                                  stdout += content
-                                                }
-                                              },
-                                            })
+                            {
+                              isTerminalOpen && (
+                                <ResizablePanel
+                                  defaultSize={getLayout("codescape:layout:vertical", [75, 25])[1]}
+                                  minSize={10}
+                                >
+                                  <div data-tour="terminal-pane" className="h-full">
+                                    <TerminalPane
+                                      activeTab={terminalTab}
+                                      onTabChange={handleTerminalTabChange}
+                                      onClose={() => setIsTerminalOpen(false)}
+                                      problems={problems}
+                                      isCollapsed={false}
+                                      files={files}
+                                      scapeName={scape?.name}
+                                      scapeId={id}
+                                      onDeleteFile={deleteFileDirectly}
+                                      onCreateFile={handleCreateFile}
+                                      onUpdateFile={async (name, content) => updateFile(name, content)}
+                                      outputLogs={outputLogs}
+                                      onExecCommand={handleExecCommand}
+                                      inputPrompt={inputPrompt}
+                                      onInputSubmit={handleInputSubmit}
+                                      isRunning={isRunning}
+                                      isWaitingForTerminalInput={isWaitingForTerminalInput}
+                                      terminalInputPrompt={terminalInputPrompt}
+                                      onTerminalInputSubmit={handleTerminalInputSubmit}
+                                      isPythonRunning={isPythonRunning}
+                                      // Scapper environment awareness
+                                      environment={
+                                        scape?.environment
+                                          ? {
+                                            id: scape.environment,
+                                            name:
+                                              ENVIRONMENTS[scape.environment]?.name ||
+                                              scape.environment,
+                                            entryPoint:
+                                              ENVIRONMENTS[scape.environment]?.entryPoint ||
+                                              "index.html",
+                                            capabilities:
+                                              ENVIRONMENTS[scape.environment]?.capabilities || {},
                                           }
-                                          return { stdout, stderr }
-                                        }
-                                      : undefined
-                                  }
-                                  installPackage={
-                                    scape?.environment === "python"
-                                      ? async (name, onProgress) => {
-                                          const result = await handleExecCommand(
-                                            "pip-install",
-                                            name,
-                                            onProgress
-                                          )
-                                          return {
-                                            success: result.success,
-                                            logs: "",
-                                            error: result.error,
+                                          : undefined
+                                      }
+                                      dependencies={optimisticDependencies ?? scape?.dependencies ?? []}
+                                      // Scapper execution tools
+                                      runFile={
+                                        scape?.environment === "python"
+                                          ? async (path) => {
+                                            let stdout = ""
+                                            let stderr = ""
+                                            if (previewRef.current?.runFile) {
+                                              await previewRef.current.runFile(path, {
+                                                files: files
+                                                  .filter((f) => typeof f.content === "string")
+                                                  .map((f) => ({
+                                                    name: f.name,
+                                                    content: f.content as string,
+                                                    language: f.language,
+                                                  })),
+                                                onOutput: (content, type) => {
+                                                  if (type === "stderr") {
+                                                    stderr += content
+                                                  } else {
+                                                    stdout += content
+                                                  }
+                                                },
+                                              })
+                                            }
+                                            return { stdout, stderr }
                                           }
-                                        }
-                                      : undefined
-                                  }
-                                  listPackages={
-                                    scape?.environment === "python"
-                                      ? async () =>
-                                          (await previewRef.current?.listPackages?.()) ?? []
-                                      : undefined
-                                  }
-                                />
-                              </ResizablePanel>
-                            )}
+                                          : undefined
+                                      }
+                                      installPackage={
+                                        scape?.environment === "python"
+                                          ? async (name, onProgress) => {
+                                            const result = await handleExecCommand(
+                                              "pip-install",
+                                              name,
+                                              onProgress
+                                            )
+                                            return {
+                                              success: result.success,
+                                              logs: "",
+                                              error: result.error,
+                                            }
+                                          }
+                                          : undefined
+                                      }
+                                      listPackages={
+                                        scape?.environment === "python"
+                                          ? async () =>
+                                            (await previewRef.current?.listPackages?.()) ?? []
+                                          : undefined
+                                      }
+                                    />
+                                  </div>
+                                </ResizablePanel>
+                              )
+                            }
                           </ResizablePanelGroup>
                         </div>
                         {!isTerminalOpen && (
@@ -1810,6 +1831,7 @@ export default function ScapeEditor() {
                         if (!isPreviewOpen) setIsPreviewOpen(true)
                       }}
                       className={!isPreviewOpen ? "min-w-0" : ""}
+                      data-tour="preview-pane"
                     >
                       <PreviewPane
                         key={id} // Force remount on scape switch
@@ -1890,6 +1912,6 @@ export default function ScapeEditor() {
           }
         }}
       />
-    </>
+    </TourProvider>
   )
 }
