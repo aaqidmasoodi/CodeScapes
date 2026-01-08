@@ -1,8 +1,15 @@
 /**
  * Groq API Client for Scapper AI Agent
  *
- * Uses Groq's fast inference for tool-calling with Qwen3-32b model.
+ * Routes through Vercel Edge Function for server-side API key security
+ * and quota enforcement. Uses Vercel for higher invocation limits.
  */
+
+import { supabase } from "../supabase"
+import type { PromptType } from "../quotaClient"
+
+// Vercel API route for Groq proxy (higher free tier than Supabase Edge Functions)
+const SCAPPER_PROXY_URL = "/api/scapper-proxy"
 
 // Types
 export interface GroqMessage {
@@ -75,15 +82,20 @@ export async function chatCompletion(
     temperature?: number
     reasoning_effort?: "low" | "medium" | "high"
     signal?: AbortSignal
+    promptType?: PromptType // For quota tracking
   }
 ): Promise<GroqResponse> {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY
+  // Get user's access token for auth
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const accessToken = session?.access_token
 
-  if (!apiKey) {
+  if (!accessToken) {
     throw new GroqAPIError(
-      "Groq API key not configured. Please add VITE_GROQ_API_KEY to your .env file.",
+      "Authentication required. Please sign in to use Scapper.",
       401,
-      "missing_api_key"
+      "auth_required"
     )
   }
 
@@ -92,6 +104,7 @@ export async function chatCompletion(
     maxTokens,
     temperature = 0.6,
     reasoning_effort = "medium",
+    promptType = "follow_up",
   } = options || {}
 
   const body: Record<string, unknown> = {
@@ -99,6 +112,7 @@ export async function chatCompletion(
     messages,
     temperature,
     reasoning_effort,
+    promptType, // Pass to Edge Function for quota check
   }
 
   if (maxTokens) {
@@ -116,16 +130,16 @@ export async function chatCompletion(
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      // Add delay between attempts (and before first request to slow things down)
+      // Add delay between attempts
       if (attempt > 0) {
-        const delay = Math.min(5000 * Math.pow(2, attempt), 30000) // 5s, 10s, 20s max 30s
+        const delay = Math.min(5000 * Math.pow(2, attempt), 30000)
         await sleep(delay)
       }
 
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const response = await fetch(SCAPPER_PROXY_URL, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
@@ -134,52 +148,35 @@ export async function chatCompletion(
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        console.error("[Groq API Error]", response.status, errorData) // Log actual error
+        console.error("[Scapper Proxy Error]", response.status, errorData)
 
-        // Check if rate limited or generation failed (e.g. invalid tool call hallucination)
-        if (
-          response.status === 429 ||
-          response.status >= 500 ||
-          (response.status === 400 && errorData.error?.code === "failed_generation") ||
-          (response.status === 400 && JSON.stringify(errorData).includes("failed_generation"))
-        ) {
-          const isRateLimit = response.status === 429
-          const isServerError = response.status >= 500
-          const errorType = isRateLimit
-            ? "rate_limit"
-            : isServerError
-              ? "server_error"
-              : "generation_failed"
-
-          console.log(
-            `[Scapper] ${
-              isRateLimit
-                ? "Rate limited"
-                : isServerError
-                  ? "Groq server error"
-                  : "Generation failed"
-            }, waiting ${Math.min(5000 * Math.pow(2, attempt + 1), 30000) / 1000}s before retry...`
+        // Handle quota exceeded - don't retry, throw immediately
+        if (response.status === 429 && errorData.error === "quota_exceeded") {
+          throw new GroqAPIError(
+            errorData.message ||
+              "Daily prompt limit reached. Upgrade to Pro for unlimited prompts.",
+            429,
+            "quota_exceeded"
           )
+        }
 
-          if (attempt === MAX_RETRIES - 1) {
-            // Don't wait on the very last attempt if we're measuring straight away
-          }
+        // Check if rate limited or server error (retryable)
+        if (response.status === 429 || response.status >= 500) {
+          const isRateLimit = response.status === 429
+          console.log(
+            `[Scapper] ${isRateLimit ? "Rate limited" : "Server error"}, waiting before retry...`
+          )
 
           lastError = new GroqAPIError(
-            isRateLimit
-              ? "Rate limited - waiting before retry..."
-              : isServerError
-                ? "Groq server error - retrying..."
-                : "Model generation failed - retrying...",
+            isRateLimit ? "Rate limited - waiting before retry..." : "Server error - retrying...",
             response.status,
-            errorType
+            isRateLimit ? "rate_limit" : "server_error"
           )
-          // Exponential backoff handles the wait
           continue
         }
 
         throw new GroqAPIError(
-          errorData.error?.message || `Groq API error: ${response.status}`,
+          errorData.error?.message || `API error: ${response.status}`,
           response.status,
           errorData.error?.code
         )
@@ -188,8 +185,11 @@ export async function chatCompletion(
       const data: GroqResponse = await response.json()
       return data
     } catch (error) {
-      if (error instanceof GroqAPIError && error.status !== 429) {
-        throw error
+      if (error instanceof GroqAPIError && error.code === "quota_exceeded") {
+        throw error // Don't retry quota errors
+      }
+      if (error instanceof GroqAPIError && error.status !== 429 && (error.status ?? 0) < 500) {
+        throw error // Don't retry non-retryable errors
       }
       lastError = error instanceof Error ? error : new Error(String(error))
     }
@@ -199,9 +199,9 @@ export async function chatCompletion(
   throw (
     lastError ||
     new GroqAPIError(
-      `Rate limit exceeded after ${MAX_RETRIES} retries. Please wait a minute and try again.`,
-      429,
-      "rate_limit_exhausted"
+      `Request failed after ${MAX_RETRIES} retries. Please try again.`,
+      500,
+      "max_retries_exceeded"
     )
   )
 }
@@ -228,25 +228,36 @@ export async function* chatCompletionStream(
     maxTokens?: number
     temperature?: number
     signal?: AbortSignal
+    promptType?: PromptType
   }
 ): AsyncGenerator<StreamChunk, void, unknown> {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY
+  // Get user's access token for auth
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const accessToken = session?.access_token
 
-  if (!apiKey) {
+  if (!accessToken) {
     yield {
       type: "error",
-      error: "Groq API key not configured. Please add VITE_GROQ_API_KEY to your .env file.",
+      error: "Authentication required. Please sign in to use Scapper.",
     }
     return
   }
 
-  const { model = "openai/gpt-oss-120b", maxTokens = 4096, temperature = 0.6 } = options || {}
+  const {
+    model = "openai/gpt-oss-120b",
+    maxTokens = 4096,
+    temperature = 0.6,
+    promptType = "follow_up",
+  } = options || {}
 
   const body: Record<string, unknown> = {
     model,
     messages,
     temperature,
     stream: true,
+    promptType,
   }
 
   if (maxTokens) {
@@ -259,10 +270,10 @@ export async function* chatCompletionStream(
   }
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const response = await fetch(SCAPPER_PROXY_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -271,9 +282,21 @@ export async function* chatCompletionStream(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
+
+      // Handle quota exceeded
+      if (response.status === 429 && errorData.error === "quota_exceeded") {
+        yield {
+          type: "error",
+          error:
+            errorData.message ||
+            "Daily prompt limit reached. Upgrade to Pro for unlimited prompts.",
+        }
+        return
+      }
+
       yield {
         type: "error",
-        error: errorData.error?.message || `Groq API error: ${response.status}`,
+        error: errorData.error?.message || `API error: ${response.status}`,
       }
       return
     }
@@ -336,7 +359,6 @@ export async function* chatCompletionStream(
 
           // Yield reasoning tokens separately for UI display
           if (delta?.reasoning) {
-            // Don't add to fullContent - reasoning is separate from final answer
             yield { type: "reasoning", content: delta.reasoning }
           }
 
