@@ -1,5 +1,15 @@
 import { SHORTCUTS, getShortcutLabel, isMac } from "@/config/shortcuts"
-import { Monitor, Keyboard, Laptop, Code2, FolderCog, RotateCcw } from "lucide-react"
+import {
+  Monitor,
+  Keyboard,
+  Laptop,
+  Code2,
+  FolderCog,
+  RotateCcw,
+  Zap,
+  Sparkles,
+  ArrowUpCircle,
+} from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -17,6 +27,10 @@ import type { EditorSettings } from "@/hooks/useEditorSettings"
 import type { Scape } from "@/lib/db"
 import { useState, useEffect } from "react"
 import { toast } from "@/components/ui/use-toast"
+import { ScapperIcon, ProBadge } from "@/components/brand/ScapperIcon"
+import { getQuotaStatus, type QuotaStatus } from "@/lib/quotaClient"
+import { UpgradeModal } from "@/components/billing/StripePaymentForm"
+import { useAuth } from "@/hooks/useAuth"
 
 // Same validation as CreateScapeDialog
 const NAME_REGEX = /^[a-zA-Z0-9 ]+$/
@@ -40,11 +54,33 @@ export function SettingsPane({
   onScapeUpdate,
   isCloud = false,
 }: SettingsPaneProps) {
+  const { user } = useAuth()
+
   // Project settings local state
   const [projectName, setProjectName] = useState(scape?.name || "")
   const [projectDescription, setProjectDescription] = useState(scape?.description || "")
   const [nameError, setNameError] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+
+  // Pro tab state
+  const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null)
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
+
+  // Fetch quota status
+  useEffect(() => {
+    if (!user) return
+
+    const fetchQuota = async () => {
+      try {
+        const status = await getQuotaStatus()
+        setQuotaStatus(status)
+      } catch (e) {
+        console.error("Failed to fetch quota:", e)
+      }
+    }
+
+    fetchQuota()
+  }, [user])
 
   // Sync state when scape prop changes (e.g., dialog reopens or scape updates)
   useEffect(() => {
@@ -148,6 +184,18 @@ export function SettingsPane({
             <Monitor className="h-4 w-4" />
             <span>Environment</span>
           </TabsTrigger>
+
+          {/* Pro Tab */}
+          <div className="mt-auto pt-4">
+            <TabsTrigger
+              value="pro"
+              className="w-full justify-start gap-2 px-3 py-2.5 text-left data-[state=active]:bg-background"
+            >
+              <ScapperIcon size={16} />
+              <span>Scapper Pro</span>
+              {quotaStatus?.tier === "pro" && <ProBadge className="ml-auto" />}
+            </TabsTrigger>
+          </div>
         </TabsList>
 
         {/* Right Content Area */}
@@ -467,8 +515,121 @@ export function SettingsPane({
               </div>
             </div>
           </TabsContent>
+
+          {/* Pro Tab */}
+          <TabsContent value="pro" className="m-0 h-full overflow-y-auto p-6">
+            <div className="space-y-6">
+              <div>
+                <h3 className="mb-1 text-sm font-medium">Scapper Pro</h3>
+                <p className="text-xs text-muted-foreground">
+                  Your AI assistant usage and subscription.
+                </p>
+              </div>
+
+              <Separator />
+
+              {/* Tier Badge */}
+              <div className="flex items-center gap-4 rounded-lg border bg-gradient-to-r from-emerald-500/10 to-teal-500/10 p-4">
+                <ScapperIcon size={40} />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">
+                      {quotaStatus?.tier === "pro" ? "CodeScapes Pro" : "Free Plan"}
+                    </span>
+                    {quotaStatus?.tier === "pro" && <ProBadge />}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {quotaStatus?.tier === "pro"
+                      ? "Unlimited Scapper prompts"
+                      : "3 prompts per day"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Usage Stats */}
+              {quotaStatus && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium">Usage</h4>
+                  <div className="rounded-lg border p-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Prompts today</span>
+                      <span className="text-sm font-medium">
+                        {quotaStatus.tier === "pro"
+                          ? `${quotaStatus.prompts_used} used`
+                          : `${quotaStatus.prompts_used} / ${quotaStatus.prompts_limit}`}
+                      </span>
+                    </div>
+                    {quotaStatus.tier === "free" && (
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all"
+                          style={{
+                            width: `${Math.min(100, (quotaStatus.prompts_used / quotaStatus.prompts_limit) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    )}
+                    {quotaStatus.tier === "free" && quotaStatus.resets_at && (
+                      <p className="mt-2 text-xs text-muted-foreground">Resets at midnight UTC</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Upgrade Section - Only for free users */}
+              {quotaStatus?.tier === "free" && (
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium">Upgrade to Pro</h4>
+                  <div className="space-y-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+                    <p className="text-sm text-muted-foreground">
+                      Get unlimited Scapper prompts and supercharge your coding.
+                    </p>
+                    <ul className="space-y-2 text-sm">
+                      <li className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-emerald-500" />
+                        Unlimited AI prompts
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-emerald-500" />
+                        Priority response times
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <ArrowUpCircle className="h-4 w-4 text-emerald-500" />
+                        Early access to new features
+                      </li>
+                    </ul>
+                    <Button
+                      onClick={() => setUpgradeModalOpen(true)}
+                      className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
+                    >
+                      Upgrade to Pro - $9.99/month
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Pro user subscription management */}
+              {quotaStatus?.tier === "pro" && (
+                <div className="text-center text-sm text-muted-foreground">
+                  <p>Thank you for being a Pro subscriber! ✨</p>
+                </div>
+              )}
+            </div>
+          </TabsContent>
         </div>
       </Tabs>
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        isOpen={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+        onSuccess={() => {
+          // Refresh quota status after upgrade
+          getQuotaStatus().then(setQuotaStatus)
+        }}
+      />
     </div>
   )
 }
