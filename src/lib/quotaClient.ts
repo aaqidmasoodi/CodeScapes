@@ -2,13 +2,20 @@
  * Quota Client - Scapper Usage Tracking
  *
  * Client-side utilities for quota management and prompt type classification.
+ *
+ * COUNTING LOGIC:
+ * - Every NEW USER REQUEST counts (even in an ongoing conversation)
+ * - ONLY responses to Scapper's questions are FREE:
+ *   - Plan approvals ("[PLAN_APPROVED]", "yes" after plan proposal)
+ *   - Clarification responses (answering ask_user questions)
+ *   - Responses to "Would you like me to..." type questions
  */
 
 import { supabase } from "./supabase"
 import type { GroqMessage } from "./ai/groqClient"
 
 // Prompt types for quota tracking
-export type PromptType = "new_prompt" | "follow_up" | "plan_approval" | "clarification_response"
+export type PromptType = "new_prompt" | "scapper_response"
 
 // Quota status from database
 export interface QuotaStatus {
@@ -58,58 +65,127 @@ export async function checkCanSendPrompt(): Promise<{
 }
 
 /**
+ * Detect if Scapper just asked a question that the user might be responding to
+ *
+ * Checks the last assistant message for question patterns like:
+ * - "Would you like me to...?"
+ * - "Should I...?"
+ * - "Do you want me to...?"
+ * - "[PLAN_PROPOSAL]"
+ * - Questions ending with "?"
+ */
+function isScapperAskingQuestion(conversationHistory: GroqMessage[]): boolean {
+  if (conversationHistory.length === 0) return false
+
+  // Find the last assistant message
+  const lastAssistantMsg = [...conversationHistory].reverse().find((m) => m.role === "assistant")
+
+  if (!lastAssistantMsg?.content) return false
+
+  const content = lastAssistantMsg.content.toLowerCase()
+
+  // Check for plan proposal
+  if (lastAssistantMsg.content.includes("[PLAN_PROPOSAL]")) {
+    return true
+  }
+
+  // Check for common question patterns
+  const questionPatterns = [
+    "would you like me to",
+    "would you like to",
+    "should i ",
+    "do you want me to",
+    "do you want to",
+    "shall i ",
+    "can i ",
+    "may i ",
+    "would you prefer",
+    "which would you",
+    "what would you",
+    "how would you",
+    "let me know if",
+    "would that work",
+    "is that okay",
+    "is that correct",
+    "does that look",
+    "does that sound",
+  ]
+
+  return questionPatterns.some((pattern) => content.includes(pattern))
+}
+
+/**
+ * Check if user message is a simple response to Scapper's question
+ * (yes/no, approval, short confirmations)
+ */
+function isSimpleResponse(message: string): boolean {
+  const trimmed = message.trim().toLowerCase()
+
+  // Plan approval patterns
+  if (message.startsWith("[PLAN_APPROVED]")) return true
+  if (trimmed.includes("plan cancelled")) return true
+
+  // Simple confirmations
+  const simpleResponses = [
+    "yes",
+    "no",
+    "yeah",
+    "nope",
+    "yep",
+    "nah",
+    "sure",
+    "okay",
+    "ok",
+    "proceed",
+    "go ahead",
+    "approve",
+    "approved",
+    "cancel",
+    "reject",
+    "sounds good",
+    "looks good",
+    "that works",
+    "do it",
+    "go for it",
+    "please do",
+    "no thanks",
+    "not now",
+    "maybe later",
+    "run it",
+    "test it",
+    "try it",
+  ]
+
+  return simpleResponses.some((r) => trimmed === r || trimmed === r + "!")
+}
+
+/**
  * Classify a user message into a prompt type for quota tracking
  *
  * @param message - The user's message
  * @param conversationHistory - Current conversation history
- * @param isAnsweringQuestion - Whether user is answering a Scapper question (ask_user)
+ * @param isAnsweringQuestion - Whether user is answering a Scapper clarification (ask_user)
  */
 export function classifyPromptType(
   message: string,
   conversationHistory: GroqMessage[],
   isAnsweringQuestion: boolean = false
 ): PromptType {
-  // If this is a response to Scapper's ask_user question
+  // If this is a response to Scapper's ask_user question (from agent)
   if (isAnsweringQuestion) {
-    return "clarification_response"
+    console.log("[Quota] Classified as: scapper_response (answering ask_user)")
+    return "scapper_response"
   }
 
-  // If this is a plan approval/rejection
-  const trimmed = message.trim()
-  if (
-    trimmed.startsWith("[PLAN_APPROVED]") ||
-    trimmed.toLowerCase().includes("plan cancelled") ||
-    trimmed.toLowerCase() === "yes" ||
-    trimmed.toLowerCase() === "no" ||
-    trimmed.toLowerCase() === "proceed" ||
-    trimmed.toLowerCase() === "approve" ||
-    trimmed.toLowerCase() === "cancel"
-  ) {
-    // Check if there's a pending plan in recent history
-    const recentMessages = conversationHistory.slice(-5)
-    const hasPlanProposal = recentMessages.some(
-      (m) => m.role === "assistant" && m.content?.includes("[PLAN_PROPOSAL]")
-    )
-
-    if (hasPlanProposal) {
-      return "plan_approval"
-    }
+  // Check if Scapper just asked a question AND user is giving a simple response
+  if (isScapperAskingQuestion(conversationHistory) && isSimpleResponse(message)) {
+    console.log("[Quota] Classified as: scapper_response (responding to Scapper's question)")
+    return "scapper_response"
   }
 
-  // New prompt = empty conversation history
-  if (conversationHistory.length === 0) {
-    return "new_prompt"
-  }
-
-  // Everything else is a follow-up
-  return "follow_up"
-}
-
-/**
- * Check if this is truly a new prompt (counts against quota)
- */
-export function isNewPrompt(conversationHistory: GroqMessage[]): boolean {
-  return conversationHistory.length === 0
+  // Everything else is a new prompt that counts
+  console.log("[Quota] Classified as: new_prompt (user request)")
+  return "new_prompt"
 }
 
 /**
