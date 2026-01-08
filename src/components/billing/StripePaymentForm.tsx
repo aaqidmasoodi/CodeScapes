@@ -41,10 +41,12 @@ export function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) 
         }
 
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
         const response = await fetch(`${supabaseUrl}/functions/v1/create-payment-intent`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
+            apikey: supabaseAnonKey,
             "Content-Type": "application/json",
           },
         })
