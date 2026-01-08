@@ -42,6 +42,11 @@ export function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) 
 
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
         const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+        if (!supabaseAnonKey) {
+          throw new Error("Missing Supabase Anon Key configuration")
+        }
+
         const response = await fetch(`${supabaseUrl}/functions/v1/create-payment-intent`, {
           method: "POST",
           headers: {
@@ -54,7 +59,9 @@ export function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) 
         const data = await response.json()
 
         if (!response.ok) {
-          throw new Error(data.error || "Failed to initialize payment")
+          // Format: { error: "..." } (Our func) OR { code: 401, message: "..." } (Gateway)
+          const errorMessage = data.error || data.message || "Failed to initialize payment"
+          throw new Error(errorMessage)
         }
 
         setClientSecret(data.clientSecret)
