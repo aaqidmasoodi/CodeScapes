@@ -617,34 +617,72 @@ self.onmessage = async (e: MessageEvent) => {
             del globals()[name]
             
         # 0.1 Aggressive Module Cleanup (Fixes Hot Reload)
+        # 0.1 Aggressive Module Cleanup (Fixes Hot Reload)
         # We must remove user modules from sys.modules so they are re-imported from disk.
         import sys
         import os
         import importlib
         
         to_delete = []
-        # Get current working directory (virtual fs root)
-        cwd = os.getcwd()
+        user_cwd = os.getcwd()
         
         # Modules to preserve (internal shims that should persist but reset state)
-        preserve_modules = {'turtle'}
+        preserve_modules = {'turtle', 'js', 'pyodide', 'pyodide_js', 'pyodide_http', 'micropip', '_pyodide_core'}
         
-        # Iterate over all loaded modules
         for name, module in list(sys.modules.items()):
-            # Check if the module has a file path
-            if hasattr(module, '__file__') and module.__file__:
-                fpath = module.__file__
+            if name in sys.builtin_module_names:
+                continue
                 
-                # Robust User Module Detection:
-                # If it's NOT in the system library path (/lib), it's user code.
-                # Pyodide places stdlib and site-packages in /lib.
-                # User code is in /home/pyodide or .
-                
-                if not fpath.startswith('/lib') and name not in preserve_modules:
-                   to_delete.append(name)
+            if name in preserve_modules or name.startswith(('js.', 'pyodide.', 'micropip.')):
+                continue
+
+            # Determine if it's a user module
+            is_user_code = False
+            
+            # 1. Check __file__
+            fpath = getattr(module, '__file__', None)
+            if fpath:
+                # If path does NOT start with /lib, assume user code
+                # (Pyodide installs everything to /lib)
+                if not fpath.startswith('/lib'):
+                    is_user_code = True
+            
+            # 2. Check __path__ (Namespace packages might not have __file__)
+            # If it has __path__, check if any path is in user space (cwd)
+            elif hasattr(module, '__path__'):
+                try:
+                    # If it's a list of paths
+                    mpaths = list(module.__path__)
+                    # If ANY path does NOT start with /lib, it's user code
+                    # (e.g. namespace package extending into user dir)
+                    for p in mpaths:
+                        if not p.startswith('/lib'):
+                           is_user_code = True
+                           break
+                except:
+                    pass
+            
+            # 3. Fallback: If it has neither, it might be a dynamically created module.
+            # If it's not a known system module, err on side of caution?
+            # Actually, standard lib modules usually have __file__ or are built-in.
+            # So if we are here, it's likely weird user code or namespace pkg.
+            
+            if is_user_code:
+                # print(f"DEBUG: Marking {name} for reload") 
+                to_delete.append(name)
                    
         for name in to_delete:
-            del sys.modules[name]
+            if name in sys.modules:
+                del sys.modules[name]
+                
+            # Also clean up parent references to force re-lookup
+            if '.' in name:
+                parent, child = name.rsplit('.', 1)
+                if parent in sys.modules:
+                    try:
+                        delattr(sys.modules[parent], child)
+                    except AttributeError:
+                        pass
         
         # Reset turtle module state if it exists
         if 'turtle' in sys.modules:
