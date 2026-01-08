@@ -65,8 +65,10 @@ const COMMON_RULES = `
 **WORKFLOW for complex/multi-file changes**:
 1. Use \`propose_plan\` to show the user what you intend to do
 2. Wait for user to approve the plan
-3. Once approved (user says yes/approve/continue/proceed), IMMEDIATELY EXECUTE the plan
-   - CRITICAL: Do NOT call propose_plan again after approval
+3. When you receive a message starting with [PLAN_APPROVED], this means the user approved your plan:
+   - The approved plan JSON is included in the message
+   - IMMEDIATELY EXECUTE the plan steps one by one
+   - CRITICAL: Do NOT call propose_plan again - the plan is already approved
    - CRITICAL: Do NOT ask for confirmation again - just DO IT
    - Start creating/modifying files according to the approved plan
 4. For simple single-file edits, you can skip planning and edit directly
@@ -96,8 +98,9 @@ function buildWebPrompt(ctx: ToolContext): string {
 - Modern Semantic HTML5
 - CSS3 (Flexbox, Grid, Responsive Design)
 - Modern JavaScript (ES6+, DOM Manipulation)
+- Creative Coding Libraries: Three.js, p5.js, GSAP, anime.js
 - Separation of Concerns: ALWAYS keep HTML in .html, CSS in .css, and JS in .js
-- Frameworks: Three.js, p5.js
+- You can learn and adapt to ANY library or framework the user requests
 
 **DESIGN PRINCIPLES** (CRITICAL for visual quality):
 - Use CSS Custom Properties for theming: --primary-color, --bg-color, --text-color, --accent-color
@@ -107,11 +110,12 @@ function buildWebPrompt(ctx: ToolContext): string {
 - Typography: Use system fonts or embed Google Fonts with <link> in <head>
 - Every section needs proper padding and visual hierarchy
 
-**IMAGE RULES** (CRITICAL - External URLs are BLOCKED):
-- NEVER use external image URLs (picsum.photos, unsplash.com, placeholder.com, etc.) - they will NOT load
-- For image placeholders, use CSS gradient backgrounds or inline SVG:
-  Example: <div class="img-placeholder" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); width: 100%; height: 200px; border-radius: 8px;"></div>
-- For icons, use emoji or simple inline SVG
+**IMAGES & ASSETS**:
+- Use real images from Unsplash, Pexels, or Picsum for professional results:
+  Example: <img src="https://images.unsplash.com/photo-1234567890?w=800" alt="Description">
+  Example: <img src="https://picsum.photos/800/600" alt="Placeholder">
+- Use appropriate images that match the content (hero images, profile photos, product shots, etc.)
+- For icons, use inline SVG or icon libraries like Lucide/Heroicons via CDN
 
 **WORKFLOW FOR WEB PROJECTS**:
 1. For NEW files or complete rewrites: Use \`overwrite_file\` (NOT apply_diff for initial creation)
@@ -245,6 +249,10 @@ function compressHistory(history: GroqMessage[]): GroqMessage[] {
     const isOld = index < history.length - PRESERVE_COUNT
 
     if (isOld && msg.role === "tool" && typeof msg.content === "string") {
+      // NEVER truncate plan proposals or approvals - they contain critical context
+      if (msg.content.includes("[PLAN_PROPOSAL]") || msg.content.includes("[PLAN_APPROVED]")) {
+        return msg
+      }
       // Truncate huge tool outputs (like file reads or long stdout)
       if (msg.content.length > 200) {
         return {
@@ -253,6 +261,14 @@ function compressHistory(history: GroqMessage[]): GroqMessage[] {
         }
       }
     }
+
+    // Also preserve user messages that contain plan approvals
+    if (isOld && msg.role === "user" && typeof msg.content === "string") {
+      if (msg.content.includes("[PLAN_APPROVED]")) {
+        return msg
+      }
+    }
+
     return msg
   })
 }

@@ -144,6 +144,19 @@ export function TerminalPane({
   const [scapperConversation, setScapperConversation] =
     useState<GroqMessage[]>(createEmptyConversation())
 
+  // --- PLAN APPROVAL STATE ---
+  // Track which plans have been responded to (prevent button re-activation on pane switch)
+  const [respondedPlanIds, setRespondedPlanIds] = useState<Set<string>>(new Set())
+  // Use a ref for real-time access in closures (JSX stored in history captures current ref value)
+  const respondedPlanIdsRef = useRef<Set<string>>(new Set())
+  // Keep ref in sync with state
+  respondedPlanIdsRef.current = respondedPlanIds
+  // Ref to check if Scapper is running (for callbacks stored in history)
+  const isScapperModeRef = useRef(false)
+  isScapperModeRef.current = isScapperMode
+  // Store the pending plan so we can feed it back to the agent on approval
+  const [, setPendingPlan] = useState<{ id: string; plan: ProposedPlan } | null>(null)
+
   // --- ASK USER STATE ---
   // Used when Scapper needs to ask the user a question during execution
   const [scapperQuestion, setScapperQuestion] = useState<string | null>(null)
@@ -647,6 +660,12 @@ export function TerminalPane({
           try {
             const plan: ProposedPlan = JSON.parse(planMatch[1])
 
+            // Generate unique plan ID based on content hash
+            const planId = `plan-${Date.now()}-${plan.summary.slice(0, 20).replace(/\s/g, "-")}`
+
+            // Store the pending plan for approval flow
+            setPendingPlan({ id: planId, plan })
+
             // Get icon for action type
             const getActionIcon = (action: string) => {
               switch (action) {
@@ -665,6 +684,53 @@ export function TerminalPane({
               }
             }
 
+            // Handler for plan approval/cancel
+            const handlePlanResponse = (response: string, respondedPlanId: string) => {
+              // Check if already responded (using ref for real-time value)
+              if (respondedPlanIdsRef.current.has(respondedPlanId)) {
+                return // Already processed
+              }
+
+              // Mark this plan as responded (update both state and ref)
+              const newSet = new Set([...respondedPlanIdsRef.current, respondedPlanId])
+              respondedPlanIdsRef.current = newSet
+              setRespondedPlanIds(newSet)
+
+              // CRITICAL: Check if Scapper is still running before processing
+              if (!isScapperModeRef.current) {
+                // Scapper was quit - don't restart it
+                setHistory((prev) => [
+                  ...prev,
+                  {
+                    type: "output",
+                    content: (
+                      <span className="text-yellow-400">
+                        Scapper is not running. Type 'scapper' to start a new session.
+                      </span>
+                    ),
+                  },
+                ])
+                return
+              }
+
+              // Check if approved
+              if (
+                response.toLowerCase().includes("yes") ||
+                response.toLowerCase().includes("proceed") ||
+                response.toLowerCase().includes("approve")
+              ) {
+                // Feed the FULL PLAN back to the agent so it knows exactly what to execute
+                const approvalMessage = `[PLAN_APPROVED] Execute this plan immediately without proposing again:\n${JSON.stringify(plan, null, 2)}\n\nProceed with execution now. Do NOT call propose_plan again.`
+                handleScapperInput(approvalMessage)
+              } else {
+                // Plan was cancelled
+                handleScapperInput("Plan cancelled. Let me know how you'd like to proceed.")
+              }
+
+              // Clear pending plan
+              setPendingPlan(null)
+            }
+
             setHistory((prev) => [
               ...prev,
               {
@@ -672,7 +738,9 @@ export function TerminalPane({
                 content: (
                   <PlanProposal
                     plan={plan as ScapperPlan}
-                    onResponse={handleScapperInput}
+                    planId={planId}
+                    checkIsResponded={() => respondedPlanIdsRef.current.has(planId)}
+                    onResponse={handlePlanResponse}
                     getActionIcon={getActionIcon}
                   />
                 ),
