@@ -138,6 +138,28 @@ function CheckoutForm({ onSuccess }: { onSuccess: () => void }) {
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+
+  // Poll database to verify Pro status (fallback if webhook is delayed)
+  const verifyProStatus = async (maxAttempts = 8): Promise<boolean> => {
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const { data } = await supabase.from("user_quotas").select("tier").single()
+
+        if (data?.tier === "pro") {
+          console.log("[Payment] ✅ Pro status verified in database")
+          return true
+        }
+      } catch (err) {
+        console.log("[Payment] Verification attempt failed:", err)
+      }
+
+      // Wait before next attempt (2s, 2s, 2s, 3s, 3s, 4s, 5s, 5s = ~26s total)
+      const delay = i < 3 ? 2000 : i < 5 ? 3000 : i < 7 ? 4000 : 5000
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+    return false
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -159,10 +181,23 @@ function CheckoutForm({ onSuccess }: { onSuccess: () => void }) {
       if (paymentError) {
         setError(paymentError.message || "Payment failed")
       } else {
+        // Payment succeeded! Now verify Pro status (in case webhook is delayed)
         setSuccess(true)
+        setVerifying(true)
+
+        const isNowPro = await verifyProStatus()
+
+        setVerifying(false)
+
+        if (!isNowPro) {
+          // Webhook might be delayed - still show success but with message
+          console.warn("[Payment] Pro status not yet confirmed, but payment succeeded")
+          // Don't show error - the webhook will process eventually
+        }
+
         setTimeout(() => {
           onSuccess()
-        }, 2000)
+        }, 1500)
       }
     } catch {
       setError("An unexpected error occurred")
@@ -174,9 +209,19 @@ function CheckoutForm({ onSuccess }: { onSuccess: () => void }) {
   if (success) {
     return (
       <div className="flex flex-col items-center justify-center py-8">
-        <CheckCircle className="mb-4 h-12 w-12 text-emerald-500" />
-        <p className="text-lg font-medium">Welcome to Pro!</p>
-        <p className="text-sm text-muted-foreground">Enjoy unlimited Scapper prompts</p>
+        {verifying ? (
+          <>
+            <Loader2 className="mb-4 h-12 w-12 animate-spin text-emerald-500" />
+            <p className="text-lg font-medium">Payment Successful!</p>
+            <p className="text-sm text-muted-foreground">Activating your Pro access...</p>
+          </>
+        ) : (
+          <>
+            <CheckCircle className="mb-4 h-12 w-12 text-emerald-500" />
+            <p className="text-lg font-medium">Welcome to Pro!</p>
+            <p className="text-sm text-muted-foreground">Enjoy unlimited Scapper prompts</p>
+          </>
+        )}
       </div>
     )
   }

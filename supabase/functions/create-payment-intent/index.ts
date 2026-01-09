@@ -128,24 +128,95 @@ serve(async (req: Request) => {
         user_id: user.id,
         stripe_customer_id: customerId,
       })
+      console.log(`[Payment] Created Stripe customer: ${customerId}`)
     }
 
-    // Create subscription with payment
-    const subscription = await stripe.subscriptions.create({
+    const PRICE_ID = "price_1SnTW3DReSL06oNAt9hFgqAe" // CodeScapes Pro ($9.99/mo)
+
+    // ================================================================
+    // CRITICAL: Check for existing ACTIVE subscriptions to prevent duplicates
+    // ================================================================
+    const existingActiveSubscriptions = await stripe.subscriptions.list({
       customer: customerId,
-      items: [
-        {
-          price: "price_1SnTW3DReSL06oNAt9hFgqAe", // CodeScapes Pro ($9.99/mo)
-        },
-      ],
-      payment_behavior: "default_incomplete",
-      payment_settings: { save_default_payment_method: "on_subscription" },
-      expand: ["latest_invoice.payment_intent"],
-      metadata: { user_id: user.id },
+      status: "active",
+      price: PRICE_ID,
+      limit: 1,
     })
+
+    if (existingActiveSubscriptions.data.length > 0) {
+      const existingSub = existingActiveSubscriptions.data[0]
+      console.log(`[Payment] User already has active subscription: ${existingSub.id}`)
+      return new Response(
+        JSON.stringify({
+          error: "Already subscribed",
+          subscriptionId: existingSub.id,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      )
+    }
+
+    // ================================================================
+    // CRITICAL: Check for INCOMPLETE subscriptions and REUSE them
+    // This prevents creating multiple subscriptions when user retries payment
+    // ================================================================
+    const incompleteSubscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "incomplete",
+      limit: 5, // Get a few to find one with matching price
+    })
+
+    for (const existingSub of incompleteSubscriptions.data) {
+      // Check if this subscription is for our Pro plan
+      const hasProPrice = existingSub.items.data.some((item) => item.price.id === PRICE_ID)
+      if (hasProPrice && existingSub.latest_invoice) {
+        console.log(`[Payment] Reusing incomplete subscription: ${existingSub.id}`)
+
+        // Retrieve the invoice with payment intent expanded
+        const invoice = await stripe.invoices.retrieve(existingSub.latest_invoice as string, {
+          expand: ["payment_intent"],
+        })
+
+        const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent
+        if (paymentIntent && paymentIntent.client_secret) {
+          return new Response(
+            JSON.stringify({
+              subscriptionId: existingSub.id,
+              clientSecret: paymentIntent.client_secret,
+              reused: true, // Flag to indicate this is a reused subscription
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          )
+        }
+      }
+    }
+
+    // ================================================================
+    // No existing subscription found - create a NEW one
+    // ================================================================
+    console.log(`[Payment] Creating new subscription for customer: ${customerId}`)
+
+    const subscription = await stripe.subscriptions.create(
+      {
+        customer: customerId,
+        items: [{ price: PRICE_ID }],
+        payment_behavior: "default_incomplete",
+        payment_settings: { save_default_payment_method: "on_subscription" },
+        expand: ["latest_invoice.payment_intent"],
+        metadata: { user_id: user.id },
+      },
+      {
+        // Idempotency key to prevent duplicate subscription creation within 1 hour
+        idempotencyKey: `sub_create_${user.id}_${Math.floor(Date.now() / 3600000)}`,
+      }
+    )
 
     const invoice = subscription.latest_invoice as Stripe.Invoice
     const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent
+
+    console.log(`[Payment] Created subscription: ${subscription.id}`)
 
     return new Response(
       JSON.stringify({
