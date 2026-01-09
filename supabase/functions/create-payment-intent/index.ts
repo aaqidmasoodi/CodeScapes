@@ -7,7 +7,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
-import Stripe from "https://esm.sh/stripe@12.4.0?target=deno"
+// Downgrade to v11.18.0 to fix "runMicrotasks" error in Deno
+import Stripe from "https://esm.sh/stripe@11.18.0?target=deno&no-check"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -33,11 +34,22 @@ serve(async (req: Request) => {
 
   try {
     const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY")
-    if (!stripeSecretKey) {
-      return new Response(JSON.stringify({ error: "Payment service not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+    const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY")
+
+    if (!stripeSecretKey || !serviceRoleKey) {
+      console.error("Missing secrets: ", {
+        stripe: !!stripeSecretKey,
+        serviceRole: !!serviceRoleKey,
       })
+      return new Response(
+        JSON.stringify({
+          error: "Server configuration error: Missing Secrets (Stripe/ServiceRole)",
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      )
     }
 
     // Verify auth
@@ -86,11 +98,9 @@ serve(async (req: Request) => {
     console.log("[Payment] Stripe initialized")
 
     // Check if user already has a Stripe customer
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SERVICE_ROLE_KEY") ?? "",
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    )
+    const supabaseAdmin = createClient(Deno.env.get("SUPABASE_URL") ?? "", serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
 
     const { data: quota } = await supabaseAdmin
       .from("user_quotas")
@@ -157,9 +167,15 @@ serve(async (req: Request) => {
     )
   } catch (error) {
     console.error("Payment intent error:", error)
-    return new Response(JSON.stringify({ error: "Failed to create payment" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    })
+    return new Response(
+      JSON.stringify({
+        error: `Payment failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+        details: error,
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    )
   }
 })
