@@ -6,12 +6,11 @@
  */
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Separator } from "@/components/ui/separator"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Sparkles, Cloud, Rocket, Lock, CheckCircle2 } from "lucide-react"
 import { CodeScapeLogo } from "@/components/brand/Logo"
-import { ProBadge, ScapperIcon } from "@/components/brand/ScapperIcon"
+import { ScapperIcon } from "@/components/brand/ScapperIcon"
 import { getQuotaStatus, type QuotaStatus } from "@/lib/quotaClient"
 import { EmbeddedPaymentForm } from "@/components/billing/StripePaymentForm"
 import { useAuth } from "@/hooks/useAuth"
@@ -48,144 +47,128 @@ export function ProModal({ isOpen, onClose }: ProModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl gap-0 overflow-hidden p-0 md:h-[600px]">
-        <div className="grid h-full grid-cols-1 md:grid-cols-2">
-          {/* LEFT COLUMN: Usage & Stats */}
-          <div className="flex flex-col border-r bg-muted/10">
+      <DialogContent className="max-h-[90vh] w-[95vw] max-w-4xl gap-0 overflow-hidden p-0 md:h-[600px] md:w-full">
+        <div className="flex h-full flex-col overflow-y-auto md:grid md:grid-cols-2 md:overflow-hidden">
+          {/* LEFT COLUMN: Features & Stats */}
+          <div className="flex flex-col border-r bg-muted/20 p-6 md:p-8">
             {/* Header */}
-            <div className="p-6">
-              <DialogHeader className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <CodeScapeLogo size={32} />
-                  <div>
-                    <DialogTitle className="flex items-center gap-2 text-xl">
-                      CodeScapes Pro
-                      {isPro && <ProBadge />}
-                    </DialogTitle>
-                    <p className="text-sm text-muted-foreground">
-                      {isPro ? "You're a Pro subscriber!" : "Unlock creative potential"}
-                    </p>
-                  </div>
-                </div>
-              </DialogHeader>
+            <div className="mb-8 flex items-center gap-3">
+              <div className="rounded-lg bg-emerald-500/10 p-2">
+                <CodeScapeLogo size={32} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold tracking-tight">CodeScapes Pro</h2>
+                <p className="text-sm text-muted-foreground">Unlock creative potential</p>
+              </div>
             </div>
 
-            <Separator />
-
-            {/* Usage Stats Content */}
-            <div className="flex-1 space-y-6 overflow-y-auto p-6">
-              <div>
-                <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted-foreground">
+            {/* Content Container */}
+            <div className="flex-1 space-y-8">
+              {/* Usage Section */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Usage This Month
                 </h3>
 
                 {loading ? (
-                  <div className="space-y-4">
-                    <Skeleton className="h-24 w-full rounded-lg" />
-                    <Skeleton className="h-16 w-full rounded-lg" />
-                  </div>
+                  <Skeleton className="h-24 w-full rounded-xl" />
                 ) : quotaStatus ? (
-                  <div className="space-y-3">
-                    {/* Scapper Prompts */}
-                    <div className="rounded-lg border bg-background p-4 shadow-sm">
-                      <div className="mb-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-emerald-500" />
-                          <span className="font-medium">Scapper AI Prompts</span>
-                        </div>
-                        <span className="text-sm font-bold">
-                          {isPro
-                            ? "Unlimited"
-                            : `${quotaStatus.prompts_used} / ${quotaStatus.prompts_limit}`}
-                        </span>
+                  <div className="rounded-xl border bg-background/50 p-4 shadow-sm backdrop-blur-sm">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-emerald-500" />
+                        <span className="font-medium text-foreground">Scapper AI Prompts</span>
                       </div>
-
-                      {!isPro && (
-                        <>
-                          <div className="h-2 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all"
-                              style={{
-                                width: `${Math.min(100, (quotaStatus.prompts_used / quotaStatus.prompts_limit) * 100)}%`,
-                              }}
-                            />
-                          </div>
-                          <p className="mt-2 text-xs text-muted-foreground">
-                            Resets daily at midnight UTC
-                          </p>
-                        </>
-                      )}
+                      <span className="font-mono text-sm font-medium">
+                        {isPro ? (
+                          <span className="text-emerald-500">Unlimited</span>
+                        ) : (
+                          <span>
+                            {quotaStatus.prompts_used} / {quotaStatus.prompts_limit}
+                          </span>
+                        )}
+                      </span>
                     </div>
 
-                    {/* Locked Features */}
-                    <div className="opacity-70">
-                      <div className="mb-2 flex items-center justify-between rounded-lg border border-dashed p-3">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Cloud className="h-4 w-4" />
-                          Cloud Scapes
+                    {!isPro && (
+                      <div className="space-y-2">
+                        <div className="h-2 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full bg-emerald-500 transition-all duration-500 ease-out"
+                            style={{
+                              width: `${Math.min(100, (quotaStatus.prompts_used / quotaStatus.prompts_limit) * 100)}%`,
+                            }}
+                          />
                         </div>
-                        <Lock className="h-3 w-3 text-muted-foreground" />
+                        <p className="text-[10px] text-muted-foreground">
+                          Resets daily at midnight UTC
+                        </p>
                       </div>
-
-                      <div className="flex items-center justify-between rounded-lg border border-dashed p-3">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Rocket className="h-4 w-4" />
-                          Deployments
-                        </div>
-                        <Lock className="h-3 w-3 text-muted-foreground" />
-                      </div>
-                    </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="text-sm text-red-400">Failed to load usage stats</div>
+                  <div className="text-sm text-red-400">Failed to load usage</div>
                 )}
+
+                {/* Locked Items */}
+                <div className="space-y-2 opacity-60">
+                  <div className="flex items-center justify-between rounded-lg border border-dashed border-muted-foreground/30 p-3">
+                    <div className="flex items-center gap-3 text-sm">
+                      <Cloud className="h-4 w-4" />
+                      <span>Cloud Scapes</span>
+                    </div>
+                    <Lock className="h-3 w-3" />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg border border-dashed border-muted-foreground/30 p-3">
+                    <div className="flex items-center gap-3 text-sm">
+                      <Rocket className="h-4 w-4" />
+                      <span>Deployments</span>
+                    </div>
+                    <Lock className="h-3 w-3" />
+                  </div>
+                </div>
               </div>
 
-              {/* Benefits List (moved from right side for Free users) */}
-              {!isPro && (
-                <div>
-                  <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-muted-foreground">
-                    Pro Benefits
-                  </h3>
-                  <ul className="space-y-3 text-sm">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      <span>Unlimited Scapper AI prompts</span>
+              {/* Benefits List */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Pro Benefits
+                </h3>
+                <ul className="space-y-3">
+                  {[
+                    "Unlimited Scapper AI prompts",
+                    "Unlimited cloud scapes",
+                    "Priority features & support",
+                  ].map((benefit, i) => (
+                    <li key={i} className="flex items-center gap-3 text-sm">
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+                      <span>{benefit}</span>
                     </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      <span>Unlimited cloud scapes</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      <span>Priority features & support</span>
-                    </li>
-                  </ul>
-                </div>
-              )}
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Payment / Pro Status */}
-          <div className="bg-background p-6 md:p-8">
+          {/* RIGHT COLUMN: Action / Payment */}
+          <div className="flex flex-col bg-background p-6 md:p-8">
             {isPro ? (
               <div className="flex h-full flex-col items-center justify-center text-center">
-                <div className="mb-6 rounded-full bg-emerald-500/10 p-4">
-                  <ScapperIcon className="h-12 w-12 text-emerald-500" />
+                <div className="mb-6 rounded-full bg-emerald-500/10 p-6 ring-1 ring-emerald-500/20">
+                  <ScapperIcon className="h-16 w-16 text-emerald-500" />
                 </div>
-                <h2 className="mb-2 text-2xl font-bold">You are a Pro!</h2>
-                <p className="mb-8 max-w-[260px] text-muted-foreground">
-                  Enjoy unlimited access to all AI features and priority support.
-                </p>
-                <div className="rounded-lg border bg-muted/30 p-4 text-sm">
-                  <p className="font-medium">Current Plan: $9.99/mo</p>
+                <h2 className="mb-2 text-2xl font-bold tracking-tight">You are a Pro!</h2>
+                <div className="mx-auto mt-4 max-w-[280px] space-y-4">
                   <p className="text-muted-foreground">
-                    Active since {new Date().toLocaleDateString()}
+                    Thank you for supporting CodeScapes. You now have unlimited access to all
+                    features.
                   </p>
+                  <div className="rounded-lg border bg-muted/50 p-3 text-xs font-medium text-muted-foreground">
+                    Active Plan: $9.99/mo
+                  </div>
                 </div>
               </div>
             ) : (
-              // Embedded Payment Form directly in the modal
               <EmbeddedPaymentForm onSuccess={fetchQuota} />
             )}
           </div>
