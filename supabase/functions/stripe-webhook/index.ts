@@ -25,12 +25,21 @@ serve(async (req: Request) => {
     const stripeWebhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")
 
     if (!stripeSecretKey || !stripeWebhookSecret) {
-      console.error("Stripe keys not configured")
+      console.error("[Webhook] Stripe keys not configured:", {
+        hasSecretKey: !!stripeSecretKey,
+        hasWebhookSecret: !!stripeWebhookSecret,
+      })
       return new Response(JSON.stringify({ error: "Payment service not configured" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       })
     }
+
+    // DEBUG: Log secret prefix to verify correct value is loaded
+    console.log("[Webhook] Secrets loaded:", {
+      secretKeyPrefix: stripeSecretKey.substring(0, 10) + "...",
+      webhookSecretPrefix: stripeWebhookSecret.substring(0, 12) + "...",
+    })
 
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: "2022-11-15",
@@ -51,9 +60,11 @@ serve(async (req: Request) => {
     let event: Stripe.Event
 
     try {
-      event = stripe.webhooks.constructEvent(body, signature, stripeWebhookSecret)
+      // IMPORTANT: Use constructEventAsync for Deno compatibility
+      // The synchronous constructEvent doesn't work in Deno's async crypto context
+      event = await stripe.webhooks.constructEventAsync(body, signature, stripeWebhookSecret)
     } catch (err) {
-      console.error("Webhook signature verification failed:", err)
+      console.error("[Webhook] Signature verification failed:", err)
       return new Response(JSON.stringify({ error: "Invalid signature" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
