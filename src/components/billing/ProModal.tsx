@@ -65,8 +65,8 @@ export function ProModal({ isOpen, onClose }: ProModalProps) {
   if (showPayment) {
     return (
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="max-w-md p-0">
-          <div className="relative bg-background p-6">
+        <DialogContent className="max-h-[90vh] max-w-md overflow-hidden p-0">
+          <div className="flex h-full max-h-[90vh] flex-col overflow-y-auto bg-background p-6">
             <button
               onClick={() => setShowPayment(false)}
               className="absolute right-4 top-4 rounded-full p-1 opacity-70 transition-opacity hover:opacity-100"
