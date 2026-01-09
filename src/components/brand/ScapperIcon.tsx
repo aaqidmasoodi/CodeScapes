@@ -61,3 +61,19 @@ export function ScapperIcon({ className, size = 20 }: ScapperIconProps) {
     </svg>
   )
 }
+
+/**
+ * Pro Badge - Shows "PRO" with brand gradient
+ */
+export function ProBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm",
+        className
+      )}
+    >
+      Pro
+    </span>
+  )
+}

@@ -17,6 +17,7 @@ import type { ToolContext, ToolResult } from "./tools"
 import { buildProjectContext, formatContextForPrompt } from "./context"
 import { formatFileCacheForPrompt, clearFileCache } from "./fileCache"
 import { classifyIntent, type Intent } from "./classifier"
+import { classifyPromptType, type PromptType } from "../quotaClient"
 
 // --- Dynamic System Prompt Builder ---
 
@@ -302,8 +303,17 @@ export async function runScapper(
   conversationHistory: GroqMessage[],
   toolContext: ToolContext,
   onProgress: (progress: ScapperProgress) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  isAnsweringQuestion: boolean = false // For quota tracking - true when answering ask_user
 ): Promise<{ result: ScapperResult; updatedHistory: GroqMessage[] }> {
+  // Classify prompt type for quota tracking
+  const promptType: PromptType = classifyPromptType(
+    userMessage,
+    conversationHistory,
+    isAnsweringQuestion
+  )
+  console.log(`[Scapper] Prompt type: ${promptType}`)
+
   // Clear file cache if this is a new conversation
   if (conversationHistory.length === 0) {
     clearFileCache()
@@ -354,7 +364,8 @@ export async function runScapper(
       let fullResponse = ""
       const stream = chatCompletionStream(messages, [], {
         signal,
-        model: "llama-3.3-70b-versatile", // Use non-reasoning model - reasoning model forces tool calls even with no tools
+        model: "llama-3.3-70b-versatile",
+        promptType, // For quota tracking
       })
 
       let reasoningContent = ""
@@ -415,6 +426,7 @@ export async function runScapper(
         signal,
         maxTokens: 8192,
         temperature: 0.8,
+        promptType: loopCount === 1 ? promptType : "scapper_response", // Only first iteration counts for quota
       })
       const choice = response.choices[0]
       const assistantMessage = choice.message
