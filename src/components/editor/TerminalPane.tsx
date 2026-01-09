@@ -75,13 +75,14 @@ type HistoryItem =
   | { type: "input"; content: string; cwd: string }
   | { type: "output"; content: React.ReactNode }
 
-const TerminalSpinner = () => {
+const TerminalSpinner = ({ active = true }: { active?: boolean }) => {
   const [frame, setFrame] = useState(0)
   const cars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
   useEffect(() => {
+    if (!active) return
     const t = setInterval(() => setFrame((f) => (f + 1) % cars.length), 80)
     return () => clearInterval(t)
-  }, [])
+  }, [active])
   return <span className="inline-block w-4 text-center">{cars[frame]}</span>
 }
 
@@ -709,7 +710,7 @@ export function TerminalPane({
                     content: (
                       <div className="my-1 pl-3 font-mono text-muted-foreground/80">
                         <div className="flex gap-2 opacity-90">
-                          <TerminalSpinner />
+                          <TerminalSpinner active={isProcessing} />
                           <div className="whitespace-pre-wrap">{progress.message}</div>
                         </div>
                       </div>
