@@ -542,7 +542,7 @@ export async function runScapper(
 
           onProgress({
             type: "reasoning",
-            message: "Detected claim without action. Verifying...",
+            message: "Verifying...",
           })
 
           // Inject system alert to force tool usage
