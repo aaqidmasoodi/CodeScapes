@@ -80,24 +80,35 @@ serve(async (req: Request) => {
 
     // Handle subscription events
     switch (event.type) {
-      case "customer.subscription.created":
-      case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription
-        console.log(
-          `[Webhook] Processing subscription: ${subscription.id}, status: ${subscription.status}`
-        )
+      // ================================================================
+      // PRIMARY UPGRADE PATH: invoice.paid
+      // This is the MOST RELIABLE event - fires AFTER payment succeeds
+      // ================================================================
+      case "invoice.paid": {
+        const invoice = event.data.object as Stripe.Invoice
+        console.log(`[Webhook] Invoice paid: ${invoice.id}, subscription: ${invoice.subscription}`)
+
+        // Only process subscription invoices (not one-time payments)
+        if (!invoice.subscription) {
+          console.log("[Webhook] Not a subscription invoice, skipping")
+          break
+        }
+
+        // Retrieve the subscription to get user_id from metadata
+        const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string)
+        const userId = subscription.metadata?.user_id
+
+        console.log(`[Webhook] Subscription ${subscription.id} status: ${subscription.status}`)
         console.log(`[Webhook] Subscription metadata:`, subscription.metadata)
 
-        // Get user ID from subscription metadata
-        const userId = subscription.metadata?.user_id
         if (!userId) {
           console.error("[Webhook] No user_id in subscription metadata - cannot upgrade")
           break
         }
 
-        // Only upgrade if subscription is active
-        if (subscription.status === "active" || subscription.status === "trialing") {
-          console.log(`[Webhook] Upgrading user ${userId} to Pro...`)
+        // Now we KNOW payment succeeded, upgrade the user!
+        if (subscription.status === "active") {
+          console.log(`[Webhook] ✅ Upgrading user ${userId} to Pro (invoice.paid)...`)
           const { error, data } = await supabaseAdmin.rpc("upgrade_to_pro", {
             p_user_id: userId,
             p_stripe_customer_id: subscription.customer as string,
@@ -105,46 +116,111 @@ serve(async (req: Request) => {
           })
 
           if (error) {
-            console.error("[Webhook] Failed to upgrade user:", error)
+            console.error("[Webhook] ❌ Failed to upgrade user:", error)
           } else {
-            console.log(`[Webhook] Successfully upgraded user ${userId} to Pro. Result:`, data)
+            console.log(`[Webhook] ✅ Successfully upgraded user ${userId} to Pro!`, data)
           }
         } else {
-          console.log(`[Webhook] Subscription status is ${subscription.status}, not upgrading yet`)
+          console.log(`[Webhook] Subscription not active yet (${subscription.status}), waiting...`)
         }
         break
       }
 
+      // ================================================================
+      // BACKUP PATH: subscription.updated (in case invoice.paid doesn't fire)
+      // ================================================================
+      case "customer.subscription.updated": {
+        const subscription = event.data.object as Stripe.Subscription
+        console.log(
+          `[Webhook] Subscription updated: ${subscription.id}, status: ${subscription.status}`
+        )
+
+        // Only process if subscription just became active
+        if (subscription.status !== "active") {
+          console.log(`[Webhook] Status is ${subscription.status}, not upgrading yet`)
+          break
+        }
+
+        const userId = subscription.metadata?.user_id
+        if (!userId) {
+          console.error("[Webhook] No user_id in subscription metadata")
+          break
+        }
+
+        // Check if already upgraded (idempotency)
+        const { data: existingQuota } = await supabaseAdmin
+          .from("user_quotas")
+          .select("tier")
+          .eq("user_id", userId)
+          .single()
+
+        if (existingQuota?.tier === "pro") {
+          console.log(`[Webhook] User ${userId} already Pro, skipping`)
+          break
+        }
+
+        console.log(`[Webhook] ✅ Upgrading user ${userId} to Pro (subscription.updated)...`)
+        const { error } = await supabaseAdmin.rpc("upgrade_to_pro", {
+          p_user_id: userId,
+          p_stripe_customer_id: subscription.customer as string,
+          p_stripe_subscription_id: subscription.id,
+        })
+
+        if (error) {
+          console.error("[Webhook] ❌ Failed to upgrade user:", error)
+        } else {
+          console.log(`[Webhook] ✅ Successfully upgraded user ${userId} to Pro!`)
+        }
+        break
+      }
+
+      // ================================================================
+      // DOWNGRADE: subscription deleted/cancelled
+      // ================================================================
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription
         const userId = subscription.metadata?.user_id
 
         if (!userId) {
-          console.error("No user_id in subscription metadata")
+          console.error("[Webhook] No user_id in subscription metadata")
           break
         }
 
+        console.log(`[Webhook] Downgrading user ${userId} to Free...`)
         const { error } = await supabaseAdmin.rpc("downgrade_to_free", {
           p_user_id: userId,
         })
 
         if (error) {
-          console.error("Failed to downgrade user:", error)
+          console.error("[Webhook] ❌ Failed to downgrade user:", error)
         } else {
-          console.log(`Downgraded user ${userId} to Free`)
+          console.log(`[Webhook] ✅ Downgraded user ${userId} to Free`)
         }
+        break
+      }
+
+      // ================================================================
+      // LOGGING ONLY: subscription created (don't upgrade here!)
+      // ================================================================
+      case "customer.subscription.created": {
+        const subscription = event.data.object as Stripe.Subscription
+        console.log(
+          `[Webhook] Subscription created: ${subscription.id}, status: ${subscription.status}`
+        )
+        console.log("[Webhook] Waiting for invoice.paid event to confirm payment...")
+        // DO NOT upgrade here - status is likely "incomplete"
         break
       }
 
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice
-        console.log(`Payment failed for invoice ${invoice.id}`)
-        // Could implement grace period logic here
+        console.log(`[Webhook] ❌ Payment failed for invoice ${invoice.id}`)
+        // Could implement grace period or notification logic here
         break
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`)
+        console.log(`[Webhook] Unhandled event type: ${event.type}`)
     }
 
     return new Response(JSON.stringify({ received: true }), {
