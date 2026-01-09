@@ -3,7 +3,9 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog"
 import { ProModal } from "@/components/billing/ProModal"
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { getQuotaStatus, type QuotaStatus } from "@/lib/quotaClient"
+import { useAuth } from "@/hooks/useAuth"
 
 export interface ActivityTool {
   id: string
@@ -31,7 +33,23 @@ export function EditorActivityBar({
   topTools = [],
   bottomTools = [],
 }: EditorActivityBarProps) {
+  const { user } = useAuth()
   const [proModalOpen, setProModalOpen] = useState(false)
+  const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null)
+
+  // Fetch quota status on mount and when user changes
+  useEffect(() => {
+    if (!user) return
+
+    const fetchStatus = async () => {
+      const status = await getQuotaStatus()
+      setQuotaStatus(status)
+    }
+
+    fetchStatus()
+  }, [user])
+
+  const isPro = quotaStatus?.tier === "pro"
 
   // Default tools if none provided (backward compatibility)
   const defaultTopTools: ActivityTool[] = [
@@ -112,12 +130,17 @@ export function EditorActivityBar({
             }
           />
 
-          {/* CodeScapes Pro Button */}
+          {/* CodeScapes Pro Button - Golden for Pro users */}
           <Button
             variant="ghost"
             size="icon"
-            className="h-10 w-10 text-emerald-500 hover:text-emerald-400"
-            title="CodeScapes Pro"
+            className={cn(
+              "h-10 w-10 transition-colors",
+              isPro
+                ? "text-amber-400 hover:text-amber-300" // Golden for Pro
+                : "text-emerald-500 hover:text-emerald-400" // Green for Free
+            )}
+            title={isPro ? "You are Pro! ✨" : "CodeScapes Pro"}
             onClick={() => setProModalOpen(true)}
           >
             <Crown className="h-5 w-5" />
