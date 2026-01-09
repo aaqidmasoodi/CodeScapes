@@ -697,10 +697,7 @@ export function TerminalPane({
                   {
                     type: "output" as const,
                     content: (
-                      <div className="my-1 border-l-2 border-muted-foreground/30 pl-3 text-sm italic leading-relaxed text-muted-foreground/70">
-                        <span className="mb-1 block text-xs not-italic text-muted-foreground/50">
-                          thinking...
-                        </span>
+                      <div className="my-1 pl-3 font-mono text-sm text-muted-foreground/80">
                         <div className="whitespace-pre-wrap opacity-90">{progress.message}</div>
                       </div>
                     ),
@@ -713,10 +710,7 @@ export function TerminalPane({
                 {
                   type: "output" as const,
                   content: (
-                    <div className="my-1 border-l-2 border-muted-foreground/30 pl-3 text-sm italic leading-relaxed text-muted-foreground/70">
-                      <span className="mb-1 block text-xs not-italic text-muted-foreground/50">
-                        thinking...
-                      </span>
+                    <div className="my-1 pl-3 font-mono text-sm text-muted-foreground/80">
                       <div className="whitespace-pre-wrap opacity-90">{progress.message}</div>
                     </div>
                   ),
