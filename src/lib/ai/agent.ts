@@ -516,11 +516,43 @@ export async function runScapper(
           }
         }
 
-        // Small delay between iterations to avoid rate limits
         await sleep(4000)
 
         // Continue the loop to let the model process tool results
         continue
+      }
+
+      // --- VERIFICATION LOOP (Anti-Hallucination) ---
+      // Detect if model claims to have performed an action but output no tools
+      const content = assistantMessage.content || ""
+      const hasActionClaim =
+        /(?:^|\s)(?:created|updated|fixed|modified|rewrote|edited)\s+[`"']?[\w/.-]+[`"']?/i.test(
+          content
+        )
+
+      if (
+        hasActionClaim &&
+        (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0)
+      ) {
+        const retryKey = "__hallucination_retry__"
+        const currentRetries = failureTracker.get(retryKey) || 0
+
+        if (currentRetries < 2) {
+          failureTracker.set(retryKey, currentRetries + 1)
+
+          onProgress({
+            type: "reasoning",
+            message: "Verifying...",
+          })
+
+          // Inject system alert to force tool usage
+          messages.push({
+            role: "system", // Using 'system' role to simulate system feedback
+            content: `SYSTEM ALERT: You stated in your last message that you created/updated a file, but you did NOT generate any tool calls to actually perform the action. You MUST use tools like \`create_file\`, \`apply_diff\`, or \`overwrite_file\` to make changes. Please retry and execute the necessary tools now.`,
+          })
+
+          continue
+        }
       }
 
       // No tool calls - we're done

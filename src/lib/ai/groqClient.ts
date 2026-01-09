@@ -111,8 +111,13 @@ export async function chatCompletion(
     model,
     messages,
     temperature,
-    reasoning_effort,
+    // reasoning_effort, // Removed default inclusion
     promptType, // Pass to Edge Function for quota check
+  }
+
+  // Only include reasoning_effort for non-Llama models (Llama 3.1 doesn't support it)
+  if (!model.toLowerCase().includes("llama")) {
+    body.reasoning_effort = reasoning_effort
   }
 
   if (maxTokens) {
