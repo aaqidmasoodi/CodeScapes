@@ -36,6 +36,7 @@ function App() {
               <Route path="/dashboard/:tab" element={<Dashboard />} />
               <Route path="/scape/:scapeId" element={<ScapeEditor />} />
               <Route path="/flow/:scapeId" element={<FlowEditor />} />
+              <Route path="/auth" element={<Navigate to="/login" replace />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
 
               {/* Run Routes */}

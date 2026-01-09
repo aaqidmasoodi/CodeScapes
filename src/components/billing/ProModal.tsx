@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect } from "react"
+import { Link } from "react-router-dom"
 import {
   Dialog,
   DialogContent,
@@ -114,14 +115,14 @@ export function ProModal({ isOpen, onClose }: ProModalProps) {
 
             {/* Sign in CTA */}
             <Button className="w-full" size="lg" asChild>
-              <a href="/auth">Sign In to Get Pro</a>
+              <Link to="/login">Sign In to Get Pro</Link>
             </Button>
 
             <p className="mt-4 text-xs text-muted-foreground">
               Already on CodeScapes Pro?{" "}
-              <a href="/auth" className="underline hover:text-foreground">
+              <Link to="/login" className="underline hover:text-foreground">
                 Sign in
-              </a>
+              </Link>
             </p>
           </div>
         </DialogContent>
