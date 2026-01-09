@@ -67,6 +67,69 @@ export function ProModal({ isOpen, onClose }: ProModalProps) {
   }
 
   // =============================================
+  // LOGGED OUT: Marketing-only view with sign-in CTA
+  // =============================================
+  if (!user) {
+    return (
+      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader className="text-center">
+            <DialogTitle className="sr-only">CodeScapes Pro</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col items-center py-6 text-center">
+            {/* Logo */}
+            <div className="mb-4 rounded-lg bg-primary/10 p-3">
+              <CodeScapeLogo size={40} />
+            </div>
+
+            <h2 className="mb-2 text-2xl font-bold tracking-tight">CodeScapes Pro</h2>
+            <p className="mb-6 text-sm text-muted-foreground">
+              Unlock the full potential of your coding creativity
+            </p>
+
+            {/* Benefits */}
+            <div className="mb-6 flex flex-col items-start space-y-3">
+              {[
+                { icon: Sparkles, text: "Unlimited Scapper prompts" },
+                { icon: Cloud, text: "Unlimited cloud scapes" },
+                { icon: Zap, text: "Priority features & support" },
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-3 text-left">
+                  <div className="rounded-full bg-primary/10 p-1.5">
+                    <item.icon className="h-4 w-4 text-primary" />
+                  </div>
+                  <span className="text-sm">{item.text}</span>
+                </div>
+              ))}
+            </div>
+
+            <Separator className="mb-6" />
+
+            {/* Pricing */}
+            <div className="mb-4">
+              <span className="text-3xl font-bold">$9.99</span>
+              <span className="text-muted-foreground">/month</span>
+            </div>
+
+            {/* Sign in CTA */}
+            <Button className="w-full" size="lg" asChild>
+              <a href="/auth">Sign In to Get Pro</a>
+            </Button>
+
+            <p className="mt-4 text-xs text-muted-foreground">
+              Already on CodeScapes Pro?{" "}
+              <a href="/auth" className="underline hover:text-foreground">
+                Sign in
+              </a>
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  // =============================================
   // LOADING STATE: Show skeleton while determining user status
   // This prevents the flash between views
   // =============================================

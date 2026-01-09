@@ -35,15 +35,34 @@ export function EditorActivityBar({
 }: EditorActivityBarProps) {
   const { user } = useAuth()
   const [proModalOpen, setProModalOpen] = useState(false)
-  const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null)
+
+  // Initialize from localStorage cache to prevent flash
+  const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(() => {
+    if (!user) return null
+    try {
+      const cached = localStorage.getItem("codescapes_quota_status")
+      return cached ? JSON.parse(cached) : null
+    } catch {
+      return null
+    }
+  })
 
   // Fetch quota status on mount and when user changes
   useEffect(() => {
-    if (!user) return
+    // When user logs out, the component will re-render and useState initializer
+    // will return null since user is null
+    if (!user) {
+      localStorage.removeItem("codescapes_quota_status")
+      return
+    }
 
     const fetchStatus = async () => {
       const status = await getQuotaStatus()
-      setQuotaStatus(status)
+      if (status) {
+        setQuotaStatus(status)
+        // Cache for next page load
+        localStorage.setItem("codescapes_quota_status", JSON.stringify(status))
+      }
     }
 
     fetchStatus()

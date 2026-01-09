@@ -1,3 +1,4 @@
+// @ts-nocheck - Deno Edge Function (types not available in Node/TSC)
 /**
  * Stripe Webhook Handler - Supabase Edge Function
  *
