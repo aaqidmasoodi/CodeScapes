@@ -13,20 +13,12 @@ import { supabase } from "@/lib/supabase"
 // Load Stripe
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || "")
 
-interface UpgradeModalProps {
-  isOpen: boolean
-  onClose: () => void
-  onSuccess: () => void
-}
-
-export function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) {
+export function EmbeddedPaymentForm({ onSuccess }: { onSuccess: () => void }) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!isOpen) return
-
     const createPaymentIntent = async () => {
       setLoading(true)
       setError(null)
@@ -59,7 +51,6 @@ export function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) 
         const data = await response.json()
 
         if (!response.ok) {
-          // Format: { error: "..." } (Our func) OR { code: 401, message: "..." } (Gateway)
           const errorMessage = data.error || data.message || "Failed to initialize payment"
           throw new Error(errorMessage)
         }
@@ -73,39 +64,42 @@ export function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) 
     }
 
     createPaymentIntent()
-  }, [isOpen])
+  }, [])
 
-  if (!isOpen) return null
+  if (loading) {
+    return (
+      <div className="flex h-full min-h-[300px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-6 text-center">
+        <XCircle className="mb-4 h-12 w-12 text-red-500" />
+        <h3 className="text-lg font-medium text-red-500">Initialization Failed</h3>
+        <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 text-xs underline hover:text-foreground"
+        >
+          Reload page to try again
+        </button>
+      </div>
+    )
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="relative w-full max-w-md rounded-xl border bg-background p-6 shadow-2xl">
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
-        >
-          <XCircle className="h-5 w-5" />
-        </button>
+    <div className="flex h-full flex-col">
+      <div className="mb-6">
+        <h2 className="text-xl font-semibold">Upgrade to Pro</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Get unlimited Scapper AI prompts for $9.99/month
+        </p>
+      </div>
 
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold">Upgrade to Pro</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Get unlimited Scapper AI prompts for $9.99/month
-          </p>
-        </div>
-
-        {loading && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        )}
-
-        {error && (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-
+      <div className="flex-1">
         {clientSecret && (
           <Elements
             stripe={stripePromise}
@@ -120,24 +114,25 @@ export function UpgradeModal({ isOpen, onClose, onSuccess }: UpgradeModalProps) 
                   colorDanger: "#ef4444",
                   fontFamily: "system-ui, sans-serif",
                   borderRadius: "8px",
+                  spacingUnit: "4px",
                 },
               },
             }}
           >
-            <CheckoutForm onSuccess={onSuccess} onClose={onClose} />
+            <CheckoutForm onSuccess={onSuccess} />
           </Elements>
         )}
+      </div>
 
-        <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
-          <CreditCard className="h-4 w-4" />
-          <span>Secured by Stripe. Cancel anytime.</span>
-        </div>
+      <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+        <CreditCard className="h-3 w-3" />
+        <span>Secured by Stripe. Cancel anytime.</span>
       </div>
     </div>
   )
 }
 
-function CheckoutForm({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) {
+function CheckoutForm({ onSuccess }: { onSuccess: () => void }) {
   const stripe = useStripe()
   const elements = useElements()
   const [processing, setProcessing] = useState(false)
@@ -167,7 +162,6 @@ function CheckoutForm({ onSuccess, onClose }: { onSuccess: () => void; onClose: 
         setSuccess(true)
         setTimeout(() => {
           onSuccess()
-          onClose()
         }, 2000)
       }
     } catch {
