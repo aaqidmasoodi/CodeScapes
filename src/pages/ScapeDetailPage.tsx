@@ -363,7 +363,7 @@ export default function ScapeDetailPage() {
                     variant="ghost"
                     size="sm"
                     className="h-6 gap-2 text-xs"
-                    onClick={() => window.open(`/view/${scape.id}`, "_blank")}
+                    onClick={() => navigate(`/view/${scape.id}`)}
                   >
                     <Maximize2 className="h-3 w-3" /> Launch Full Screen
                   </Button>
