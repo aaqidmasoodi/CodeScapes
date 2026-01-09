@@ -17,6 +17,7 @@ export function EmbeddedPaymentForm({ onSuccess }: { onSuccess: () => void }) {
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [alreadySubscribed, setAlreadySubscribed] = useState(false)
 
   useEffect(() => {
     const createPaymentIntent = async () => {
@@ -51,6 +52,12 @@ export function EmbeddedPaymentForm({ onSuccess }: { onSuccess: () => void }) {
         const data = await response.json()
 
         if (!response.ok) {
+          // Handle "Already subscribed" as a success state - user has active subscription
+          if (data.error === "Already subscribed" || data.error === "Already subscribed to Pro") {
+            console.log("[Payment] User already has active subscription")
+            setAlreadySubscribed(true)
+            return
+          }
           const errorMessage = data.error || data.message || "Failed to initialize payment"
           throw new Error(errorMessage)
         }
@@ -70,6 +77,19 @@ export function EmbeddedPaymentForm({ onSuccess }: { onSuccess: () => void }) {
     return (
       <div className="flex h-full min-h-[300px] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  // User already has an active subscription in Stripe
+  if (alreadySubscribed) {
+    return (
+      <div className="flex h-full min-h-[300px] flex-col items-center justify-center p-6 text-center">
+        <CheckCircle className="mb-4 h-12 w-12 text-emerald-500" />
+        <h3 className="text-lg font-medium">You're Already Subscribed!</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          You have an active Pro subscription. Close this dialog to continue.
+        </p>
       </div>
     )
   }

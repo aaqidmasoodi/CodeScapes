@@ -20,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Sparkles, Cloud, Rocket, Lock, CheckCircle2, Crown, Zap, Heart, X } from "lucide-react"
+import { Sparkles, Cloud, Rocket, Lock, CheckCircle2, Crown, Zap, Heart } from "lucide-react"
 import { CodeScapeLogo } from "@/components/brand/Logo"
 import { getQuotaStatus, type QuotaStatus } from "@/lib/quotaClient"
 import { EmbeddedPaymentForm } from "@/components/billing/StripePaymentForm"
@@ -163,13 +163,14 @@ export function ProModal({ isOpen, onClose }: ProModalProps) {
             <DialogTitle>Complete Payment</DialogTitle>
           </DialogHeader>
           <div className="flex h-full max-h-[90vh] flex-col overflow-y-auto p-6">
+            {/* Back button to return to sales pitch */}
             <Button
               variant="ghost"
-              size="icon"
-              className="absolute right-4 top-4"
+              size="sm"
+              className="absolute left-4 top-4 text-xs text-muted-foreground"
               onClick={() => setShowPayment(false)}
             >
-              <X className="h-4 w-4" />
+              ← Back
             </Button>
             <EmbeddedPaymentForm onSuccess={handlePaymentSuccess} />
           </div>
