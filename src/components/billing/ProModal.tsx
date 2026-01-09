@@ -91,7 +91,7 @@ export function ProModal({ isOpen, onClose }: ProModalProps) {
             {/* Benefits */}
             <div className="mb-6 flex flex-col items-start space-y-3">
               {[
-                { icon: Sparkles, text: "Unlimited Scapper AI prompts" },
+                { icon: Sparkles, text: "Unlimited Scapper prompts" },
                 { icon: Cloud, text: "Unlimited cloud scapes" },
                 { icon: Zap, text: "Priority features & support" },
               ].map((item, i) => (
