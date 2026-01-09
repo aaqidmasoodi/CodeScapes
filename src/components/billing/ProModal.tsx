@@ -1,19 +1,21 @@
 /**
  * CodeScapes Pro Modal
  *
- * Shows subscription tier, usage stats, and upgrade option.
- * Opens from sidebar activity bar.
+ * Shows "Sales Pitch" view first (Usage vs Benefits),
+ * then switches to Payment Form on click.
  */
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Sparkles, Cloud, Rocket, Lock, CheckCircle2 } from "lucide-react"
+import { Sparkles, Cloud, Rocket, Lock, CheckCircle2, X } from "lucide-react"
 import { CodeScapeLogo } from "@/components/brand/Logo"
 import { ScapperIcon } from "@/components/brand/ScapperIcon"
 import { getQuotaStatus, type QuotaStatus } from "@/lib/quotaClient"
 import { EmbeddedPaymentForm } from "@/components/billing/StripePaymentForm"
 import { useAuth } from "@/hooks/useAuth"
+import { useTheme } from "@/components/theme-provider"
 
 interface ProModalProps {
   isOpen: boolean
@@ -22,8 +24,10 @@ interface ProModalProps {
 
 export function ProModal({ isOpen, onClose }: ProModalProps) {
   const { user } = useAuth()
+  const { resolvedTheme } = useTheme()
   const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showPayment, setShowPayment] = useState(false)
 
   const fetchQuota = async () => {
     try {
@@ -41,13 +45,46 @@ export function ProModal({ isOpen, onClose }: ProModalProps) {
   useEffect(() => {
     if (!isOpen || !user) return
     fetchQuota()
+    setShowPayment(false) // Reset view on open
   }, [isOpen, user])
 
   const isPro = quotaStatus?.tier === "pro"
 
+  // Handle successful payment
+  const handlePaymentSuccess = () => {
+    fetchQuota()
+    // Optional: could auto-close here or show success state
+    // For now, let's keep the user on the "You are a Pro" view or close
+    setTimeout(() => {
+      onClose()
+      // You might want to reload or update global state here
+    }, 2000)
+  }
+
+  // If showing payment form, render wrapper modal
+  if (showPayment) {
+    return (
+      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="max-w-md p-0">
+          <div className="relative bg-background p-6">
+            <button
+              onClick={() => setShowPayment(false)}
+              className="absolute right-4 top-4 rounded-full p-1 opacity-70 transition-opacity hover:opacity-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <EmbeddedPaymentForm onSuccess={handlePaymentSuccess} />
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  // Default "Sales Pitch" Modal
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90vh] w-[95vw] max-w-4xl gap-0 overflow-hidden p-0 md:h-[600px] md:w-full">
+        <DialogTitle className="sr-only">Upgrade to Pro</DialogTitle>
         <div className="flex h-full flex-col overflow-y-auto md:grid md:grid-cols-2 md:overflow-hidden">
           {/* LEFT COLUMN: Features & Stats */}
           <div className="flex flex-col border-r bg-muted/20 p-6 md:p-8">
@@ -128,29 +165,10 @@ export function ProModal({ isOpen, onClose }: ProModalProps) {
                   </div>
                 </div>
               </div>
-
-              {/* Benefits List */}
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Pro Benefits
-                </h3>
-                <ul className="space-y-3">
-                  {[
-                    "Unlimited Scapper AI prompts",
-                    "Unlimited cloud scapes",
-                    "Priority features & support",
-                  ].map((benefit, i) => (
-                    <li key={i} className="flex items-center gap-3 text-sm">
-                      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
-                      <span>{benefit}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Action / Payment */}
+          {/* RIGHT COLUMN: Benefits & Action */}
           <div className="flex flex-col bg-background p-6 md:p-8">
             {isPro ? (
               <div className="flex h-full flex-col items-center justify-center text-center">
@@ -169,7 +187,57 @@ export function ProModal({ isOpen, onClose }: ProModalProps) {
                 </div>
               </div>
             ) : (
-              <EmbeddedPaymentForm onSuccess={fetchQuota} />
+              <div className="flex h-full flex-col">
+                <div className="flex-1 space-y-8">
+                  {/* Benefits List */}
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Pro Benefits
+                    </h3>
+                    <ul className="space-y-4">
+                      {[
+                        "Unlimited Scapper AI prompts",
+                        "Unlimited cloud scapes",
+                        "Priority features & support",
+                      ].map((benefit, i) => (
+                        <li key={i} className="flex items-center gap-3 text-base">
+                          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+                          <span>{benefit}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Action Area */}
+                <div className="mt-8 space-y-4 border-t pt-8">
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-muted-foreground">Monthly Plan</p>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-3xl font-bold tracking-tight">$9.99</span>
+                        <span className="text-muted-foreground">/mo</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button
+                    size="lg"
+                    className={`w-full text-base font-semibold transition-transform active:scale-[0.98] ${
+                      resolvedTheme === "dark"
+                        ? "bg-white text-black hover:bg-gray-100"
+                        : "bg-black text-white hover:bg-gray-800"
+                    }`}
+                    onClick={() => setShowPayment(true)}
+                  >
+                    Subscribe - $9.99/month
+                  </Button>
+
+                  <p className="text-center text-xs text-muted-foreground">
+                    Secured by Stripe. Cancel anytime.
+                  </p>
+                </div>
+              </div>
             )}
           </div>
         </div>
