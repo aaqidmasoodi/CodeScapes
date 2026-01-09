@@ -16,9 +16,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
 }
 
-// Pro subscription price (in cents)
-const PRO_PRICE_MONTHLY = 999 // $9.99/month
-
 serve(async (req: Request) => {
   console.log(`[Payment] Request received: ${req.method}`)
 
@@ -138,15 +135,7 @@ serve(async (req: Request) => {
       customer: customerId,
       items: [
         {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "CodeScapes Pro",
-              description: "Unlimited Scapper AI prompts",
-            },
-            unit_amount: PRO_PRICE_MONTHLY,
-            recurring: { interval: "month" },
-          },
+          price: "price_1SnTW3DReSL06oNAt9hFgqAe", // CodeScapes Pro ($9.99/mo)
         },
       ],
       payment_behavior: "default_incomplete",
