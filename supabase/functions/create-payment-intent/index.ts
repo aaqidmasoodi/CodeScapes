@@ -1,3 +1,4 @@
+// @ts-nocheck - Deno Edge Function (types not available in Node/TSC)
 /**
  * Create Payment Intent - Supabase Edge Function
  *
