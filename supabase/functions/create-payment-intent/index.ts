@@ -52,14 +52,17 @@ serve(async (req: Request) => {
 
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
+      // { global: { headers: { Authorization: authHeader } } } // Deprecated approach
     )
+
+    // Extract token (remove "Bearer " prefix)
+    const token = authHeader.replace("Bearer ", "").trim()
 
     const {
       data: { user },
       error: authError,
-    } = await supabaseClient.auth.getUser()
+    } = await supabaseClient.auth.getUser(token)
     if (authError || !user) {
       console.log("[Payment] Auth failed:", authError)
       return new Response(
