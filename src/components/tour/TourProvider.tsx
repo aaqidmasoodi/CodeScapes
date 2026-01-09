@@ -11,15 +11,21 @@ import {
 } from "react"
 import type { TourConfig, TourContextValue, TourState } from "@/lib/tours/types"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/hooks/useAuth"
 
-// Storage key for completed tours
-const COMPLETED_TOURS_KEY = "codescapes_completed_tours"
+// Storage key for completed tours (user-specific when possible)
+const COMPLETED_TOURS_KEY_PREFIX = "codescapes_completed_tours"
+
+// Get user-specific storage key
+function getStorageKey(userId: string | null): string {
+  return userId ? `${COMPLETED_TOURS_KEY_PREFIX}_${userId}` : `${COMPLETED_TOURS_KEY_PREFIX}_anon`
+}
 
 // Get completed tours from localStorage - SYNCHRONOUS for immediate availability
-function getCompletedToursSync(): string[] {
+function getCompletedToursSync(userId: string | null): string[] {
   if (typeof window === "undefined") return []
   try {
-    const stored = localStorage.getItem(COMPLETED_TOURS_KEY)
+    const stored = localStorage.getItem(getStorageKey(userId))
     return stored ? JSON.parse(stored) : []
   } catch {
     return []
@@ -27,28 +33,20 @@ function getCompletedToursSync(): string[] {
 }
 
 // Save completed tours to localStorage
-function saveCompletedToursLocal(tours: string[]) {
+function saveCompletedToursLocal(tours: string[], userId: string | null) {
   if (typeof window === "undefined") return
   try {
-    localStorage.setItem(COMPLETED_TOURS_KEY, JSON.stringify(tours))
+    localStorage.setItem(getStorageKey(userId), JSON.stringify(tours))
   } catch {
     // Ignore storage errors
   }
 }
 
 // Save completed tours to Supabase profile
-async function saveCompletedToursProfile(tours: string[]) {
+async function saveCompletedToursProfile(tours: string[], userId: string | null) {
+  if (!userId) return
+
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      console.log("[TourProvider] No user logged in, skipping profile save")
-      return
-    }
-
-    console.log("[TourProvider] Saving to profile:", tours, "for user:", user.id)
-
     const { error } = await supabase
       .from("profiles")
       .update({
@@ -56,12 +54,10 @@ async function saveCompletedToursProfile(tours: string[]) {
           completed_tours: tours,
         },
       })
-      .eq("id", user.id)
+      .eq("id", userId)
 
     if (error) {
       console.error("[TourProvider] Failed to save to profile:", error)
-    } else {
-      console.log("[TourProvider] Successfully saved to profile")
     }
   } catch (error) {
     console.error("[TourProvider] Exception saving to profile:", error)
@@ -69,22 +65,14 @@ async function saveCompletedToursProfile(tours: string[]) {
 }
 
 // Load completed tours from Supabase profile
-async function loadCompletedToursProfile(): Promise<string[]> {
+async function loadCompletedToursProfile(userId: string | null): Promise<string[]> {
+  if (!userId) return []
+
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      console.log("[TourProvider] No user logged in, skipping profile load")
-      return []
-    }
-
-    console.log("[TourProvider] Loading from profile for user:", user.id)
-
     const { data, error } = await supabase
       .from("profiles")
       .select("preferences")
-      .eq("id", user.id)
+      .eq("id", userId)
       .single()
 
     if (error) {
@@ -92,13 +80,7 @@ async function loadCompletedToursProfile(): Promise<string[]> {
       return []
     }
 
-    console.log("[TourProvider] Loaded preferences:", data?.preferences)
-
-    if (data?.preferences?.completed_tours) {
-      console.log("[TourProvider] Found completed_tours:", data.preferences.completed_tours)
-      return data.preferences.completed_tours
-    }
-    return []
+    return data?.preferences?.completed_tours || []
   } catch (error) {
     console.error("[TourProvider] Exception loading from profile:", error)
     return []
@@ -121,6 +103,7 @@ const defaultContextValue: TourContextValue = {
   hasCompletedTour: () => false,
   resetTour: () => {},
   markTourDismissed: () => {},
+  isLoadingCompletedTours: true,
 }
 
 // Create context
@@ -140,6 +123,9 @@ interface TourProviderProps {
 }
 
 export function TourProvider({ children, tours, onTourComplete }: TourProviderProps) {
+  const { user } = useAuth()
+  const userId = user?.id || null
+
   const [state, setState] = useState<TourState>({
     activeTourId: null,
     currentStepIndex: 0,
@@ -147,30 +133,43 @@ export function TourProvider({ children, tours, onTourComplete }: TourProviderPr
     stepCompleted: false,
   })
 
-  // CRITICAL: Initialize from localStorage SYNCHRONOUSLY to prevent race conditions
-  // This ensures hasCompletedTour returns correct value on first render
-  const [completedTours, setCompletedTours] = useState<string[]>(() => {
-    return getCompletedToursSync()
-  })
+  // Initialize from localStorage - will be updated when user changes
+  const [completedTours, setCompletedTours] = useState<string[]>([])
+  const [isLoadingCompletedTours, setIsLoadingCompletedTours] = useState(true)
 
-  // Async merge with profile data (enhancement, not blocking)
+  // Sync completed tours when user changes
   useEffect(() => {
-    async function mergeWithProfile() {
-      const profileTours = await loadCompletedToursProfile()
-      if (profileTours.length === 0) return
+    async function syncCompletedTours() {
+      setIsLoadingCompletedTours(true)
 
-      setCompletedTours((current) => {
-        const merged = [...new Set([...current, ...profileTours])]
-        // Only update if there are new items from profile
-        if (merged.length > current.length) {
-          saveCompletedToursLocal(merged)
-          return merged
+      // Step 1: Load from localStorage for this user (instant, no flash)
+      const localTours = getCompletedToursSync(userId)
+
+      // Step 2: If logged in, also check database
+      if (userId) {
+        const profileTours = await loadCompletedToursProfile(userId)
+
+        // Merge: take union of local and remote
+        const merged = [...new Set([...localTours, ...profileTours])]
+
+        // Save merged back to both
+        setCompletedTours(merged)
+        saveCompletedToursLocal(merged, userId)
+
+        // If local had something remote didn't, sync to remote
+        if (merged.length > profileTours.length) {
+          saveCompletedToursProfile(merged, userId)
         }
-        return current
-      })
+      } else {
+        // Logged out: just use local anonymous storage
+        setCompletedTours(localTours)
+      }
+
+      setIsLoadingCompletedTours(false)
     }
-    mergeWithProfile()
-  }, [])
+
+    syncCompletedTours()
+  }, [userId]) // Re-run when user changes!
 
   // Get current tour config
   const currentTour = useMemo(() => {
@@ -185,15 +184,18 @@ export function TourProvider({ children, tours, onTourComplete }: TourProviderPr
   }, [currentTour, state.currentStepIndex])
 
   // Helper to mark tour as completed (saves to both localStorage and profile)
-  const markTourCompleted = useCallback((tourId: string) => {
-    setCompletedTours((prev) => {
-      if (prev.includes(tourId)) return prev
-      const newCompleted = [...prev, tourId]
-      saveCompletedToursLocal(newCompleted)
-      saveCompletedToursProfile(newCompleted)
-      return newCompleted
-    })
-  }, [])
+  const markTourCompleted = useCallback(
+    (tourId: string) => {
+      setCompletedTours((prev) => {
+        if (prev.includes(tourId)) return prev
+        const newCompleted = [...prev, tourId]
+        saveCompletedToursLocal(newCompleted, userId)
+        saveCompletedToursProfile(newCompleted, userId)
+        return newCompleted
+      })
+    },
+    [userId]
+  )
 
   // Start a tour
   const startTour = useCallback(
@@ -286,14 +288,17 @@ export function TourProvider({ children, tours, onTourComplete }: TourProviderPr
   )
 
   // Reset a tour's completion status (for restart)
-  const resetTour = useCallback((tourId: string) => {
-    setCompletedTours((prev) => {
-      const newCompleted = prev.filter((id) => id !== tourId)
-      saveCompletedToursLocal(newCompleted)
-      saveCompletedToursProfile(newCompleted)
-      return newCompleted
-    })
-  }, [])
+  const resetTour = useCallback(
+    (tourId: string) => {
+      setCompletedTours((prev) => {
+        const newCompleted = prev.filter((id) => id !== tourId)
+        saveCompletedToursLocal(newCompleted, userId)
+        saveCompletedToursProfile(newCompleted, userId)
+        return newCompleted
+      })
+    },
+    [userId]
+  )
 
   // Mark a tour as dismissed (for skip/close) - same as completing it
   const markTourDismissed = useCallback(
@@ -317,6 +322,7 @@ export function TourProvider({ children, tours, onTourComplete }: TourProviderPr
       hasCompletedTour,
       resetTour,
       markTourDismissed,
+      isLoadingCompletedTours,
     }),
     [
       state,
@@ -330,6 +336,7 @@ export function TourProvider({ children, tours, onTourComplete }: TourProviderPr
       hasCompletedTour,
       resetTour,
       markTourDismissed,
+      isLoadingCompletedTours,
     ]
   )
 
