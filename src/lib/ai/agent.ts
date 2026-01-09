@@ -57,6 +57,12 @@ const COMMON_RULES = `
    - NEVER say "Fixed!" unless you have VERIFIED the code works
    - If unsure, say "I've made changes, but please test to confirm"
    - Admit when you don't know or when something unexpected happened
+10. **IMPLICIT COMMANDS** (CRITICAL):
+   - Users often give incomplete commands like "Make it red", "It should be faster", "I want a restart button".
+   - INTERPRET THESE AS COMMANDS TO MODIFY CODE.
+   - Do NOT ask "Should I make it red?". JUST DO IT.
+   - Do NOT say "I can make it red." JUST DO IT.
+   - If the user describes a desired state, assume they want you to IMPLEMENT that state immediately.
 
 **WORKFLOW for editing existing files**:
 1. \`read_file\` to see the current content
@@ -548,7 +554,7 @@ export async function runScapper(
           // Inject system alert to force tool usage
           messages.push({
             role: "system", // Using 'system' role to simulate system feedback
-            content: `SYSTEM ALERT: You stated in your last message that you created/updated a file, but you did NOT generate any tool calls to actually perform the action. You MUST use tools like \`create_file\`, \`apply_diff\`, or \`overwrite_file\` to make changes. Please retry and execute the necessary tools now.`,
+            content: `SYSTEM ALERT: You stated in your last message that you created/updated a file, but you did NOT generate any tool calls to actually perform the action. You MUST use tools like \`create_file\`, \`apply_diff\`, or \`overwrite_file\` to make changes. DO NOT APOLOGIZE. DO NOT EXPLAIN. JUST EXECUTE THE TOOLS NOW.`,
           })
 
           continue
