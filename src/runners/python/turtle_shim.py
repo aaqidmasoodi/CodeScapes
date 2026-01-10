@@ -313,7 +313,7 @@ class _Screen(TurtleScreenBase):
     def update(self):
         _send_cmd("UPDATE", {})
         _poll_events()
-        self._check_timers()
+        # self._check_timers()
         _sync_fs()
         
     def delay(self, delay=None):
