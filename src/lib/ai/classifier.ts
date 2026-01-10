@@ -42,31 +42,12 @@ const COMPLEX_TASK_PATTERNS = [
   /^set up/i,
 ]
 
-// Keywords that indicate code-related questions (need tool access to read files)
-const CODE_QUESTION_INDICATORS = [
-  /function\s+\w+/i,
-  /\w+\s*\(\)/i, // function_name()
-  /this (function|class|method|variable|file|code)/i,
-  /the (function|class|method|variable|file|code)/i,
-  /in (main|index|app|src)/i,
-  /\.(py|js|ts|tsx|jsx|css|html)$/i,
-]
-
 /**
  * Fast local classification using patterns
  * Returns null if uncertain (should fall back to LLM)
  */
 function classifyByPatterns(message: string): ClassificationResult | null {
   const trimmed = message.trim().toLowerCase()
-
-  // Check if this is a question about code (needs tool access)
-  // Route these to simple_edit so tools are available
-  for (const pattern of CODE_QUESTION_INDICATORS) {
-    if (pattern.test(message)) {
-      // This looks like a question about code - needs tools to read files
-      return { intent: "simple_edit", confidence: 0.8 }
-    }
-  }
 
   // Check question patterns (pure knowledge questions without code context)
   for (const pattern of QUESTION_PATTERNS) {
