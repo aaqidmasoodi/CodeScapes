@@ -1,5 +1,14 @@
 import { useState } from "react"
-import { Bug, Lightbulb, Sparkles, HelpCircle, MessageSquare, Send, Loader2 } from "lucide-react"
+import {
+  Bug,
+  Lightbulb,
+  Sparkles,
+  HelpCircle,
+  MessageSquare,
+  Send,
+  Loader2,
+  Megaphone,
+} from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -174,7 +183,7 @@ export function FeedbackDialog({ trigger, open, onOpenChange }: FeedbackDialogPr
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="text-lg">📣</span>
+            <Megaphone className="h-5 w-5" />
             Send Feedback
           </DialogTitle>
           <DialogDescription>
