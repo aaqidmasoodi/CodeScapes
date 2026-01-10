@@ -55,6 +55,9 @@ export const PythonRunner = memo(
       const isBusyRef = useRef(false)
       const [isBusy, setIsBusyState] = useState(false)
       const [envVars, setEnvVars] = useState<Record<string, string>>({})
+      // Unique ID for this runner instance to isolate events (Fixes multi-tab race condition)
+      // Use useState to ensure it's stable and accessible during render without lint errors
+      const [runId] = useState(() => crypto.randomUUID())
 
       // Shared Buffer for Output/Input
       const sharedBufferRef = useRef<SharedArrayBuffer | null>(null)
@@ -848,12 +851,13 @@ export const PythonRunner = memo(
                   language: f.language,
                 })),
                 entryPoint,
-                env: envVars, // Inject Secrets
+                // Inject Secrets AND Run ID
+                env: { ...envVars, TURTLE_RUN_ID: runId },
               },
             })
           })
         },
-        [initWorker, log, setBusy, envVars]
+        [initWorker, log, setBusy, envVars, runId]
       )
 
       // Keep ref updated
@@ -1297,6 +1301,7 @@ export const PythonRunner = memo(
                     }
                   }}
                   canvasInstance={persistentCanvas}
+                  runId={runId}
                 />
               </div>
             )}

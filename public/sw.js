@@ -177,7 +177,9 @@ const pendingInputs = new Map()
 
 // Event queue for turtle keyboard events
 // Worker polls this via sync XHR during screen.update()
-const turtleEvents = []
+// Event queues for turtle keyboard events
+// Map<RunID, Event[]>
+const turtleEventQueues = new Map()
 
 // =============================================================================
 // FETCH INTERCEPTION
@@ -243,9 +245,26 @@ self.addEventListener("fetch", (event) => {
   // 3. Turtle Graphics Event Queue
   // Worker polls this to get keyboard events
   if (url.pathname === "/_turtle_events") {
-    // Return all queued events and clear the queue
-    const events = [...turtleEvents]
-    turtleEvents.length = 0 // Clear queue
+    const runId = url.searchParams.get("id")
+
+    if (!runId) {
+      // Legacy behavior (or fallback): return empty
+      event.respondWith(
+        new Response("[]", {
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      return
+    }
+
+    // Return events for THIS specific run
+    const events = turtleEventQueues.get(runId) || []
+
+    // Clear queue for this run
+    if (turtleEventQueues.has(runId)) {
+      turtleEventQueues.set(runId, [])
+    }
+
     event.respondWith(
       new Response(JSON.stringify(events), {
         headers: { "Content-Type": "application/json" },
@@ -260,8 +279,19 @@ self.addEventListener("fetch", (event) => {
       (async () => {
         try {
           const data = await event.request.json()
-          log(`Turtle Event Pushed:`, data)
-          turtleEvents.push(data)
+          const runId = data.runId
+
+          if (!runId) {
+            // Simply ignore events without runId to prevent pollution
+            return new Response("Missing runId", { status: 400 })
+          }
+
+          if (!turtleEventQueues.has(runId)) {
+            turtleEventQueues.set(runId, [])
+          }
+
+          log(`Turtle Event Pushed [${runId}]:`, data.type)
+          turtleEventQueues.get(runId).push(data)
           return new Response("OK", { status: 200 })
         } catch (e) {
           console.error(e)

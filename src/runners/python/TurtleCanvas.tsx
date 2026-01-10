@@ -8,6 +8,7 @@ interface TurtleCanvasProps {
   canvasInstance?: HTMLCanvasElement
   onResize?: (width: number, height: number) => void
   onSaveImage?: (filename: string, base64Data: string) => void
+  runId: string
 }
 
 export interface TurtleCanvasHandle {
@@ -96,7 +97,7 @@ type Point = { x: number; y: number }
  *   4. User never sees partial states
  */
 export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
-  ({ width = 800, height = 600, onKeyEvent, onResize, onSaveImage }, ref) => {
+  ({ width = 800, height = 600, onKeyEvent, onResize, onSaveImage, runId }, ref) => {
     // Container div (React owns this)
     const containerRef = useRef<HTMLDivElement>(null)
 
@@ -1186,10 +1187,10 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         fetch("/_turtle_push_event", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
+          body: JSON.stringify({ ...data, runId }),
         }).catch(() => {})
       },
-      []
+      [runId]
     )
 
     useEffect(() => {
