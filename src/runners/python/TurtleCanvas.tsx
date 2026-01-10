@@ -311,12 +311,39 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
 
         ctx.beginPath()
         if (item.shape === "turtle") {
-          ctx.moveTo(-10, -8)
-          ctx.lineTo(10, 0)
-          ctx.lineTo(-10, 8)
+          // Standard Python Turtle Shape Polygon
+          // Coordinates derived from CPython turtle.py, rotated -90deg to face East
+          const p = [
+            [16, 0],
+            [14, 2],
+            [10, 1],
+            [7, 4],
+            [9, 7],
+            [8, 9],
+            [5, 6],
+            [1, 7],
+            [-3, 5],
+            [-6, 8],
+            [-8, 6],
+            [-5, 4],
+            [-7, 0],
+            [-5, -4],
+            [-8, -6],
+            [-6, -8],
+            [-3, -5],
+            [1, -7],
+            [5, -6],
+            [8, -9],
+            [9, -7],
+            [7, -4],
+            [10, -1],
+            [14, -2],
+          ]
+          ctx.moveTo(p[0][0], p[0][1])
+          for (let i = 1; i < p.length; i++) {
+            ctx.lineTo(p[i][0], p[i][1])
+          }
           ctx.closePath()
-          ctx.moveTo(6, 0)
-          ctx.arc(6, 0, 4, 0, Math.PI * 2)
         } else if (item.shape === "circle") {
           ctx.arc(0, 0, 8, 0, Math.PI * 2)
         } else if (item.shape === "square") {
