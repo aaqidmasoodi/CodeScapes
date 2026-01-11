@@ -4,6 +4,7 @@
 import math
 import json
 import sys
+import os
 import time
 import builtins
 
@@ -110,7 +111,8 @@ def _poll_events():
     
     try:
         xhr = js.XMLHttpRequest.new()
-        xhr.open("GET", "/_turtle_events", False)  # Synchronous
+        run_id = os.environ.get("TURTLE_RUN_ID", "")
+        xhr.open("GET", f"/_turtle_events?id={run_id}", False)  # Synchronous
         xhr.send(None)
         if xhr.status == 200:
             text = xhr.responseText
