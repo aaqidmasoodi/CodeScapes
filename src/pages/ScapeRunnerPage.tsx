@@ -34,6 +34,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
 
   // Input State
   const [isWaitingForInput, setIsWaitingForInput] = useState(false)
+  const [inputMode, setInputMode] = useState<"text" | "password">("text")
   const [inputValue, setInputValue] = useState("")
   const inputResolveRef = useRef<((value: string) => void) | null>(null)
   const consoleBottomRef = useRef<HTMLDivElement>(null)
@@ -71,8 +72,9 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
   }, [setTheme])
 
   // Handle Input Request from Runner
-  const handleInputRequest = (): Promise<string> => {
+  const handleInputRequest = (_prompt: string, isPassword?: boolean): Promise<string> => {
     setIsWaitingForInput(true)
+    setInputMode(isPassword ? "password" : "text")
     setIsConsoleOpen(true) // Force open console
 
     // Scroll to bottom when input is requested
@@ -399,7 +401,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
                           {/* The Input */}
                           <input
                             autoFocus
-                            type="text"
+                            type={inputMode}
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             className="m-0 min-w-[10px] flex-1 border-none bg-transparent p-0 font-mono text-foreground outline-none"

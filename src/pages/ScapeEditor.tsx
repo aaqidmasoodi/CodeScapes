@@ -164,6 +164,7 @@ export default function ScapeEditor() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [outputLogs, setOutputLogs] = useState<LogEntry[]>([])
   const [inputPrompt, setInputPrompt] = useState<string | null>(null)
+  const [inputMode, setInputMode] = useState<"text" | "password">("text")
   const [syntaxProblems, setSyntaxProblems] = useState<Problem[]>([])
   const [runtimeProblems, setRuntimeProblems] = useState<Problem[]>([])
 
@@ -174,6 +175,7 @@ export default function ScapeEditor() {
   const terminalInputResolveRef = useRef<((value: string) => void) | null>(null)
   const [isWaitingForTerminalInput, setIsWaitingForTerminalInput] = useState(false)
   const [terminalInputPrompt, setTerminalInputPrompt] = useState("") // Store input() prompt separate from history
+  const [terminalInputMode, setTerminalInputMode] = useState<"text" | "password">("text")
   const [isPythonRunning, setIsPythonRunning] = useState(false)
 
   // --- PERSISTENT STATE ---
@@ -571,9 +573,11 @@ export default function ScapeEditor() {
               }
             },
             // Input callback: show prompt in terminal and wait for user input
-            onInputRequest: (prompt) => {
+            onInputRequest: (prompt: string, isPassword?: boolean) => {
               // Store the prompt
               setTerminalInputPrompt(prompt || "")
+              // Set mode
+              setTerminalInputMode(isPassword ? "password" : "text")
               // Set state to show input field
               setIsWaitingForTerminalInput(true)
               // Return a Promise that resolves when user submits input
@@ -773,10 +777,11 @@ export default function ScapeEditor() {
   )
 
   const handleInputRequest = useCallback(
-    (prompt: string) => {
+    (prompt: string, isPassword?: boolean) => {
       // This is only called for normal runs (Run button, auto-run)
       // Terminal-initiated runs handle input via the callback passed to runFile
       setInputPrompt(prompt)
+      setInputMode(isPassword ? "password" : "text")
       setTerminalTab("output")
       setIsTerminalOpen(true)
     },
@@ -799,7 +804,9 @@ export default function ScapeEditor() {
       // 1. Echo to output (Merge with previous line if no newline)
       setOutputLogs((prev) => {
         const last = prev[prev.length - 1]
-        const inputContent = (inputPrompt || "") + text + "\n"
+        // If password, don't echo inputs to history
+        const echoText = inputMode === "password" ? "" : text
+        const inputContent = (inputPrompt || "") + echoText + "\n"
 
         if (last && last.type === "stdout" && !last.content.endsWith("\n")) {
           // Merge input with the prompt line
@@ -828,7 +835,7 @@ export default function ScapeEditor() {
         await previewRef.current.provideInput(text)
       }
     },
-    [inputPrompt, setOutputLogs, setInputPrompt, previewRef]
+    [inputPrompt, setOutputLogs, setInputPrompt, previewRef, inputMode]
   )
 
   // 4. FileSystem Sync (from Runner)
@@ -1186,9 +1193,7 @@ export default function ScapeEditor() {
       <TourStep />
       {scape?.environment && <TourAutoStart environment={scape.environment} />}
       {/* TourRestartButton renders inside TourProvider to access context */}
-      {scape?.environment && (
-        <TourRestartButtonWrapper environment={scape.environment} />
-      )}
+      {scape?.environment && <TourRestartButtonWrapper environment={scape.environment} />}
       <ScapeLayout
         sidebar={
           <EditorActivityBar
@@ -1197,7 +1202,7 @@ export default function ScapeEditor() {
             onSettingsClick={() => setIsSettingsOpen(true)}
             onHelpClick={() => {
               // Trigger the restart button click programmatically
-              document.getElementById('tour-restart-btn')?.click()
+              document.getElementById("tour-restart-btn")?.click()
             }}
             topTools={topTools}
           />
@@ -1690,38 +1695,41 @@ export default function ScapeEditor() {
                               )}
                             </ResizablePanel>
                             <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
-                            {
-                              isTerminalOpen && (
-                                <ResizablePanel
-                                  defaultSize={getLayout("codescape:layout:vertical", [75, 25])[1]}
-                                  minSize={10}
-                                >
-                                  <div data-tour="terminal-pane" className="h-full">
-                                    <TerminalPane
-                                      activeTab={terminalTab}
-                                      onTabChange={handleTerminalTabChange}
-                                      onClose={() => setIsTerminalOpen(false)}
-                                      problems={problems}
-                                      isCollapsed={false}
-                                      files={files}
-                                      scapeName={scape?.name}
-                                      scapeId={id}
-                                      onDeleteFile={deleteFileDirectly}
-                                      onCreateFile={handleCreateFile}
-                                      onUpdateFile={async (name, content) => updateFile(name, content)}
-                                      outputLogs={outputLogs}
-                                      onExecCommand={handleExecCommand}
-                                      inputPrompt={inputPrompt}
-                                      onInputSubmit={handleInputSubmit}
-                                      isRunning={isRunning}
-                                      isWaitingForTerminalInput={isWaitingForTerminalInput}
-                                      terminalInputPrompt={terminalInputPrompt}
-                                      onTerminalInputSubmit={handleTerminalInputSubmit}
-                                      isPythonRunning={isPythonRunning}
-                                      // Scapper environment awareness
-                                      environment={
-                                        scape?.environment
-                                          ? {
+                            {isTerminalOpen && (
+                              <ResizablePanel
+                                defaultSize={getLayout("codescape:layout:vertical", [75, 25])[1]}
+                                minSize={10}
+                              >
+                                <div data-tour="terminal-pane" className="h-full">
+                                  <TerminalPane
+                                    activeTab={terminalTab}
+                                    onTabChange={handleTerminalTabChange}
+                                    onClose={() => setIsTerminalOpen(false)}
+                                    problems={problems}
+                                    isCollapsed={false}
+                                    files={files}
+                                    scapeName={scape?.name}
+                                    scapeId={id}
+                                    onDeleteFile={deleteFileDirectly}
+                                    onCreateFile={handleCreateFile}
+                                    onUpdateFile={async (name, content) =>
+                                      updateFile(name, content)
+                                    }
+                                    outputLogs={outputLogs}
+                                    onExecCommand={handleExecCommand}
+                                    inputPrompt={inputPrompt}
+                                    inputMode={inputMode}
+                                    onInputSubmit={handleInputSubmit}
+                                    isRunning={isRunning}
+                                    isWaitingForTerminalInput={isWaitingForTerminalInput}
+                                    terminalInputPrompt={terminalInputPrompt}
+                                    terminalInputMode={terminalInputMode}
+                                    onTerminalInputSubmit={handleTerminalInputSubmit}
+                                    isPythonRunning={isPythonRunning}
+                                    // Scapper environment awareness
+                                    environment={
+                                      scape?.environment
+                                        ? {
                                             id: scape.environment,
                                             name:
                                               ENVIRONMENTS[scape.environment]?.name ||
@@ -1732,13 +1740,15 @@ export default function ScapeEditor() {
                                             capabilities:
                                               ENVIRONMENTS[scape.environment]?.capabilities || {},
                                           }
-                                          : undefined
-                                      }
-                                      dependencies={optimisticDependencies ?? scape?.dependencies ?? []}
-                                      // Scapper execution tools
-                                      runFile={
-                                        scape?.environment === "python"
-                                          ? async (path) => {
+                                        : undefined
+                                    }
+                                    dependencies={
+                                      optimisticDependencies ?? scape?.dependencies ?? []
+                                    }
+                                    // Scapper execution tools
+                                    runFile={
+                                      scape?.environment === "python"
+                                        ? async (path) => {
                                             let stdout = ""
                                             let stderr = ""
                                             if (previewRef.current?.runFile) {
@@ -1761,11 +1771,11 @@ export default function ScapeEditor() {
                                             }
                                             return { stdout, stderr }
                                           }
-                                          : undefined
-                                      }
-                                      installPackage={
-                                        scape?.environment === "python"
-                                          ? async (name, onProgress) => {
+                                        : undefined
+                                    }
+                                    installPackage={
+                                      scape?.environment === "python"
+                                        ? async (name, onProgress) => {
                                             const result = await handleExecCommand(
                                               "pip-install",
                                               name,
@@ -1777,19 +1787,18 @@ export default function ScapeEditor() {
                                               error: result.error,
                                             }
                                           }
-                                          : undefined
-                                      }
-                                      listPackages={
-                                        scape?.environment === "python"
-                                          ? async () =>
+                                        : undefined
+                                    }
+                                    listPackages={
+                                      scape?.environment === "python"
+                                        ? async () =>
                                             (await previewRef.current?.listPackages?.()) ?? []
-                                          : undefined
-                                      }
-                                    />
-                                  </div>
-                                </ResizablePanel>
-                              )
-                            }
+                                        : undefined
+                                    }
+                                  />
+                                </div>
+                              </ResizablePanel>
+                            )}
                           </ResizablePanelGroup>
                         </div>
                         {!isTerminalOpen && (

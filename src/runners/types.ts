@@ -7,14 +7,14 @@ export interface ScapeRunnerProps {
   onOutput?: (log: LogEntry) => void
   onCollapse?: () => void
   onBusyChange?: (isBusy: boolean) => void
-  onInputRequest?: (prompt: string) => Promise<string> | void
+  onInputRequest?: (prompt: string, isPassword?: boolean) => Promise<string> | void
   isLive?: boolean
 }
 
 // Options for runFile when executing from terminal
 export interface RunFileOptions {
   onOutput?: (content: string, type: "stdout" | "stderr") => void
-  onInputRequest?: (prompt: string) => Promise<string>
+  onInputRequest?: (prompt: string, isPassword?: boolean) => Promise<string>
   // Pass files directly to bypass debounced props
   files?: { name: string; content: string | Uint8Array; language: string }[]
 }

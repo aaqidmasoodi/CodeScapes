@@ -246,13 +246,13 @@ self.onmessage = async (e: MessageEvent) => {
 
       // Define blocking input function in JS
       // Using self explicitly to attach to global scope for Pyodide access
-      ;(self as any).wait_for_input = (prompt: string) => {
+      ;(self as any).wait_for_input = (prompt: string, password = false) => {
         const id = Math.random().toString(36).substring(7)
 
         // Notify Main Thread (React) to show input UI
         postMessage({
           type: "INPUT_REQUEST",
-          payload: { prompt, id },
+          payload: { prompt, id, password },
         })
 
         return (self as any)._xhr_block(id)
@@ -747,11 +747,20 @@ self.onmessage = async (e: MessageEvent) => {
         sys.stdout = UnbufferedStdout()
         
         # --- Patch Input ---
-        def _input(prompt=""):
+        def _input(prompt="", password=False):
             if prompt:
                 print(prompt, end="", flush=True) 
-            return js.wait_for_input("")
+            return js.wait_for_input("", password)
         builtins.input = _input
+
+        # --- Patch getpass ---
+        import getpass
+        def _getpass(prompt="Password: ", stream=None):
+            return _input(prompt, password=True)
+        getpass.getpass = _getpass
+        getpass.unix_getpass = _getpass
+        getpass.win_getpass = _getpass
+        getpass.fallback_getpass = _getpass
         
         # --- Inject CodeScapes Module ---
         import types

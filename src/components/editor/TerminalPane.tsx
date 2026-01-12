@@ -54,11 +54,13 @@ interface TerminalPaneProps {
     arg: string
   ) => Promise<{ success: boolean; warning?: string; error?: string }>
   inputPrompt?: string | null
+  inputMode?: "text" | "password"
   onInputSubmit?: (text: string) => void
   isRunning?: boolean
   // Terminal-mode input (when running via python3 command)
   isWaitingForTerminalInput?: boolean
   terminalInputPrompt?: string // Prompt from input() call (e.g. "What is your name? ")
+  terminalInputMode?: "text" | "password"
   onTerminalInputSubmit?: (text: string) => void
   // Python execution state (for showing spinner)
   isPythonRunning?: boolean
@@ -103,6 +105,8 @@ export function TerminalPane({
   runFile,
   installPackage,
   listPackages,
+  inputMode = "text",
+  terminalInputMode = "text",
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -1115,7 +1119,7 @@ export function TerminalPane({
                         >
                           <input
                             ref={terminalInputRef}
-                            type="text"
+                            type={terminalInputMode || "text"}
                             value={terminalInput}
                             onChange={(e) => setTerminalInput(e.target.value)}
                             className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
@@ -1291,7 +1295,7 @@ export function TerminalPane({
                             {inputPrompt && <span className="mr-1">{inputPrompt}</span>}
                             <input
                               ref={outputInputRef}
-                              type="text"
+                              type={inputMode}
                               value={programInput}
                               onChange={(e) => setProgramInput(e.target.value)}
                               className={cn(
@@ -1326,7 +1330,7 @@ export function TerminalPane({
                         >
                           <input
                             ref={outputInputRef}
-                            type="text"
+                            type={inputMode}
                             value={programInput}
                             onChange={(e) => setProgramInput(e.target.value)}
                             className={cn(
