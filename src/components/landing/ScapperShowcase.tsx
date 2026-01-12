@@ -1,5 +1,15 @@
 import { useState, useEffect, useRef } from "react"
-import { Terminal, Cpu, Sparkles, Check, Play } from "lucide-react"
+import {
+  Terminal,
+  Cpu,
+  Sparkles,
+  Play,
+  Wand2,
+  Wrench,
+  Download,
+  ShieldCheck,
+  Rocket,
+} from "lucide-react"
 
 export function ScapperShowcase() {
   const [text, setText] = useState("")
@@ -83,7 +93,7 @@ export function ScapperShowcase() {
                 directly without copy-pasting code. Just chat, and watch it build.
               </p>
 
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2">
                 <div className="flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1.5 font-mono text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
                   <Cpu size={14} className="text-emerald-600 dark:text-[#00ff9d]" /> Context Aware
                 </div>
@@ -92,8 +102,24 @@ export function ScapperShowcase() {
                   Integration
                 </div>
                 <div className="flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1.5 font-mono text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
-                  <Check size={14} className="text-emerald-600 dark:text-[#00ff9d]" /> Zero
-                  Hallucinations
+                  <Wand2 size={14} className="text-emerald-600 dark:text-[#00ff9d]" /> Generate &
+                  Edit Code
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1.5 font-mono text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
+                  <Wrench size={14} className="text-emerald-600 dark:text-[#00ff9d]" /> Fix Syntax &
+                  Runtime Errors
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1.5 font-mono text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
+                  <Download size={14} className="text-emerald-600 dark:text-[#00ff9d]" /> Install
+                  packages automatically
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1.5 font-mono text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
+                  <ShieldCheck size={14} className="text-emerald-600 dark:text-[#00ff9d]" /> Run,
+                  test & Verify Code
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1.5 font-mono text-xs text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
+                  <Rocket size={14} className="text-emerald-600 dark:text-[#00ff9d]" /> Build Cool
+                  Projects
                 </div>
               </div>
             </div>
