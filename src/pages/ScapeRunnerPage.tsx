@@ -9,6 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { debug } from "@/lib/debug"
 import { useTheme } from "@/components/theme-provider"
 
+import { useConsoleInput } from "@/hooks/useConsoleInput"
+import { ConsoleInput } from "@/components/shared/ConsoleInput"
 import type { ScapeFile } from "@/types/file"
 import type { Scape } from "@/lib/db"
 import type { LogEntry } from "@/types/log"
@@ -32,11 +34,8 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
   const [isConsoleOpen, setIsConsoleOpen] = useState(false)
   const [unreadLogs, setUnreadLogs] = useState(0)
 
-  // Input State
-  const [isWaitingForInput, setIsWaitingForInput] = useState(false)
-  const [inputMode, setInputMode] = useState<"text" | "password">("text")
-  const [inputValue, setInputValue] = useState("")
-  const inputResolveRef = useRef<((value: string) => void) | null>(null)
+  // Input State via Hook
+  const { isWaiting, mode: inputMode, requestInput, resolveInput } = useConsoleInput()
   const consoleBottomRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll on new logs
@@ -53,7 +52,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
         consoleBottomRef.current.scrollIntoView({ block: "nearest" })
       }
     }
-  }, [logs, isConsoleOpen, isWaitingForInput])
+  }, [logs, isConsoleOpen, isWaiting])
 
   // Listen for theme changes from parent window (for embedded previews)
   const { setTheme } = useTheme()
@@ -72,9 +71,8 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
   }, [setTheme])
 
   // Handle Input Request from Runner
+  // Handle Input Request from Runner
   const handleInputRequest = (_prompt: string, isPassword?: boolean): Promise<string> => {
-    setIsWaitingForInput(true)
-    setInputMode(isPassword ? "password" : "text")
     setIsConsoleOpen(true) // Force open console
 
     // Scroll to bottom when input is requested
@@ -91,21 +89,15 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
       }
     }, 100)
 
-    return new Promise((resolve) => {
-      inputResolveRef.current = resolve
-    })
+    return requestInput(_prompt, isPassword)
   }
 
   // Handle Input Submission
-  const submitInput = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!inputResolveRef.current) return
-
+  // Handle Input Submission
+  const submitInput = (value: string) => {
     // Add explicit log for the user input (so it stays in history)
-    // The prompt is already there (from stdout usually), we just add user's typing + newline
-    // MERGE logic: If the last log was the prompt (partial), append input to it.
     setLogs((prev) => {
-      const echoText = inputMode === "password" ? "•".repeat(inputValue.length) : inputValue
+      const echoText = inputMode === "password" ? "•".repeat(value.length) : value
       const inputContent = echoText + "\n"
       if (prev.length > 0) {
         const last = prev[prev.length - 1]
@@ -126,13 +118,8 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
       ]
     })
 
-    // Resolve promise
-    inputResolveRef.current(inputValue)
-    inputResolveRef.current = null
-
-    // Reset UI
-    setIsWaitingForInput(false)
-    setInputValue("")
+    // Resolve promise via hook
+    resolveInput(value)
   }
 
   // Determine if we should show the console UI
@@ -332,7 +319,7 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
                   let limit = logs.length
                   let inlinePrompt = null
 
-                  if (isWaitingForInput && logs.length > 0) {
+                  if (isWaiting && logs.length > 0) {
                     const lastLog = logs[logs.length - 1]
                     // If last log is a string and does NOT end with newline, treat as inline prompt
                     if (lastLog.type !== "stderr" && !lastLog.content.endsWith("\n")) {
@@ -372,13 +359,10 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
                   }
 
                   // Push the Inline Input Row if waiting
-                  if (isWaitingForInput) {
+                  // Push the Inline Input Row if waiting
+                  if (isWaiting) {
                     renderItems.push(
-                      <form
-                        key="input-form"
-                        onSubmit={submitInput}
-                        className="mt-0.5 flex items-start"
-                      >
+                      <div key="input-form" className="mt-0.5 flex items-start">
                         {/* Timestamp for the input line too */}
                         <span className="mr-2 select-none pt-1 text-[10px] opacity-30">
                           [
@@ -400,17 +384,13 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
                           )}
 
                           {/* The Input */}
-                          <input
-                            autoFocus
-                            type={inputMode}
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            className="m-0 min-w-[10px] flex-1 border-none bg-transparent p-0 font-mono text-foreground outline-none"
-                            autoComplete="off"
-                            spellCheck="false"
+                          <ConsoleInput
+                            mode={inputMode}
+                            onSubmit={submitInput}
+                            className="bg-transparent font-mono text-foreground"
                           />
                         </div>
-                      </form>
+                      </div>
                     )
                   }
 
