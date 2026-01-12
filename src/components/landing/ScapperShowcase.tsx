@@ -9,7 +9,9 @@ import {
   Download,
   ShieldCheck,
   Rocket,
+  ArrowRight,
 } from "lucide-react"
+import { Link } from "react-router-dom"
 
 export function ScapperShowcase() {
   const [text, setText] = useState("")
@@ -17,7 +19,7 @@ export function ScapperShowcase() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const prompt =
-    "create a python program that asks user their age and tells them whether they are allow to drive or not based on their age."
+    "create a python program that asks user their age and tells them whether they are allowed to drive or not based on their age."
 
   // Auto-scroll effect
   useEffect(() => {
@@ -122,6 +124,16 @@ export function ScapperShowcase() {
                   Projects
                 </div>
               </div>
+
+              <div className="mt-6">
+                <Link
+                  to="/dashboard"
+                  className="inline-flex items-center gap-1 text-sm text-emerald-500 hover:text-emerald-600"
+                >
+                  Try Scapper
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
             </div>
 
             {/* Right Side: Terminal Simulation */}
@@ -166,7 +178,7 @@ export function ScapperShowcase() {
                   {(stage === "thinking" || stage === "modifying" || stage === "done") && (
                     <div className="space-y-2 duration-500 animate-in fade-in slide-in-from-bottom-2">
                       <div className="flex items-center gap-2 text-zinc-400">
-                        <Cpu size={14} className="animate-spin" />
+                        <Cpu size={14} className={stage === "thinking" ? "animate-spin" : ""} />
                         <span>Understanding your request...</span>
                       </div>
                       <div className="pl-6 text-xs text-zinc-500">Reading project structure...</div>
