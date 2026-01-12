@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Check, XCircle, ClipboardList } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -32,11 +33,16 @@ export function PlanProposal({
   onResponse,
   getActionIcon,
 }: PlanProposalProps) {
+  const [isProcessing, setIsProcessing] = useState(false)
+
   const handleResponse = (response: string) => {
     // Check ref at click time (not render time)
-    if (checkIsResponded()) return
+    if (checkIsResponded() || isProcessing) return
+    setIsProcessing(true)
     onResponse(response, planId)
   }
+
+  const isDisabled = checkIsResponded() || isProcessing
 
   return (
     <div className="my-2 rounded-lg border border-border bg-card p-4">
@@ -60,7 +66,7 @@ export function PlanProposal({
           size="sm"
           onClick={() => handleResponse("Yes, proceed with the plan")}
           className="bg-green-600 hover:bg-green-700"
-          disabled={checkIsResponded()}
+          disabled={isDisabled}
         >
           <Check className="mr-1 h-4 w-4" /> Approve
         </Button>
@@ -68,7 +74,7 @@ export function PlanProposal({
           size="sm"
           variant="outline"
           onClick={() => handleResponse("No, cancel the plan")}
-          disabled={checkIsResponded()}
+          disabled={isDisabled}
         >
           <XCircle className="mr-1 h-4 w-4" /> Cancel
         </Button>

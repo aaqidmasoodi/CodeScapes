@@ -73,18 +73,9 @@ interface TerminalPaneProps {
 
 type HistoryItem =
   | { type: "input"; content: string; cwd: string }
-  | { type: "output"; content: React.ReactNode }
+  | { type: "output"; content: React.ReactNode; subtype?: "reasoning" | "result" | "tool" }
 
-const TerminalSpinner = ({ active = true }: { active?: boolean }) => {
-  const [frame, setFrame] = useState(0)
-  const cars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-  useEffect(() => {
-    if (!active) return
-    const t = setInterval(() => setFrame((f) => (f + 1) % cars.length), 80)
-    return () => clearInterval(t)
-  }, [active])
-  return <span className="inline-block w-4 text-center">{cars[frame]}</span>
-}
+const spinnerChars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
 export function TerminalPane({
   problems = [],
@@ -138,7 +129,6 @@ export function TerminalPane({
 
   // Spinner animation for Scapper and Python
   const [spinnerFrame, setSpinnerFrame] = useState(0)
-  const spinnerChars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
   useEffect(() => {
     let interval: NodeJS.Timeout
@@ -608,11 +598,7 @@ export function TerminalPane({
               ...prev,
               {
                 type: "output",
-                content: (
-                  <span className="text-muted-foreground">
-                    {spinnerChars[spinnerFrame]} {progress.message}
-                  </span>
-                ),
+                content: <span className="text-muted-foreground">{progress.message}</span>,
               },
             ])
           } else if (progress.type === "tool") {
@@ -620,11 +606,7 @@ export function TerminalPane({
               ...prev,
               {
                 type: "output",
-                content: (
-                  <span className="text-muted-foreground">
-                    {spinnerChars[spinnerFrame]} {progress.message}
-                  </span>
-                ),
+                content: <span className="text-muted-foreground">{progress.message}</span>,
               },
             ])
           } else if (progress.type === "result") {
@@ -692,25 +674,26 @@ export function TerminalPane({
               ]
             })
           } else if (progress.type === "reasoning") {
-            // For reasoning/thinking, show in a distinct "thinking" style
             setHistory((prev) => {
               const lastIdx = prev.length - 1
               const lastItem = prev[lastIdx]
 
-              // Check if last item is already a reasoning output (update it if prev.length > 1)
-              // We just check if it's an output type and length > 1 to determine if we should update
-              const shouldUpdate = lastItem && lastItem.type === "output" && prev.length > 1
-
-              if (shouldUpdate) {
-                // Update existing reasoning display
+              // Update ONLY if the last item is also a "reasoning" block
+              // This prevents duplicate "Verifying..." lines while preserving valid history
+              if (
+                lastItem &&
+                lastItem.type === "output" &&
+                lastItem.subtype === "reasoning" &&
+                prev.length > 1
+              ) {
                 return [
                   ...prev.slice(0, -1),
                   {
                     type: "output" as const,
+                    subtype: "reasoning",
                     content: (
                       <div className="my-1 pl-3 font-mono text-muted-foreground/80">
                         <div className="flex gap-2 opacity-90">
-                          <TerminalSpinner active={isProcessing} />
                           <div className="whitespace-pre-wrap">{progress.message}</div>
                         </div>
                       </div>
@@ -718,15 +701,16 @@ export function TerminalPane({
                   },
                 ]
               }
-              // First reasoning chunk - add new item
+
+              // Otherwise append new reasoning item
               return [
                 ...prev,
                 {
                   type: "output" as const,
+                  subtype: "reasoning",
                   content: (
                     <div className="my-1 pl-3 font-mono text-muted-foreground/80">
                       <div className="flex gap-2 opacity-90">
-                        <TerminalSpinner />
                         <div className="whitespace-pre-wrap">{progress.message}</div>
                       </div>
                     </div>
@@ -1073,20 +1057,19 @@ export function TerminalPane({
                             {typeof item.content === "string"
                               ? item.content.replace(/\n$/, "")
                               : item.content}
+                            {/* Show cancellation hint on the last item if active */}
+                            {i === itemsToRender.length - 1 && isScapperMode && isProcessing && (
+                              <span className="ml-2 text-xs opacity-70">
+                                <span className="mr-1 inline-block">
+                                  {spinnerChars[spinnerFrame]}
+                                </span>
+                                (Ctrl+C to cancel)
+                              </span>
+                            )}
                           </span>
                         )}
                       </div>
                     ))}
-
-                    {isScapperMode && isProcessing && (
-                      <div className="mb-2 flex items-center text-muted-foreground">
-                        <span className="mr-2 inline-block w-4">{spinnerChars[spinnerFrame]}</span>
-                        <span>
-                          Scapper is working...{" "}
-                          <span className="text-xs opacity-70">(Ctrl+C to cancel)</span>
-                        </span>
-                      </div>
-                    )}
 
                     {/* Python Running Spinner */}
                     {isPythonRunning && !isWaitingForTerminalInput && (

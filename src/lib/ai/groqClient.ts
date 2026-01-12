@@ -428,10 +428,11 @@ function sleep(ms: number): Promise<void> {
 /**
  * Parse tool call arguments safely
  */
-export function parseToolArguments<T>(toolCall: GroqToolCall): T {
+export function parseToolArguments<T>(toolCall: GroqToolCall): T | null {
   try {
     return JSON.parse(toolCall.function.arguments) as T
   } catch {
-    throw new Error(`Failed to parse tool arguments: ${toolCall.function.arguments}`)
+    console.error(`[Scapper] Failed to parse tool arguments: ${toolCall.function.arguments}`)
+    return null
   }
 }

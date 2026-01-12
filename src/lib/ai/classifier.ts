@@ -17,68 +17,6 @@ export interface ClassificationResult {
   reasoning?: string
 }
 
-// Keywords that strongly suggest each intent
-const QUESTION_PATTERNS = [
-  /^what (is|are|does)/i,
-  /^how (do|does|can|to)/i,
-  /^why (is|does|do)/i,
-  /^can you explain/i,
-  /^explain/i,
-  /^tell me about/i,
-  /\?$/,
-]
-
-const SIMPLE_EDIT_PATTERNS = [
-  /^(add|remove|delete|change|update|fix|rename) (a |the |this )?(\w+)/i,
-  /^make (a |the )?(\w+) (bigger|smaller|red|blue|green|faster|slower)/i,
-  /^create a (function|variable|class|method|file)/i,
-]
-
-const COMPLEX_TASK_PATTERNS = [
-  /^(create|build|make) (a |an )?(website|app|application|project|game)/i,
-  /^(redesign|refactor|rebuild)/i,
-  /multiple (files|components)/i,
-  /^implement/i,
-  /^set up/i,
-]
-
-/**
- * Fast local classification using patterns
- * Returns null if uncertain (should fall back to LLM)
- */
-function classifyByPatterns(message: string): ClassificationResult | null {
-  const trimmed = message.trim().toLowerCase()
-
-  // Check question patterns (pure knowledge questions without code context)
-  for (const pattern of QUESTION_PATTERNS) {
-    if (pattern.test(message)) {
-      return { intent: "question", confidence: 0.85 }
-    }
-  }
-
-  // Check complex task patterns (before simple to catch multi-file)
-  for (const pattern of COMPLEX_TASK_PATTERNS) {
-    if (pattern.test(message)) {
-      return { intent: "complex_task", confidence: 0.8 }
-    }
-  }
-
-  // Check simple edit patterns
-  for (const pattern of SIMPLE_EDIT_PATTERNS) {
-    if (pattern.test(message)) {
-      return { intent: "simple_edit", confidence: 0.75 }
-    }
-  }
-
-  // Very short messages are likely simple
-  if (trimmed.split(/\\s+/).length <= 5) {
-    return { intent: "simple_edit", confidence: 0.6 }
-  }
-
-  // Uncertain - need LLM classification
-  return null
-}
-
 /**
  * LLM-based classification for ambiguous cases
  */
@@ -126,24 +64,8 @@ Respond with ONLY a JSON object:
 
 /**
  * Main classification function
- * Uses fast pattern matching first, falls back to LLM for ambiguous cases
+ * Uses LLM exclusively for robust context awareness
  */
 export async function classifyIntent(message: string): Promise<ClassificationResult> {
-  // Try fast pattern matching first
-  const patternResult = classifyByPatterns(message)
-
-  if (patternResult && patternResult.confidence >= 0.7) {
-    return patternResult
-  }
-
-  // Fall back to LLM for ambiguous cases
   return classifyWithLLM(message)
-}
-
-/**
- * Quick sync classification for immediate feedback
- * Returns null if LLM classification is needed
- */
-export function classifyIntentSync(message: string): ClassificationResult | null {
-  return classifyByPatterns(message)
 }
