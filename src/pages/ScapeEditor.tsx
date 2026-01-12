@@ -805,7 +805,7 @@ export default function ScapeEditor() {
       setOutputLogs((prev) => {
         const last = prev[prev.length - 1]
         // If password, don't echo inputs to history
-        const echoText = inputMode === "password" ? "••••••" : text
+        const echoText = inputMode === "password" ? "•".repeat(text.length) : text
         const inputContent = (inputPrompt || "") + echoText + "\n"
 
         if (last && last.type === "stdout" && !last.content.endsWith("\n")) {
