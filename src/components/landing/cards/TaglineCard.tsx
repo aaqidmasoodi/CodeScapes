@@ -29,7 +29,7 @@ export function TaglineCard() {
         </p>
 
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button size="sm" className="bg-emerald-500 text-white hover:bg-emerald-600" asChild>
+          <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" asChild>
             <Link to="/dashboard">
               Start Creating
               <ArrowRight className="ml-1.5 h-3.5 w-3.5" />

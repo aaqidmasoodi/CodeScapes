@@ -33,7 +33,7 @@ export function CTACard() {
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Button
             size="lg"
-            className="bg-emerald-500 px-8 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600"
+            className="bg-emerald-600 px-8 text-white shadow-lg shadow-emerald-950/20 hover:bg-emerald-700"
             asChild
           >
             <Link to="/dashboard">

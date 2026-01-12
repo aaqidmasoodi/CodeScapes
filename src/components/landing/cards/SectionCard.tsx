@@ -58,7 +58,7 @@ export function SectionCard({
         {showCTA && (
           <Button
             size="sm"
-            className="mt-4 w-fit bg-emerald-500 text-white hover:bg-emerald-600"
+            className="mt-4 w-fit bg-emerald-600 text-white hover:bg-emerald-700"
             asChild
           >
             <Link to={ctaLink}>
