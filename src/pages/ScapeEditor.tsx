@@ -26,6 +26,7 @@ import { useFileSystem } from "@/hooks/useFileSystem"
 import { useAuth } from "@/hooks/useAuth"
 import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useDebounce } from "@/hooks/useDebounce"
+import { useConsoleInput } from "@/hooks/useConsoleInput"
 import { buildFileTree, type FileNode } from "@/lib/file-tree"
 import { getLanguageFromFilename } from "@/lib/language-utils"
 import {
@@ -163,17 +164,17 @@ export default function ScapeEditor() {
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [outputLogs, setOutputLogs] = useState<LogEntry[]>([])
-  const [inputPrompt, setInputPrompt] = useState<string | null>(null)
+
+  // Refactored Input State via Hooks
+  const outputInput = useConsoleInput()
+  const terminalInput = useConsoleInput()
+
   const [syntaxProblems, setSyntaxProblems] = useState<Problem[]>([])
   const [runtimeProblems, setRuntimeProblems] = useState<Problem[]>([])
 
   // Secrets Ref for .env interception
   const secretsPanelRef = useRef<{ handlePasteEnv: (t: string) => void }>(null)
 
-  // Terminal input handling: stores the resolve function for Promise-based input
-  const terminalInputResolveRef = useRef<((value: string) => void) | null>(null)
-  const [isWaitingForTerminalInput, setIsWaitingForTerminalInput] = useState(false)
-  const [terminalInputPrompt, setTerminalInputPrompt] = useState("") // Store input() prompt separate from history
   const [isPythonRunning, setIsPythonRunning] = useState(false)
 
   // --- PERSISTENT STATE ---
@@ -407,7 +408,7 @@ export default function ScapeEditor() {
 
   const handleManualRefresh = useCallback(() => {
     setOutputLogs([]) // Clear output
-    setInputPrompt(null) // Clear any pending input prompt
+    outputInput.resolveInput("") // Clear any pending input prompt
     setIsRefreshing(true)
 
     // Trigger Runner Restart (Soft Reload)
@@ -419,7 +420,7 @@ export default function ScapeEditor() {
 
     // Ensure Output is visible (only switch tab if open)
     setTerminalTab("output")
-  }, [files, setTerminalTab])
+  }, [files, setTerminalTab, outputInput])
 
   // Open Output pane on initial load (First Run / Entry)
   // Open Output pane only on fresh navigation (Entry/Create), NOT on Refresh.
@@ -571,25 +572,19 @@ export default function ScapeEditor() {
               }
             },
             // Input callback: show prompt in terminal and wait for user input
-            onInputRequest: (prompt) => {
-              // Store the prompt
-              setTerminalInputPrompt(prompt || "")
-              // Set state to show input field
-              setIsWaitingForTerminalInput(true)
-              // Return a Promise that resolves when user submits input
-              return new Promise((resolve) => {
-                terminalInputResolveRef.current = resolve
-              })
+            onInputRequest: (prompt: string, isPassword?: boolean) => {
+              return terminalInput.requestInput(prompt || "", isPassword)
             },
           })
           return { success: true }
         } catch (e) {
           return { success: false, error: String(e) }
         } finally {
-          setIsWaitingForTerminalInput(false)
-          setTerminalInputPrompt("")
-          terminalInputResolveRef.current = null
           setIsPythonRunning(false)
+          // Ensure input is cleared if process ends
+          if (terminalInput.isWaiting) {
+            terminalInput.resolveInput("")
+          }
         }
       }
 
@@ -732,7 +727,7 @@ export default function ScapeEditor() {
 
       return { success: false, error: "Unknown command handling" }
     },
-    [scape?.dependencies, scape?.environment, emitUpdate, updateScape, files]
+    [scape?.dependencies, scape?.environment, emitUpdate, updateScape, files, terminalInput]
   )
 
   const handleSystemCommand = useCallback(
@@ -773,33 +768,30 @@ export default function ScapeEditor() {
   )
 
   const handleInputRequest = useCallback(
-    (prompt: string) => {
-      // This is only called for normal runs (Run button, auto-run)
-      // Terminal-initiated runs handle input via the callback passed to runFile
-      setInputPrompt(prompt)
+    (prompt: string, isPassword?: boolean): Promise<string> => {
+      // Don't modify outputLogs here (logging is done by runner usually)
       setTerminalTab("output")
       setIsTerminalOpen(true)
+      return outputInput.requestInput(prompt, isPassword)
     },
-    [setTerminalTab, setIsTerminalOpen]
+    [outputInput, setTerminalTab, setIsTerminalOpen]
   )
 
-  const handleTerminalInputSubmit = useCallback((text: string) => {
-    // Clear the waiting state
-    setIsWaitingForTerminalInput(false)
-
-    // Resolve the Promise with the input value
-    if (terminalInputResolveRef.current) {
-      terminalInputResolveRef.current(text)
-      terminalInputResolveRef.current = null
-    }
-  }, [])
+  const handleTerminalInputSubmit = useCallback(
+    (text: string) => {
+      terminalInput.resolveInput(text)
+    },
+    [terminalInput]
+  )
 
   const handleInputSubmit = useCallback(
     async (text: string) => {
       // 1. Echo to output (Merge with previous line if no newline)
       setOutputLogs((prev) => {
         const last = prev[prev.length - 1]
-        const inputContent = (inputPrompt || "") + text + "\n"
+        // If password, don't echo inputs to history
+        const echoText = outputInput.mode === "password" ? "•".repeat(text.length) : text
+        const inputContent = (outputInput.prompt || "") + echoText + "\n"
 
         if (last && last.type === "stdout" && !last.content.endsWith("\n")) {
           // Merge input with the prompt line
@@ -819,16 +811,16 @@ export default function ScapeEditor() {
         ]
       })
 
-      // 2. Clear Prompt
-      setInputPrompt(null)
+      // 2. Resolve Promise
+      outputInput.resolveInput(text)
 
-      // 3. Send to Runner
+      // 3. Send to Runner (for interactive inputs if persistent)
       if (previewRef.current && "provideInput" in previewRef.current) {
         // @ts-expect-error - Custom method on handle
         await previewRef.current.provideInput(text)
       }
     },
-    [inputPrompt, setOutputLogs, setInputPrompt, previewRef]
+    [outputInput, setOutputLogs, previewRef]
   )
 
   // 4. FileSystem Sync (from Runner)
@@ -1186,9 +1178,7 @@ export default function ScapeEditor() {
       <TourStep />
       {scape?.environment && <TourAutoStart environment={scape.environment} />}
       {/* TourRestartButton renders inside TourProvider to access context */}
-      {scape?.environment && (
-        <TourRestartButtonWrapper environment={scape.environment} />
-      )}
+      {scape?.environment && <TourRestartButtonWrapper environment={scape.environment} />}
       <ScapeLayout
         sidebar={
           <EditorActivityBar
@@ -1197,7 +1187,7 @@ export default function ScapeEditor() {
             onSettingsClick={() => setIsSettingsOpen(true)}
             onHelpClick={() => {
               // Trigger the restart button click programmatically
-              document.getElementById('tour-restart-btn')?.click()
+              document.getElementById("tour-restart-btn")?.click()
             }}
             topTools={topTools}
           />
@@ -1690,38 +1680,42 @@ export default function ScapeEditor() {
                               )}
                             </ResizablePanel>
                             <ResizableHandle className={!isTerminalOpen ? "hidden" : ""} />
-                            {
-                              isTerminalOpen && (
-                                <ResizablePanel
-                                  defaultSize={getLayout("codescape:layout:vertical", [75, 25])[1]}
-                                  minSize={10}
-                                >
-                                  <div data-tour="terminal-pane" className="h-full">
-                                    <TerminalPane
-                                      activeTab={terminalTab}
-                                      onTabChange={handleTerminalTabChange}
-                                      onClose={() => setIsTerminalOpen(false)}
-                                      problems={problems}
-                                      isCollapsed={false}
-                                      files={files}
-                                      scapeName={scape?.name}
-                                      scapeId={id}
-                                      onDeleteFile={deleteFileDirectly}
-                                      onCreateFile={handleCreateFile}
-                                      onUpdateFile={async (name, content) => updateFile(name, content)}
-                                      outputLogs={outputLogs}
-                                      onExecCommand={handleExecCommand}
-                                      inputPrompt={inputPrompt}
-                                      onInputSubmit={handleInputSubmit}
-                                      isRunning={isRunning}
-                                      isWaitingForTerminalInput={isWaitingForTerminalInput}
-                                      terminalInputPrompt={terminalInputPrompt}
-                                      onTerminalInputSubmit={handleTerminalInputSubmit}
-                                      isPythonRunning={isPythonRunning}
-                                      // Scapper environment awareness
-                                      environment={
-                                        scape?.environment
-                                          ? {
+                            {isTerminalOpen && (
+                              <ResizablePanel
+                                defaultSize={getLayout("codescape:layout:vertical", [75, 25])[1]}
+                                minSize={10}
+                              >
+                                <div data-tour="terminal-pane" className="h-full">
+                                  <TerminalPane
+                                    activeTab={terminalTab}
+                                    onTabChange={handleTerminalTabChange}
+                                    onClose={() => setIsTerminalOpen(false)}
+                                    problems={problems}
+                                    isCollapsed={false}
+                                    files={files}
+                                    scapeName={scape?.name}
+                                    scapeId={id}
+                                    onDeleteFile={deleteFileDirectly}
+                                    onCreateFile={handleCreateFile}
+                                    onUpdateFile={async (name, content) =>
+                                      updateFile(name, content)
+                                    }
+                                    outputLogs={outputLogs}
+                                    onExecCommand={handleExecCommand}
+                                    inputPrompt={outputInput.prompt}
+                                    inputMode={outputInput.mode}
+                                    onInputSubmit={handleInputSubmit}
+                                    isRunning={isRunning}
+                                    isWaitingForInput={outputInput.isWaiting}
+                                    isWaitingForTerminalInput={terminalInput.isWaiting}
+                                    terminalInputPrompt={terminalInput.prompt || ""}
+                                    terminalInputMode={terminalInput.mode}
+                                    onTerminalInputSubmit={handleTerminalInputSubmit}
+                                    isPythonRunning={isPythonRunning}
+                                    // Scapper environment awareness
+                                    environment={
+                                      scape?.environment
+                                        ? {
                                             id: scape.environment,
                                             name:
                                               ENVIRONMENTS[scape.environment]?.name ||
@@ -1732,13 +1726,15 @@ export default function ScapeEditor() {
                                             capabilities:
                                               ENVIRONMENTS[scape.environment]?.capabilities || {},
                                           }
-                                          : undefined
-                                      }
-                                      dependencies={optimisticDependencies ?? scape?.dependencies ?? []}
-                                      // Scapper execution tools
-                                      runFile={
-                                        scape?.environment === "python"
-                                          ? async (path) => {
+                                        : undefined
+                                    }
+                                    dependencies={
+                                      optimisticDependencies ?? scape?.dependencies ?? []
+                                    }
+                                    // Scapper execution tools
+                                    runFile={
+                                      scape?.environment === "python"
+                                        ? async (path) => {
                                             let stdout = ""
                                             let stderr = ""
                                             if (previewRef.current?.runFile) {
@@ -1761,11 +1757,11 @@ export default function ScapeEditor() {
                                             }
                                             return { stdout, stderr }
                                           }
-                                          : undefined
-                                      }
-                                      installPackage={
-                                        scape?.environment === "python"
-                                          ? async (name, onProgress) => {
+                                        : undefined
+                                    }
+                                    installPackage={
+                                      scape?.environment === "python"
+                                        ? async (name, onProgress) => {
                                             const result = await handleExecCommand(
                                               "pip-install",
                                               name,
@@ -1777,19 +1773,18 @@ export default function ScapeEditor() {
                                               error: result.error,
                                             }
                                           }
-                                          : undefined
-                                      }
-                                      listPackages={
-                                        scape?.environment === "python"
-                                          ? async () =>
+                                        : undefined
+                                    }
+                                    listPackages={
+                                      scape?.environment === "python"
+                                        ? async () =>
                                             (await previewRef.current?.listPackages?.()) ?? []
-                                          : undefined
-                                      }
-                                    />
-                                  </div>
-                                </ResizablePanel>
-                              )
-                            }
+                                        : undefined
+                                    }
+                                  />
+                                </div>
+                              </ResizablePanel>
+                            )}
                           </ResizablePanelGroup>
                         </div>
                         {!isTerminalOpen && (
@@ -1805,9 +1800,10 @@ export default function ScapeEditor() {
                               onDeleteFile={deleteFileDirectly}
                               outputLogs={outputLogs}
                               onExecCommand={handleExecCommand}
-                              inputPrompt={inputPrompt}
+                              inputPrompt={outputInput.prompt}
                               onInputSubmit={handleInputSubmit}
                               isRunning={isRunning}
+                              isWaitingForInput={outputInput.isWaiting}
                             />
                           </div>
                         )}

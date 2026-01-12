@@ -232,7 +232,11 @@ export class CloudRepository implements IScapeRepository {
         if (typeof f.content === "string") {
           if (f.content.startsWith("http")) {
             try {
-              const res = await fetch(f.content)
+              // Cache Busting for .db files to ensure freshness
+              // We only do this for .db files to avoid bandwidth costs for images/assets
+              const url = f.name.endsWith(".db") ? `${f.content}?t=${Date.now()}` : f.content
+
+              const res = await fetch(url)
               if (res.ok) {
                 const buffer = await res.arrayBuffer()
                 content = new Uint8Array(buffer)
@@ -413,7 +417,12 @@ export class CloudRepository implements IScapeRepository {
           if (newData && typeof newData.content === "string") {
             if (newData.content.startsWith("http")) {
               try {
-                const res = await fetch(newData.content)
+                // Cache Busting for .db files to ensure freshness
+                const url = (newData.name as string).endsWith(".db")
+                  ? `${newData.content}?t=${Date.now()}`
+                  : newData.content
+
+                const res = await fetch(url)
                 if (res.ok) {
                   const buffer = await res.arrayBuffer()
                   newData.content = new Uint8Array(buffer)

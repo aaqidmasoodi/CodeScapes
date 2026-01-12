@@ -25,7 +25,7 @@ import { classifyPromptType, type PromptType } from "../quotaClient"
 
 const COMMON_RULES = `
 Rules:
-1. Use tools to modify files; never claim changes without tool calls.
+1. Use tools to modify files; NEVER claim changes without tool calls.
 2. Prefer precise edits (apply_diff) over rewrites.
 3. Ask the user only if blocked or ambiguous.
 4. Keep responses brief and user-friendly.
@@ -299,7 +299,19 @@ export async function runScapper(
       if (assistantMessage.tool_calls?.length) {
         for (const toolCall of assistantMessage.tool_calls) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const args = parseToolArguments<Record<string, any>>(toolCall) || {}
+          const args = parseToolArguments<Record<string, any>>(toolCall)
+
+          if (!args) {
+            messages.push({
+              role: "tool",
+              content:
+                "Error: Failed to parse tool arguments (invalid JSON). Please check your syntax and try again.",
+              tool_call_id: toolCall.id,
+            })
+            onProgress({ type: "error", message: "Invalid JSON from model, asking for retry..." })
+            continue
+          }
+
           const toolResult = await executeToolCall(toolCall, toolContext, onProgress)
 
           // --- SMART FAILURE RECOVERY for apply_diff ---
@@ -412,6 +424,7 @@ export async function runScapper(
             role: "system",
             content: `${alertMsg} You MUST use tools like \`create_file\`, \`apply_diff\`, or \`overwrite_file\` to make changes. DO NOT APOLOGIZE. DO NOT EXPLAIN. JUST EXECUTE THE TOOLS NOW.`,
           })
+          await sleep(3000) // Pacing delay for UI
           continue
         }
       }

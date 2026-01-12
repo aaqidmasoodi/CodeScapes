@@ -25,7 +25,7 @@ interface PythonRunnerProps {
   onOutput?: (log: LogEntry) => void
   dependencies?: string[]
   onBusyChange?: (isBusy: boolean) => void
-  onInputRequest?: (prompt: string) => Promise<string> | void
+  onInputRequest?: (prompt: string, isPassword?: boolean) => Promise<string> | void
   onFileSystemUpdate?: (files: ScapeFile[]) => void
   onSystemCommand?: (cmd: string) => Promise<void>
   isLive?: boolean
@@ -447,13 +447,24 @@ export const PythonRunner = memo(
               break
             case "INPUT_REQUEST": {
               // Store ID for submission
-              const { prompt, id } = payload
+              const { prompt, id, password } = payload as {
+                prompt: string
+                id: string
+                password?: boolean
+              }
               pendingInputIdRef.current = id
 
               // If terminal-initiated run, use the passed callback
               if (activeRunCallbacks.current?.onInputRequest) {
                 // Call async callback and submit input when resolved
-                activeRunCallbacks.current.onInputRequest(prompt).then((value) => {
+                // Use type assertion to support the new signature if reusing RunFileOptions
+                // or just assume it is flexible
+                const callback = activeRunCallbacks.current.onInputRequest as unknown as (
+                  p: string,
+                  isPw?: boolean
+                ) => Promise<string>
+
+                callback(prompt, password).then((value) => {
                   // Submit the input to the worker
                   fetch("/_submit_input", {
                     method: "POST",
@@ -463,7 +474,7 @@ export const PythonRunner = memo(
                 })
               } else {
                 // Normal behavior: trigger prop callback
-                const result = propsRef.current.onInputRequest?.(prompt)
+                const result = propsRef.current.onInputRequest?.(prompt, password)
 
                 // If the host returns a promise (Preview Console), wait for it and submit
                 if (result instanceof Promise) {

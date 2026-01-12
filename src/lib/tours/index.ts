@@ -17,26 +17,26 @@ export type { TourConfig, TourStep, StepType, StepPosition } from "./types"
 
 // Tour registry by ID
 export const tourRegistry: Record<string, TourConfig> = {
-    "python-intro": pythonTour,
-    "web-intro": webTour,
-    "r-intro": rTour,
-    "flowscape-intro": flowscapeTour,
+  "python-intro": pythonTour,
+  "web-intro": webTour,
+  "r-intro": rTour,
+  "flowscape-intro": flowscapeTour,
 }
 
 // Get tour by environment
 export function getTourForEnvironment(environment: string): TourConfig | null {
-    switch (environment) {
-        case "python":
-            return pythonTour
-        case "web":
-        case "javascript":
-        case "html":
-            return webTour
-        case "r":
-            return rTour
-        case "flowscape":
-            return flowscapeTour
-        default:
-            return null
-    }
+  switch (environment) {
+    case "python":
+      return pythonTour
+    case "web":
+    case "javascript":
+    case "html":
+      return webTour
+    case "r":
+      return rTour
+    case "flowscape":
+      return flowscapeTour
+    default:
+      return null
+  }
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type FormEvent } from "react"
+import { ConsoleInput } from "@/components/shared/ConsoleInput"
 import {
   Terminal as TerminalIcon,
   X,
@@ -54,11 +55,14 @@ interface TerminalPaneProps {
     arg: string
   ) => Promise<{ success: boolean; warning?: string; error?: string }>
   inputPrompt?: string | null
+  inputMode?: "text" | "password"
   onInputSubmit?: (text: string) => void
   isRunning?: boolean
+  isWaitingForInput?: boolean
   // Terminal-mode input (when running via python3 command)
   isWaitingForTerminalInput?: boolean
   terminalInputPrompt?: string // Prompt from input() call (e.g. "What is your name? ")
+  terminalInputMode?: "text" | "password"
   onTerminalInputSubmit?: (text: string) => void
   // Python execution state (for showing spinner)
   isPythonRunning?: boolean
@@ -73,18 +77,9 @@ interface TerminalPaneProps {
 
 type HistoryItem =
   | { type: "input"; content: string; cwd: string }
-  | { type: "output"; content: React.ReactNode }
+  | { type: "output"; content: React.ReactNode; subtype?: "reasoning" | "result" | "tool" }
 
-const TerminalSpinner = ({ active = true }: { active?: boolean }) => {
-  const [frame, setFrame] = useState(0)
-  const cars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-  useEffect(() => {
-    if (!active) return
-    const t = setInterval(() => setFrame((f) => (f + 1) % cars.length), 80)
-    return () => clearInterval(t)
-  }, [active])
-  return <span className="inline-block w-4 text-center">{cars[frame]}</span>
-}
+const spinnerChars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
 export function TerminalPane({
   problems = [],
@@ -112,6 +107,9 @@ export function TerminalPane({
   runFile,
   installPackage,
   listPackages,
+  inputMode = "text",
+  terminalInputMode = "text",
+  isWaitingForInput = false,
 }: TerminalPaneProps) {
   const [history, setHistory] = useState<HistoryItem[]>([
     {
@@ -129,16 +127,11 @@ export function TerminalPane({
   const inputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const outputBottomRef = useRef<HTMLDivElement>(null)
-  const outputInputRef = useRef<HTMLInputElement>(null)
-  const [programInput, setProgramInput] = useState("")
-  const [terminalInput, setTerminalInput] = useState("") // For python3 input() calls
-  const terminalInputRef = useRef<HTMLInputElement>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Spinner animation for Scapper and Python
   const [spinnerFrame, setSpinnerFrame] = useState(0)
-  const spinnerChars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
   useEffect(() => {
     let interval: NodeJS.Timeout
@@ -366,15 +359,9 @@ export function TerminalPane({
     if (activeTab === "output" && !isCollapsed) {
       outputBottomRef.current?.scrollIntoView({ behavior: "smooth" })
     }
-    // Focus output input if prompt exists
-    if (activeTab === "output" && inputPrompt && !isCollapsed) {
-      // We need a ref for this new input
-      setTimeout(() => outputInputRef.current?.focus(), 50)
-    }
     // Focus terminal input if waiting for input
-    if (activeTab === "terminal" && isWaitingForTerminalInput && !isCollapsed) {
-      setTimeout(() => terminalInputRef.current?.focus(), 50)
-    }
+    // Note: ConsoleInput attempts to autoFocus, but we might need logic here if tabs switch
+    // Keeping this minimal for now as ConsoleInput handles mount focus.
   }, [history, activeTab, isCollapsed, outputLogs, inputPrompt, isWaitingForTerminalInput])
 
   // Focus input on click
@@ -434,11 +421,7 @@ export function TerminalPane({
   })
 
   // Clear program input buffer when not running (stopped) or prompt disappears
-  useEffect(() => {
-    if (!inputPrompt || !isRunning) {
-      setProgramInput("")
-    }
-  }, [inputPrompt, isRunning])
+  // Legacy clear logic removed (ConsoleInput handles its own state)
 
   const { user } = useAuth()
   const [showAuthDialog, setShowAuthDialog] = useState(false)
@@ -608,11 +591,7 @@ export function TerminalPane({
               ...prev,
               {
                 type: "output",
-                content: (
-                  <span className="text-muted-foreground">
-                    {spinnerChars[spinnerFrame]} {progress.message}
-                  </span>
-                ),
+                content: <span className="text-muted-foreground">{progress.message}</span>,
               },
             ])
           } else if (progress.type === "tool") {
@@ -620,11 +599,7 @@ export function TerminalPane({
               ...prev,
               {
                 type: "output",
-                content: (
-                  <span className="text-muted-foreground">
-                    {spinnerChars[spinnerFrame]} {progress.message}
-                  </span>
-                ),
+                content: <span className="text-muted-foreground">{progress.message}</span>,
               },
             ])
           } else if (progress.type === "result") {
@@ -692,25 +667,26 @@ export function TerminalPane({
               ]
             })
           } else if (progress.type === "reasoning") {
-            // For reasoning/thinking, show in a distinct "thinking" style
             setHistory((prev) => {
               const lastIdx = prev.length - 1
               const lastItem = prev[lastIdx]
 
-              // Check if last item is already a reasoning output (update it if prev.length > 1)
-              // We just check if it's an output type and length > 1 to determine if we should update
-              const shouldUpdate = lastItem && lastItem.type === "output" && prev.length > 1
-
-              if (shouldUpdate) {
-                // Update existing reasoning display
+              // Update ONLY if the last item is also a "reasoning" block
+              // This prevents duplicate "Verifying..." lines while preserving valid history
+              if (
+                lastItem &&
+                lastItem.type === "output" &&
+                lastItem.subtype === "reasoning" &&
+                prev.length > 1
+              ) {
                 return [
                   ...prev.slice(0, -1),
                   {
                     type: "output" as const,
+                    subtype: "reasoning",
                     content: (
                       <div className="my-1 pl-3 font-mono text-muted-foreground/80">
                         <div className="flex gap-2 opacity-90">
-                          <TerminalSpinner active={isProcessing} />
                           <div className="whitespace-pre-wrap">{progress.message}</div>
                         </div>
                       </div>
@@ -718,15 +694,16 @@ export function TerminalPane({
                   },
                 ]
               }
-              // First reasoning chunk - add new item
+
+              // Otherwise append new reasoning item
               return [
                 ...prev,
                 {
                   type: "output" as const,
+                  subtype: "reasoning",
                   content: (
                     <div className="my-1 pl-3 font-mono text-muted-foreground/80">
                       <div className="flex gap-2 opacity-90">
-                        <TerminalSpinner />
                         <div className="whitespace-pre-wrap">{progress.message}</div>
                       </div>
                     </div>
@@ -1073,20 +1050,19 @@ export function TerminalPane({
                             {typeof item.content === "string"
                               ? item.content.replace(/\n$/, "")
                               : item.content}
+                            {/* Show cancellation hint on the last item if active */}
+                            {i === itemsToRender.length - 1 && isScapperMode && isProcessing && (
+                              <span className="ml-2 text-xs opacity-70">
+                                <span className="mr-1 inline-block">
+                                  {spinnerChars[spinnerFrame]}
+                                </span>
+                                (Ctrl+C to cancel)
+                              </span>
+                            )}
                           </span>
                         )}
                       </div>
                     ))}
-
-                    {isScapperMode && isProcessing && (
-                      <div className="mb-2 flex items-center text-muted-foreground">
-                        <span className="mr-2 inline-block w-4">{spinnerChars[spinnerFrame]}</span>
-                        <span>
-                          Scapper is working...{" "}
-                          <span className="text-xs opacity-70">(Ctrl+C to cancel)</span>
-                        </span>
-                      </div>
-                    )}
 
                     {/* Python Running Spinner */}
                     {isPythonRunning && !isWaitingForTerminalInput && (
@@ -1106,41 +1082,30 @@ export function TerminalPane({
                         {terminalInputPrompt && (
                           <span className="whitespace-pre">{terminalInputPrompt}</span>
                         )}
-                        <form
-                          onSubmit={(e) => {
-                            e.preventDefault()
+                        {terminalInputPrompt && (
+                          <span className="whitespace-pre">{terminalInputPrompt}</span>
+                        )}
+                        <ConsoleInput
+                          mode={terminalInputMode || "text"}
+                          onSubmit={(value) => {
                             if (onTerminalInputSubmit) {
-                              // Combine partial prefix, prompt, and input into a single history line
-                              // Add newline at end so next output appears on a new line
-                              const combinedContent = `${partialPrefix}${terminalInputPrompt}${terminalInput}\n`
+                              const echoInput =
+                                terminalInputMode === "password" ? "•".repeat(value.length) : value
+                              const combinedContent = `${partialPrefix}${terminalInputPrompt}${echoInput}\n`
 
                               setHistory((prev) => {
-                                // Keep only the full lines (remove any partials we merged visually)
                                 const newHistory = prev.slice(0, renderLimit)
-                                // Add the consolidated line
                                 newHistory.push({
                                   type: "output",
                                   content: combinedContent,
                                 })
                                 return newHistory
                               })
-                              onTerminalInputSubmit(terminalInput)
-                              setTerminalInput("")
+                              onTerminalInputSubmit(value)
                             }
                           }}
-                          className="flex-1"
-                        >
-                          <input
-                            ref={terminalInputRef}
-                            type="text"
-                            value={terminalInput}
-                            onChange={(e) => setTerminalInput(e.target.value)}
-                            className="m-0 w-full border-none bg-transparent p-0 text-foreground outline-none"
-                            autoFocus
-                            autoComplete="off"
-                            spellCheck="false"
-                          />
-                        </form>
+                          className="font-mono text-foreground"
+                        />
                       </div>
                     )}
 
@@ -1295,66 +1260,35 @@ export function TerminalPane({
                         {/* We use a span for content to play nice with flex if needed, though text node works too */}
                         <span>{log.content}</span>
 
-                        {showInlineInput && (
-                          <form
-                            className="inline-flex min-w-[50px] flex-1 items-center"
-                            onSubmit={(e) => {
-                              e.preventDefault()
-                              onInputSubmit?.(programInput)
-                              setProgramInput("")
-                            }}
-                          >
+                        {showInlineInput && isWaitingForInput && (
+                          <div className="inline-flex min-w-[50px] flex-1 items-center">
                             {/* Only render extra prompt text if provided and distinct */}
                             {inputPrompt && <span className="mr-1">{inputPrompt}</span>}
-                            <input
-                              ref={outputInputRef}
-                              type="text"
-                              value={programInput}
-                              onChange={(e) => setProgramInput(e.target.value)}
-                              className={cn(
-                                "min-w-0 flex-1 bg-transparent font-mono text-foreground outline-none",
-                                !isRunning && "cursor-text opacity-50"
-                              )}
-                              autoFocus
+                            <ConsoleInput
+                              mode={inputMode}
+                              onSubmit={(value) => onInputSubmit?.(value)}
+                              className="bg-transparent font-mono text-foreground"
                               disabled={!isRunning}
-                              autoComplete="off"
                             />
-                          </form>
+                          </div>
                         )}
                       </div>
                     )
                   })}
 
                   {/* Standalone Input Form - Render only if NOT inlined above */}
-                  {inputPrompt !== undefined &&
-                    inputPrompt !== null &&
+                  {isWaitingForInput &&
                     (outputLogs.length === 0 ||
                       outputLogs[outputLogs.length - 1].type !== "stdout" ||
                       outputLogs[outputLogs.length - 1].content.endsWith("\n")) && (
                       <div className="flex items-center">
                         <span className="whitespace-pre-wrap">{inputPrompt}</span>
-                        <form
-                          className="ml-1 flex-1"
-                          onSubmit={(e) => {
-                            e.preventDefault()
-                            onInputSubmit?.(programInput)
-                            setProgramInput("")
-                          }}
-                        >
-                          <input
-                            ref={outputInputRef}
-                            type="text"
-                            value={programInput}
-                            onChange={(e) => setProgramInput(e.target.value)}
-                            className={cn(
-                              "w-full bg-transparent font-mono text-foreground outline-none",
-                              !isRunning && "cursor-text opacity-50"
-                            )}
-                            autoFocus
-                            disabled={!isRunning}
-                            autoComplete="off"
-                          />
-                        </form>
+                        <ConsoleInput
+                          mode={inputMode}
+                          onSubmit={(value) => onInputSubmit?.(value)}
+                          className="ml-1 w-full font-mono text-foreground"
+                          disabled={!isRunning}
+                        />
                       </div>
                     )}
                 </>
