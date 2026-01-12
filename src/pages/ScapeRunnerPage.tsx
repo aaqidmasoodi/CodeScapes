@@ -105,7 +105,8 @@ export default function ScapeRunnerPage({ mode = "dev" }: ScapeRunnerProps) {
     // The prompt is already there (from stdout usually), we just add user's typing + newline
     // MERGE logic: If the last log was the prompt (partial), append input to it.
     setLogs((prev) => {
-      const inputContent = inputValue + "\n"
+      const echoText = inputMode === "password" ? "••••••" : inputValue
+      const inputContent = echoText + "\n"
       if (prev.length > 0) {
         const last = prev[prev.length - 1]
         if (last.type === "stdout" && !last.content.endsWith("\n")) {

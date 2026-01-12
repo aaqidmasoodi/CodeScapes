@@ -1099,7 +1099,9 @@ export function TerminalPane({
                             if (onTerminalInputSubmit) {
                               // Combine partial prefix, prompt, and input into a single history line
                               // Add newline at end so next output appears on a new line
-                              const combinedContent = `${partialPrefix}${terminalInputPrompt}${terminalInput}\n`
+                              const echoInput =
+                                terminalInputMode === "password" ? "••••••" : terminalInput
+                              const combinedContent = `${partialPrefix}${terminalInputPrompt}${echoInput}\n`
 
                               setHistory((prev) => {
                                 // Keep only the full lines (remove any partials we merged visually)
