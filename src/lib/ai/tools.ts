@@ -903,6 +903,53 @@ async function executeInstallPackage(
   const success = errors.length === 0
   const output = [...results, ...errors].join("\n")
 
+  // --- Persistence Logic ---
+  if (success) {
+    try {
+      const requirementsPath = "requirements.txt"
+      const existingReqs = ctx.files.find((f) => normalizePath(f.name) === requirementsPath)
+      let newContent = ""
+
+      if (existingReqs && typeof existingReqs.content === "string") {
+        newContent = existingReqs.content
+        const existingLines = new Set(
+          newContent
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean)
+        )
+        let added = false
+        for (const pkg of packages) {
+          if (!existingLines.has(pkg)) {
+            newContent += `\n${pkg}`
+            added = true
+          }
+        }
+        if (added) {
+          // Update existing file
+          await ctx.updateFile(requirementsPath, newContent)
+          const idx = ctx.files.findIndex((f) => f.name === requirementsPath)
+          if (idx !== -1) ctx.files[idx] = { ...existingReqs, content: newContent }
+        }
+      } else {
+        // Create new requirements.txt
+        newContent = packages.join("\n")
+        await ctx.createFile(requirementsPath, "python", newContent) // Language 'python' implies txt/config for deps
+        ctx.files.push({
+          name: requirementsPath,
+          language: "python", // or text/plain, but ScapeFile type might constrain
+          content: newContent,
+        })
+      }
+
+      // Update Cache to ensure agent sees the new file/content
+      updateFileCache(requirementsPath, newContent)
+    } catch (e) {
+      console.warn("Failed to persist packages to requirements.txt:", e)
+      // We don't fail the tool execution if persistence fails, but we warn
+    }
+  }
+
   return {
     success,
     output,
