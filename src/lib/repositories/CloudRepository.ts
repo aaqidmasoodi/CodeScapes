@@ -202,6 +202,22 @@ export class CloudRepository implements IScapeRepository {
     }))
   }
 
+  /**
+   * Fetches only "Unorganized" scapes (those not in any collection).
+   * Used for the main dashboard view to avoid duplicates.
+   */
+  async getUnorganizedScapes(userId: string): Promise<Scape[]> {
+    // 1. Fetch All Scapes for User
+    const scapes = await this.listScapes(userId)
+
+    // 2. Fetch IDs of scapes that are in collections
+    const collectedIds = await this.getCollectedScapeIds(userId)
+    const collectedSet = new Set(collectedIds)
+
+    // 3. Filter out collected scapes
+    return scapes.filter((s) => !collectedSet.has(s.id))
+  }
+
   async saveScape(scape: Scape): Promise<void> {
     const { error } = await supabase.from("scapes").upsert({
       id: scape.id,
