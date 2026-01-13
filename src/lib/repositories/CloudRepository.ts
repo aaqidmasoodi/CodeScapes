@@ -161,6 +161,21 @@ export class CloudRepository implements IScapeRepository {
     }
   }
 
+  async getCollectedScapeIds(userId: string): Promise<string[]> {
+    const { data, error } = await supabase
+      .from("collection_topic_scapes")
+      .select("scape_id, topic:collection_topics!inner(collection:collections!inner(user_id))")
+      .eq("topic.collection.user_id", userId)
+
+    if (error) {
+      console.error("Failed to fetch collected scape IDs", error)
+      return []
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return data.map((d: any) => d.scape_id)
+  }
+
   async listScapes(userId?: string): Promise<Scape[]> {
     if (!userId) return []
 

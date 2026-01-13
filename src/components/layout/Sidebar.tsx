@@ -1,6 +1,15 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Settings, LogOut, Database, Cloud, Globe, Book, MessageSquarePlus } from "lucide-react"
+import {
+  Settings,
+  LogOut,
+  Database,
+  Cloud,
+  Globe,
+  Book,
+  MessageSquarePlus,
+  Library,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
@@ -30,10 +39,12 @@ export function Sidebar({
   const allTabs = [
     { id: "local", icon: Database, label: "Local Scapes", path: "/dashboard/local" },
     { id: "cloud", icon: Cloud, label: "Cloud Scapes", path: "/dashboard/cloud" },
+    { id: "collections", icon: Book, label: "Collections", path: "/dashboard/collections" },
+    { id: "library", icon: Library, label: "Library", path: "/dashboard/library" },
     { id: "community", icon: Globe, label: "Community", path: "/community" },
   ]
 
-  const tabs = user ? allTabs : allTabs.filter((t) => t.id !== "cloud")
+  const tabs = user ? allTabs : allTabs.filter((t) => !["cloud", "collections"].includes(t.id))
 
   const handleTabClick = (tabId: string, path: string | null) => {
     if (onTabChange) {

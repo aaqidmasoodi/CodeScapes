@@ -8,6 +8,7 @@ import { FeatureCard } from "@/components/landing/cards/FeatureCard"
 import { CTACard } from "@/components/landing/cards/CTACard"
 import { ScapeCard } from "@/components/landing/cards/ScapeCard"
 import { SectionCard } from "@/components/landing/cards/SectionCard"
+import { ScapperShowcase } from "@/components/landing/ScapperShowcase"
 import { Code2, Globe, Palette, Blocks, Moon, Zap } from "lucide-react"
 
 const features = [
@@ -86,6 +87,9 @@ export default function LandingPage() {
             description={features[5].description}
             delay={0.35}
           />
+
+          {/* Scapper AI Showcase */}
+          <ScapperShowcase />
 
           {/* Community Section - Big Card + Many Small Scapes */}
           <SectionCard

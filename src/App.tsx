@@ -22,6 +22,11 @@ import { AdminDashboard } from "@/pages/admin/AdminDashboard"
 import { AdminEditor } from "@/pages/admin/AdminEditor"
 import { AdminOverview } from "@/pages/admin/AdminOverview"
 import { QueryProvider } from "@/providers/QueryProvider"
+import CollectionsPage from "@/pages/collections/CollectionsPage"
+import CollectionBuilder from "@/pages/collections/CollectionBuilder"
+import CollectionViewer from "@/pages/collections/CollectionViewer"
+import LibraryPage from "@/pages/library/LibraryPage"
+import CollectionDetail from "@/pages/library/CollectionDetail"
 
 function App() {
   return (
@@ -32,6 +37,14 @@ function App() {
             <Routes>
               <Route path="/login" element={<AuthPage />} />
               <Route path="/" element={<LandingPage />} />
+
+              {/* Collections & Library Routes */}
+              <Route path="/dashboard/collections" element={<CollectionsPage />} />
+              <Route path="/dashboard/collections/:id" element={<CollectionViewer />} />
+              <Route path="/dashboard/collections/:id/edit" element={<CollectionBuilder />} />
+              <Route path="/dashboard/library" element={<LibraryPage />} />
+              <Route path="/library/:id" element={<CollectionDetail />} />
+
               <Route path="/dashboard" element={<Navigate to="/dashboard/scapes" replace />} />
               <Route path="/dashboard/:tab" element={<Dashboard />} />
               <Route path="/scape/:scapeId" element={<ScapeEditor />} />
