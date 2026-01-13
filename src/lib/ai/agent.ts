@@ -33,29 +33,30 @@ Rules:
 CRITICAL SAFEGUARDS:
 - IMPLICIT COMMANDS: Users often say "Make it red" or "Sort the list". INTERPRET THESE AS COMMANDS TO MODIFY CODE. Do NOT ask for permission. JUST DO IT.
 - EXECUTION: NEVER run code automatically. ALWAYS ask "Would you like me to run this?" first.
-- VERIFICATION: Do not claim success without tools. Never say "Fixed!" unless you verified it.
+- VERIFICATION: Trust tool outputs (e.g., "Installed pandas"). Do not double-check with list_packages unless an error occurs. Never say "Fixed!" unless you verified it.
 `
 
 function getExecutionSection(ctx: ToolContext): string {
   const { environment } = ctx
   if (!environment.capabilities.terminal && !environment.capabilities.packages) return ""
-  return `Execution: ${environment.capabilities.terminal ? "run" : ""}${environment.capabilities.packages ? " install" : ""}`
+  return `Execution: ${environment.capabilities.terminal ? "run" : ""}${environment.capabilities.packages ? " install" : ""} `
 }
 
 function buildWebPrompt(ctx: ToolContext): string {
   return `You are Scapper, an expert frontend engineer.
-Env: Web (HTML/CSS/JS)
+  Env: Web(HTML / CSS / JS)
 Entry: ${ctx.environment.entryPoint}
-Use modern best practices (HTML5, CSS Flex/Grid). Build clean, professional UI.
-${getExecutionSection(ctx)}
-${COMMON_RULES}`
+Use modern best practices(HTML5, CSS Flex / Grid).Build clean, professional UI.
+  ${getExecutionSection(ctx)}
+${COMMON_RULES} `
 }
 
 function buildPythonPrompt(ctx: ToolContext): string {
   return `You are Scapper, an expert Python developer.
-Env: Python 3
+  Env: Python 3
 Installed: ${ctx.dependencies.length ? ctx.dependencies.join(", ") : "None"}
-You MUST verify installed packages using \`list_packages\`. If a required package (like 'pandas') is missing, you MUST install it using \`install_package\` BEFORE writing code.
+You MUST identify ALL missing packages first, then install them in a SINGLE command(e.g., \`install_package(name='pandas, numpy')\`).
+Trust the install success message. Only use \`list_packages\` if installation fails.
 Write correct, robust Python code. Visualization: use matplotlib.pyplot.show().
 ${getExecutionSection(ctx)}
 ${COMMON_RULES}`
@@ -65,7 +66,7 @@ function buildRPrompt(ctx: ToolContext): string {
   return `You are Scapper, an expert R data analyst.
 Env: R
 Packages: ${ctx.dependencies.length ? ctx.dependencies.join(", ") : "Standard"}
-You MUST verify installed packages. If a library is needed, use \`install_package\` first.
+If libraries are needed, use \`install_package\` first (batch install supported).
 ${getExecutionSection(ctx)}
 ${COMMON_RULES}`
 }
@@ -281,12 +282,39 @@ export async function runScapper(
     while (loopCount++ < MAX_LOOPS) {
       if (signal?.aborted) throw new Error("Aborted")
 
-      const response = await chatCompletion(messages, tools, {
-        signal,
-        temperature: 0.8,
-        maxTokens: 8192,
-        promptType: loopCount === 1 ? promptType : "scapper_response",
-      })
+      let response
+      try {
+        response = await chatCompletion(messages, tools, {
+          signal,
+          temperature: 0.8,
+          maxTokens: 8192,
+          promptType: loopCount === 1 ? promptType : "scapper_response",
+        })
+      } catch (error) {
+        // Handle Token/Tool Validation Errors (Model Hallucinations)
+        // This catches "Tool call validation failed" errors from the proxy
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        if (
+          errorMsg.includes("validation failed") ||
+          errorMsg.includes("assistant<|channel|>commentary") ||
+          errorMsg.includes("attempted to call tool")
+        ) {
+          console.warn("[Scapper] Caught validation error, asking for retry:", errorMsg)
+          messages.push({
+            // We can't really push a tool role without a call_id if we didn't get the call.
+            // But if the PROXY failed, we didn't get a response.
+            // So we act as if the user/system is rejecting the previous attempt (which failed invisibly).
+            // Since we can't append to a non-existent assistant message, we'll append a SYSTEM warning.
+            // But wait, the LAST message was USER or SYSTEM (from previous loop).
+            // We need to prompt the model again.
+            role: "system",
+            content: `Error: The previous tool call was invalid (${errorMsg}). Please retry using ONLY valid tools from the provided list.`,
+          })
+          onProgress({ type: "error", message: "Invalid tool call detected, retrying..." })
+          continue
+        }
+        throw error // Re-throw other errors
+      }
 
       const assistantMessage = response.choices[0].message
       messages.push({
