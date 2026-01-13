@@ -22,7 +22,7 @@ export function useScapes() {
 
   // 2. Cloud Scapes (Unorganized Only)
   const { data: cloudScapes = [], isLoading: loadingCloud } = useQuery({
-    queryKey: ["cloudScapes", userId],
+    queryKey: ["cloudScapes", userId, "v2"],
     queryFn: async () => {
       if (!userId) return []
       // Use the robust filtered list directly from the repo
