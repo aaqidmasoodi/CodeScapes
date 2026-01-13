@@ -1,111 +1,154 @@
-import { useState, useEffect } from "react"
-import { useNavigate, useParams } from "react-router-dom"
-import { ArrowLeft, BookOpen, Clock, Play, ExternalLink, Loader2 } from "lucide-react"
+import { useState, useMemo } from "react"
+import { useNavigate, useParams, useLocation } from "react-router-dom"
+import { Search, Calendar, Code2, Loader2, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { supabase } from "@/lib/supabase"
-import type {
-  Collection,
-  CollectionTopic,
-  CollectionTopicScape,
-  CollectionWithTopics,
-} from "@/types/collections"
+import type { Collection, CollectionTopic, CollectionTopicScape } from "@/types/collections"
+import { useQuery } from "@tanstack/react-query"
+
+// Extended type for flat list
+type FlatScapeItem = CollectionTopicScape["scapes"] & {
+  topicId: string
+  topicTitle: string
+  scapeId: string
+  realScapeId: string
+  updatedAt: string
+  description: string | null
+}
 
 export default function CollectionDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
 
-  const [collection, setCollection] = useState<Collection | null>(null)
-  const [topics, setTopics] = useState<CollectionWithTopics["topics"]>([])
-  const [loading, setLoading] = useState(true)
+  // 1. Optimistic Collection Data (from Navigation State)
+  const initialCollection = location.state?.initialCollection as Collection | undefined
 
-  useEffect(() => {
-    if (!id) return
+  // 2. Fetch Collection Details (Cache: ['collection', id])
+  const { data: collection, isLoading: loadingCollection } = useQuery({
+    queryKey: ["collection", id],
+    queryFn: async () => {
+      // If we have initial data, we don't necessarily avoid the fetch (staleTime handles that),
+      // but React Query will use initialData immediately.
+      const { data, error } = await supabase.from("collections").select("*").eq("id", id).single()
+      if (error) throw error
+      return data as Collection
+    },
+    initialData: initialCollection,
+    enabled: !!id,
+    staleTime: 1000 * 60 * 5, // 5 min
+  })
 
-    const fetchData = async () => {
-      try {
-        setLoading(true)
-
-        // 1. Get Collection Details
-        const { data: collData, error: collError } = await supabase
-          .from("collections")
-          .select("*")
-          .eq("id", id)
-          .single()
-
-        if (collError) throw collError
-        setCollection(collData)
-
-        // 2. Fetch Hierarchy
-        const { data: topicData, error: topicError } = await supabase
-          .from("collection_topics")
-          .select(
-            `
-          *,
-          collection_topic_scapes (
-            order_index,
-            scape_id,
-            topic_id,
-            created_at,
-            scapes (
-              id,
-              name,
-              thumbnail,
-              environment,
-              description,
-              updated_at
-            )
+  // 3. Fetch Topics & Scapes (Cache: ['collection-topics', id])
+  const { data: topics = [], isLoading: loadingTopics } = useQuery({
+    queryKey: ["collection-topics", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("collection_topics")
+        .select(
+          `
+        *,
+        collection_topic_scapes (
+          order_index,
+          scape_id,
+          topic_id,
+          created_at,
+          scapes (
+            id,
+            name,
+            thumbnail,
+            environment,
+            description,
+            updated_at
           )
-        `
-          )
-          .eq("collection_id", id)
-          .order("order_index", { ascending: true })
-
-        if (topicError) throw topicError
-
-        // Transform and Sort
-        type TopicStruct = {
-          id: string
-          title: string
-          description: string | null
-          collection_id: string
-          order_index: number
-          created_at: string
-          updated_at: string
-          collection_topic_scapes: {
-            order_index: number
-            scape_id: string
-            topic_id: string
-            created_at: string
-            scapes: unknown
-          }[]
-        }
-
-        const formattedTopics = (topicData as unknown as TopicStruct[]).map((t) => ({
-          ...t,
-          scapes: t.collection_topic_scapes
-            .map((item) => ({
-              ...item,
-              scapes: item.scapes,
-            }))
-            .sort((a, b) => a.order_index - b.order_index),
-        }))
-
-        setTopics(
-          formattedTopics as unknown as (CollectionTopic & { scapes: CollectionTopicScape[] })[]
         )
-      } catch (error) {
-        console.error("Error fetching collection details:", error)
-      } finally {
-        setLoading(false)
+      `
+        )
+        .eq("collection_id", id)
+        .order("order_index", { ascending: true })
+
+      if (error) throw error
+
+      // Transform and Sort
+      type TopicStruct = {
+        id: string
+        title: string
+        description: string | null
+        collection_id: string
+        order_index: number
+        created_at: string
+        updated_at: string
+        collection_topic_scapes: {
+          order_index: number
+          scape_id: string
+          topic_id: string
+          created_at: string
+          scapes: unknown
+        }[]
       }
-    }
 
-    fetchData()
-  }, [id])
+      return (data as unknown as TopicStruct[]).map((t) => ({
+        ...t,
+        scapes: t.collection_topic_scapes
+          .map((item) => ({
+            ...item,
+            scapes: item.scapes,
+          }))
+          .sort((a, b) => a.order_index - b.order_index),
+      })) as unknown as (CollectionTopic & { scapes: CollectionTopicScape[] })[]
+    },
+    enabled: !!id,
+    staleTime: 1000 * 60 * 5,
+  })
 
-  if (loading || !collection) {
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedTopicId, setSelectedTopicId] = useState<string>("all")
+
+  // Flatten scapes for the grid
+  const filteredScapes = useMemo(() => {
+    const flatList: FlatScapeItem[] = []
+
+    topics.forEach((topic) => {
+      topic.scapes.forEach((link) => {
+        const s = link.scapes
+        if (!s) return
+
+        flatList.push({
+          ...s,
+          topicId: topic.id,
+          topicTitle: topic.title,
+          scapeId: s.id,
+          realScapeId: s.id,
+          updatedAt: s.updated_at,
+          description: s.description,
+        })
+      })
+    })
+
+    return flatList.filter((item) => {
+      // Search Filter
+      const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase())
+
+      // Topic Filter
+      const matchesTopic = selectedTopicId === "all" || item.topicId === selectedTopicId
+
+      return matchesSearch && matchesTopic
+    })
+  }, [topics, searchQuery, selectedTopicId])
+
+  // Initial Loading Block: Only if we have NO collection data at all (not even optimistic)
+  if (loadingCollection && !collection) {
     return (
       <DashboardLayout activeTab="library">
         <div className="flex h-full items-center justify-center">
@@ -115,135 +158,174 @@ export default function CollectionDetail() {
     )
   }
 
+  // Fallback if collection missing after load
+  if (!collection && !loadingCollection) return null
+
   return (
     <DashboardLayout activeTab="library">
-      <div className="flex h-full flex-col bg-background">
-        {/* Navigation Header */}
-        <div className="sticky top-0 z-10 flex items-center gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard/library")}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h1 className="text-xl font-bold leading-none">{collection.title}</h1>
-            <p className="mt-1 text-xs text-muted-foreground">Collection</p>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-auto">
-          <div className="mx-auto max-w-4xl space-y-8 p-6 md:p-10">
-            {/* Intro Section */}
-            <div className="space-y-4 border-b pb-8">
-              <p className="text-lg leading-relaxed text-muted-foreground">
-                {collection.description}
-              </p>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Clock className="h-4 w-4" />
-                  Updated {new Date(collection.updated_at).toLocaleDateString()}
+      <div className="flex h-full flex-col bg-background font-sans text-foreground">
+        {/* === Header / Control Bar === */}
+        <div className="sticky top-0 z-20 border-b bg-background/95 px-6 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            {/* Title */}
+            <div className="flex items-center gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-bold leading-none">{collection?.title}</h1>
+                  {collection?.is_public && (
+                    <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                      Public
+                    </Badge>
+                  )}
                 </div>
-                <div className="flex items-center gap-1">
-                  <BookOpen className="h-4 w-4" />
-                  {topics.length} Sections
-                </div>
+                <p className="mt-1 line-clamp-1 max-w-md text-xs text-muted-foreground">
+                  {collection?.description}
+                </p>
               </div>
             </div>
 
-            {/* Content Sections */}
-            <div className="space-y-12">
-              {topics.map((topic, index) => (
-                <section key={topic.id} className="space-y-6">
-                  <div className="flex items-start gap-4">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 font-mono text-sm font-bold text-primary">
-                      {index + 1}
-                    </span>
-                    <div className="space-y-1">
-                      <h2 className="text-2xl font-bold tracking-tight">{topic.title}</h2>
-                      {topic.description && (
-                        <p className="text-muted-foreground">{topic.description}</p>
+            {/* Controls */}
+            <div className="flex flex-1 items-center gap-2 md:max-w-md md:justify-end">
+              <div className="relative w-full md:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search scapes..."
+                  className="h-9 border-input/50 bg-muted/50 pl-9"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <Select value={selectedTopicId} onValueChange={setSelectedTopicId}>
+                <SelectTrigger className="h-9 w-[140px] border-input/50 bg-muted/50">
+                  <SelectValue placeholder="All Topics" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Topics</SelectItem>
+                  {topics.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* === Main Grid Canvas === */}
+        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+          <div className="w-full">
+            {loadingTopics ? (
+              // --- Loading Skeleton for Grid Only ---
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                  <div key={i} className="flex flex-col space-y-3">
+                    <Skeleton className="aspect-video w-full rounded-xl" />
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : filteredScapes.length === 0 ? (
+              <div className="flex h-[50vh] flex-col items-center justify-center text-center">
+                <div className="rounded-full bg-muted p-4">
+                  <Search className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold">No scapes found</h3>
+                <p className="text-sm text-muted-foreground">
+                  Try adjusting your filters or search query.
+                </p>
+                {(searchQuery || selectedTopicId !== "all") && (
+                  <Button
+                    variant="link"
+                    onClick={() => {
+                      setSearchQuery("")
+                      setSelectedTopicId("all")
+                    }}
+                    className="mt-2"
+                  >
+                    Clear filters
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {filteredScapes.map((scape) => (
+                  <div
+                    key={scape.realScapeId}
+                    className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm transition-all hover:border-primary/50 hover:shadow-md"
+                    onClick={() => navigate(`/community/scape/${scape.realScapeId}`)}
+                  >
+                    {/* Thumbnail Header */}
+                    <div className="relative aspect-video w-full overflow-hidden bg-muted">
+                      {/* Thumbnail Image */}
+                      {scape.thumbnail ? (
+                        <img
+                          src={
+                            scape.thumbnail.startsWith("http")
+                              ? scape.thumbnail
+                              : `data:image/jpeg;base64,${scape.thumbnail}`
+                          }
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-secondary/30">
+                          <Code2 className="h-10 w-10 text-muted-foreground/20" />
+                        </div>
                       )}
+
+                      {/* Topic Badge Overlay */}
+                      <div className="absolute left-2 top-2">
+                        <Badge
+                          variant="secondary"
+                          className="bg-background/80 text-[10px] font-bold shadow-sm backdrop-blur-sm hover:bg-background/100"
+                        >
+                          {scape.topicTitle}
+                        </Badge>
+                      </div>
+
+                      {/* Play Overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/5 opacity-0 transition-all group-hover:opacity-100">
+                        <div className="rounded-full bg-background/90 p-3 shadow-lg backdrop-blur-sm">
+                          <Play className="ml-1 h-5 w-5 text-primary" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Content Body */}
+                    <div className="flex flex-1 flex-col p-4">
+                      <h3 className="line-clamp-1 text-base font-bold leading-tight transition-colors group-hover:text-primary">
+                        {scape.name}
+                      </h3>
+
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {scape.description || "No description provided."}
+                      </p>
+
+                      <div className="mt-auto flex items-center justify-between pt-4 text-xs text-muted-foreground">
+                        {/* Language/Env Badge */}
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="h-5 border-border/50 bg-muted/20 px-1.5 text-[10px] font-medium uppercase"
+                          >
+                            {scape.environment || "Web"}
+                          </Badge>
+                        </div>
+
+                        {/* Date */}
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3 opacity-70" />
+                          <span>{new Date(scape.updatedAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-
-                  {/* List of Scapes in this Topic */}
-                  <div className="grid grid-cols-1 gap-4 pl-0 md:pl-12">
-                    {topic.scapes.map((link) => {
-                      const scape = link.scapes as unknown as {
-                        id: string
-                        name: string
-                        thumbnail: string | null
-                        environment: string | null
-                        description: string | null
-                      }
-                      if (!scape) return null // Deleted scape
-
-                      return (
-                        <div
-                          key={scape.id}
-                          className="group flex flex-col overflow-hidden rounded-xl border bg-card transition-all hover:border-primary/50 hover:shadow-md md:flex-row"
-                        >
-                          {/* Thumbnail */}
-                          <div className="relative h-40 w-full shrink-0 bg-muted md:h-auto md:w-64">
-                            {scape.thumbnail ? (
-                              <img
-                                src={
-                                  scape.thumbnail.startsWith("http")
-                                    ? scape.thumbnail
-                                    : `data:image/jpeg;base64,${scape.thumbnail}`
-                                }
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="h-full w-full bg-secondary/30" />
-                            )}
-
-                            {/* Hover Play Button Overlay */}
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/10">
-                              <Button
-                                size="icon"
-                                className="h-10 w-10 scale-90 rounded-full opacity-0 shadow-xl transition-all group-hover:scale-100 group-hover:opacity-100"
-                                onClick={() => navigate(`/community/scape/${scape.id}`)}
-                              >
-                                <Play className="ml-0.5 h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-
-                          {/* Info */}
-                          <div className="flex flex-1 flex-col p-4">
-                            <div className="flex items-start justify-between">
-                              <h3 className="line-clamp-1 text-lg font-semibold">{scape.name}</h3>
-                              <Badge variant="secondary" className="text-xs font-medium uppercase">
-                                {scape.environment || "Web"}
-                              </Badge>
-                            </div>
-                            <p className="mt-2 line-clamp-2 flex-1 text-sm text-muted-foreground">
-                              {scape.description || "No description provided."}
-                            </p>
-
-                            <div className="mt-4 flex items-center justify-end gap-2 border-t pt-4">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => navigate(`/community/scape/${scape.id}`)}
-                              >
-                                <ExternalLink className="mr-2 h-3.5 w-3.5" />
-                                Open Details
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-
-                    {topic.scapes.length === 0 && (
-                      <p className="text-sm italic text-muted-foreground">
-                        No examples in this section yet.
-                      </p>
-                    )}
-                  </div>
-                </section>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { supabase } from "@/lib/supabase"
-import type { Collection, CollectionWithTopics } from "@/types/collections"
+import type { Collection, TopicWithJoinedScapes } from "@/types/collections"
 
 export function useCollection(id: string | undefined) {
   const {
@@ -53,21 +53,7 @@ export function useCollection(id: string | undefined) {
       if (error) throw error
 
       // Transform and Sort
-      type RawTopic = {
-        id: string
-        title: string
-        description?: string
-        created_at: string
-        updated_at: string
-        collection_id: string
-        order_index: number
-        collection_topic_scapes: {
-          order_index: number
-          scapes: unknown
-        }[]
-      }
-
-      return (data as unknown as RawTopic[]).map((t) => ({
+      return (data as unknown as TopicWithJoinedScapes[]).map((t) => ({
         ...t,
         scapes: t.collection_topic_scapes
           .map((item) => ({
@@ -75,7 +61,7 @@ export function useCollection(id: string | undefined) {
             scapes: item.scapes,
           }))
           .sort((a, b) => a.order_index - b.order_index),
-      })) as unknown as CollectionWithTopics["topics"]
+      }))
     },
     enabled: !!id,
     staleTime: 5 * 60 * 1000, // 5 minutes

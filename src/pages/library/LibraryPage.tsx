@@ -1,27 +1,22 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Globe, Book, Search, User } from "lucide-react"
+import { Globe, Book, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { supabase } from "@/lib/supabase"
 import type { Collection } from "@/types/collections"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useQuery } from "@tanstack/react-query"
 
 export default function LibraryPage() {
   const navigate = useNavigate()
-  const [collections, setCollections] = useState<Collection[]>([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
 
-  useEffect(() => {
-    fetchPublicCollections()
-  }, [])
-
-  const fetchPublicCollections = async () => {
-    try {
-      setLoading(true)
+  const { data: collections = [], isLoading } = useQuery({
+    queryKey: ["public-collections"],
+    queryFn: async () => {
       const { data, error } = await supabase
         .from("collections")
         .select("*")
@@ -29,13 +24,10 @@ export default function LibraryPage() {
         .order("created_at", { ascending: false })
 
       if (error) throw error
-      setCollections(data || [])
-    } catch (error) {
-      console.error("Error fetching library:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
+      return data as Collection[]
+    },
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  })
 
   const filteredCollections = collections.filter(
     (c) =>
@@ -72,9 +64,9 @@ export default function LibraryPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6 [scrollbar-gutter:stable]">
-          {loading ? (
+          {isLoading ? (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {[1, 2, 3, 4].map((i) => (
+              {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div key={i} className="flex flex-col space-y-3">
                   <Skeleton className="h-40 w-full rounded-xl" />
                   <Skeleton className="h-4 w-3/4" />
@@ -94,7 +86,11 @@ export default function LibraryPage() {
                 <Card
                   key={collection.id}
                   className="group cursor-pointer overflow-hidden transition-all hover:border-primary/50 hover:shadow-lg"
-                  onClick={() => navigate(`/library/${collection.id}`)}
+                  onClick={() =>
+                    navigate(`/library/${collection.id}`, {
+                      state: { initialCollection: collection },
+                    })
+                  }
                 >
                   <div className="flex h-32 items-center justify-center border-b bg-gradient-to-br from-indigo-500/10 to-purple-500/10">
                     <Book className="h-10 w-10 text-primary/40 transition-colors group-hover:text-primary/60" />
@@ -105,12 +101,6 @@ export default function LibraryPage() {
                       {collection.description || "No description provided."}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <User className="h-3 w-3" />
-                      <span>Community</span>
-                    </div>
-                  </CardContent>
                 </Card>
               ))}
             </div>

@@ -24,6 +24,7 @@ import { Plus, Save, Trash2, RefreshCw, Search, GripVertical } from "lucide-reac
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { PublishDialog } from "@/components/collections/PublishDialog"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { DashboardLayout } from "@/layouts/DashboardLayout"
@@ -214,6 +215,10 @@ export default function CollectionBuilder() {
 
   // Search
   const [sidebarSearch, setSidebarSearch] = useState("")
+
+  // Publish Flow
+  const [showPublishDialog, setShowPublishDialog] = useState(false)
+  const [undeployedScapes, setUndeployedScapes] = useState<{ id: string; name: string }[]>([])
 
   // Optimize Filtering
   const usedScapeIds = useMemo(() => {
@@ -417,6 +422,45 @@ export default function CollectionBuilder() {
   const handleUpdateMeta = (updates: Partial<Collection>) => {
     setCollectionData((prev) => ({ ...prev, ...updates }))
     setIsDirty(true)
+  }
+
+  const handleTogglePublic = async (checked: boolean) => {
+    if (!checked) {
+      // Logic: Private is always allowed
+      handleUpdateMeta({ is_public: false })
+      return
+    }
+
+    // Logic: Going Public -> Check for undeployed scapes using CloudRepository logic (published_version_id)
+    // We need to query the DB for the current status of all scapes in this collection
+    const scapeIds = new Set<string>()
+    topics.forEach((t) => t.scapes.forEach((s) => scapeIds.add(s.scape_id)))
+
+    if (scapeIds.size === 0) {
+      handleUpdateMeta({ is_public: true })
+      return
+    }
+
+    const { data: scapesStatus, error } = await supabase
+      .from("scapes")
+      .select("id, published_version_id, name")
+      .in("id", Array.from(scapeIds))
+
+    if (error) {
+      console.error("Error fetching status:", error)
+      toast.error("Failed to verify scape deployment status")
+      return
+    }
+
+    const notDeployed = scapesStatus.filter((s) => !s.published_version_id)
+
+    if (notDeployed.length > 0) {
+      setUndeployedScapes(notDeployed.map((s) => ({ id: s.id, name: s.name })))
+      setShowPublishDialog(true)
+    } else {
+      // All good
+      handleUpdateMeta({ is_public: true })
+    }
   }
 
   const handleUpdateTopicTitle = (topicId: string, newTitle: string) => {
@@ -633,7 +677,7 @@ export default function CollectionBuilder() {
                 <Switch
                   id="public-mode"
                   checked={collectionData.is_public}
-                  onCheckedChange={(checked) => handleUpdateMeta({ is_public: checked })}
+                  onCheckedChange={handleTogglePublic}
                   className="scale-90"
                 />
                 <Label
@@ -786,6 +830,15 @@ export default function CollectionBuilder() {
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      <PublishDialog
+        open={showPublishDialog}
+        onOpenChange={setShowPublishDialog}
+        undeployedScapes={undeployedScapes}
+        onConfirm={() => {
+          handleUpdateMeta({ is_public: true })
+        }}
+      />
     </DashboardLayout>
   )
 }

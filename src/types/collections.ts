@@ -32,7 +32,9 @@ export interface CollectionTopicScape {
     name: string
     thumbnail: string | null
     environment: string | null
-  }
+    description: string | null
+    updated_at: string
+  } | null
 }
 
 // Composite type for the "Book View"
@@ -40,4 +42,21 @@ export interface CollectionWithTopics extends Collection {
   topics: (CollectionTopic & {
     scapes: CollectionTopicScape[]
   })[]
+}
+
+// Joined Types for Supabase Queries
+export interface JoinedTopicScape extends CollectionTopicScape {
+  scapes: {
+    id: string
+    name: string
+    description: string | null
+    thumbnail: string | null
+    updated_at: string
+    environment: string | null
+    source: string // 'local' | 'cloud' (though DB type is text)
+  } | null
+}
+
+export interface TopicWithJoinedScapes extends CollectionTopic {
+  collection_topic_scapes: JoinedTopicScape[]
 }

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react"
 import { useCollection } from "@/hooks/useCollection"
 import { useParams, useNavigate, useLocation } from "react-router-dom"
-import { ArrowLeft, Clock, Edit, Search, Filter, Play, BookOpen, Cloud } from "lucide-react"
+import { Clock, Edit, Search, Filter, Play, BookOpen, Cloud } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -80,24 +80,8 @@ export default function CollectionViewer() {
         {/* Unified Sticky Header matching Dashboard.tsx */}
         <div className="sticky top-0 z-10 flex flex-col gap-4 border-b bg-background/95 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="-ml-2 mt-1 hidden md:flex"
-              onClick={() => navigate("/dashboard/collections")}
-            >
-              <ArrowLeft className="h-5 w-5 text-muted-foreground" />
-            </Button>
             <div>
               <div className="flex items-center gap-3">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="-ml-2 flex md:hidden"
-                  onClick={() => navigate("/dashboard/collections")}
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
                 {collection ? (
                   <>
                     <h1 className="text-2xl font-bold tracking-tight">{collection.title}</h1>
