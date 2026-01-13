@@ -20,30 +20,19 @@ export function useScapes() {
   // We provide [] as the default value (3rd arg) to prevent initial 'undefined' flash
   const localScapes = useLiveQuery(() => localRepo.listScapes(), [], [])
 
-  // 2. Cloud Scapes (React Query with SWR caching)
+  // 2. Cloud Scapes (Unorganized Only)
   const { data: cloudScapes = [], isLoading: loadingCloud } = useQuery({
     queryKey: ["cloudScapes", userId],
     queryFn: async () => {
       if (!userId) return []
-      return cloudRepo.listScapes(userId)
+      // Use the robust filtered list directly from the repo
+      return cloudRepo.getUnorganizedScapes(userId)
     },
     enabled: !!userId,
-    staleTime: 1 * 60 * 1000, // 1 minute - data considered fresh
-    gcTime: 5 * 60 * 1000, // 5 minutes cache
+    staleTime: 1 * 60 * 1000,
   })
 
-  // 2b. Fetch Scapes that are in collections (to hide them from main list "folder view")
-  const { data: collectedScapeIds = [] } = useQuery({
-    queryKey: ["collectedScapeIds", userId],
-    queryFn: async () => {
-      if (!userId) return []
-      return cloudRepo.getCollectedScapeIds(userId)
-    },
-    enabled: !!userId,
-    staleTime: 2 * 60 * 1000,
-  })
-
-  // 3. Merge & Sort (Deduplicate)
+  // 3. Merge & Sort
   const combinedScapes = useMemo(() => {
     const rawLocal = localScapes || []
 
@@ -57,27 +46,20 @@ export function useScapes() {
     // Filter local cache: Remove cloud scapes that don't belong to current user
     const local = rawLocal.filter((s) => {
       if (s.source === "local") return true
-      // If it's a cached cloud scape, it MUST belong to the current user
       return s.authorId === user.id
     })
 
     const cloud = cloudScapes || []
+    const cloudIds = new Set(cloud.map((s) => s.id))
 
-    // Filter out scapes that are already in a collection (Folder Logic)
-    // BUT: Does the user want them hidden from "All Scapes" or just organized?
-    // The request said "remove it from the cloudscapes page".
-    // So we hide them if they are in the cloud list and in a collection.
-    const collectedSet = new Set(collectedScapeIds)
-    const filteredCloud = cloud.filter((s) => !collectedSet.has(s.id))
-
-    const cloudIds = new Set(filteredCloud.map((s) => s.id))
     // Only show local scapes that are NOT in the cloud list
+    // This prevents duplicates if a scape is both local and cloud-synced
     const uniqueLocal = local.filter((s) => !cloudIds.has(s.id))
 
-    return [...uniqueLocal, ...filteredCloud].sort(
+    return [...uniqueLocal, ...cloud].sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     )
-  }, [localScapes, cloudScapes, collectedScapeIds, user])
+  }, [localScapes, cloudScapes, user])
 
   const deleteScape = useCallback(
     async (scape: Scape) => {
