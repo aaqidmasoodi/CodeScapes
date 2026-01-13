@@ -282,12 +282,39 @@ export async function runScapper(
     while (loopCount++ < MAX_LOOPS) {
       if (signal?.aborted) throw new Error("Aborted")
 
-      const response = await chatCompletion(messages, tools, {
-        signal,
-        temperature: 0.8,
-        maxTokens: 8192,
-        promptType: loopCount === 1 ? promptType : "scapper_response",
-      })
+      let response
+      try {
+        response = await chatCompletion(messages, tools, {
+          signal,
+          temperature: 0.8,
+          maxTokens: 8192,
+          promptType: loopCount === 1 ? promptType : "scapper_response",
+        })
+      } catch (error) {
+        // Handle Token/Tool Validation Errors (Model Hallucinations)
+        // This catches "Tool call validation failed" errors from the proxy
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        if (
+          errorMsg.includes("validation failed") ||
+          errorMsg.includes("assistant<|channel|>commentary") ||
+          errorMsg.includes("attempted to call tool")
+        ) {
+          console.warn("[Scapper] Caught validation error, asking for retry:", errorMsg)
+          messages.push({
+            // We can't really push a tool role without a call_id if we didn't get the call.
+            // But if the PROXY failed, we didn't get a response.
+            // So we act as if the user/system is rejecting the previous attempt (which failed invisibly).
+            // Since we can't append to a non-existent assistant message, we'll append a SYSTEM warning.
+            // But wait, the LAST message was USER or SYSTEM (from previous loop).
+            // We need to prompt the model again.
+            role: "system",
+            content: `Error: The previous tool call was invalid (${errorMsg}). Please retry using ONLY valid tools from the provided list.`,
+          })
+          onProgress({ type: "error", message: "Invalid tool call detected, retrying..." })
+          continue
+        }
+        throw error // Re-throw other errors
+      }
 
       const assistantMessage = response.choices[0].message
       messages.push({

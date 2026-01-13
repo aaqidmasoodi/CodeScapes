@@ -17,7 +17,8 @@ export function useScapes() {
   const userId = user?.id
 
   // 1. Local Scapes (Live from Dexie)
-  const localScapes = useLiveQuery(() => localRepo.listScapes(), [])
+  // We provide [] as the default value (3rd arg) to prevent initial 'undefined' flash
+  const localScapes = useLiveQuery(() => localRepo.listScapes(), [], [])
 
   // 2. Cloud Scapes (React Query with SWR caching)
   const { data: cloudScapes = [], isLoading: loadingCloud } = useQuery({
@@ -29,6 +30,17 @@ export function useScapes() {
     enabled: !!userId,
     staleTime: 1 * 60 * 1000, // 1 minute - data considered fresh
     gcTime: 5 * 60 * 1000, // 5 minutes cache
+  })
+
+  // 2b. Fetch Scapes that are in collections (to hide them from main list "folder view")
+  const { data: collectedScapeIds = [] } = useQuery({
+    queryKey: ["collectedScapeIds", userId],
+    queryFn: async () => {
+      if (!userId) return []
+      return cloudRepo.getCollectedScapeIds(userId)
+    },
+    enabled: !!userId,
+    staleTime: 2 * 60 * 1000,
   })
 
   // 3. Merge & Sort (Deduplicate)
@@ -51,14 +63,21 @@ export function useScapes() {
 
     const cloud = cloudScapes || []
 
-    const cloudIds = new Set(cloud.map((s) => s.id))
+    // Filter out scapes that are already in a collection (Folder Logic)
+    // BUT: Does the user want them hidden from "All Scapes" or just organized?
+    // The request said "remove it from the cloudscapes page".
+    // So we hide them if they are in the cloud list and in a collection.
+    const collectedSet = new Set(collectedScapeIds)
+    const filteredCloud = cloud.filter((s) => !collectedSet.has(s.id))
+
+    const cloudIds = new Set(filteredCloud.map((s) => s.id))
     // Only show local scapes that are NOT in the cloud list
     const uniqueLocal = local.filter((s) => !cloudIds.has(s.id))
 
-    return [...uniqueLocal, ...cloud].sort(
+    return [...uniqueLocal, ...filteredCloud].sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
     )
-  }, [localScapes, cloudScapes, user])
+  }, [localScapes, cloudScapes, collectedScapeIds, user])
 
   const deleteScape = useCallback(
     async (scape: Scape) => {
@@ -85,5 +104,10 @@ export function useScapes() {
     scapes: combinedScapes,
     loading: authLoading || !localScapes || loadingCloud,
     deleteScape,
+    // Expose additional cloud capability
+    deployScape: async (id: string) => cloudRepo.deployScape(id),
+    toggleLike: async (scapeId: string) => (userId ? cloudRepo.toggleLike(scapeId, userId) : false),
+    forkScape: async (scapeId: string) =>
+      userId ? cloudRepo.forkScape(scapeId, userId) : Promise.reject("Not logged in"),
   }
 }

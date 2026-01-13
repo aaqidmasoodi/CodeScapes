@@ -12,6 +12,7 @@ export function CTACard() {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
       transition={{ duration: 0.6, ease: appleEase }}
+      className="mt-8"
     >
       <div className="relative overflow-hidden rounded-2xl border border-white/20 bg-white/60 py-16 text-center shadow-lg shadow-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none lg:py-24">
         {/* Subtle Background Elements */}
