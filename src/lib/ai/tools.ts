@@ -623,13 +623,20 @@ function executeReadFile(path: string, ctx: ToolContext): ToolResult {
     return { success: false, output: "", error: `Cannot read binary file: ${path}` }
   }
 
+  let content = file.content
+
+  // Return explicit feedback for empty files to prevent Agent loops
+  // The agent often gets confused by empty strings and retries indefinitely
+  if (!content || content.trim().length === 0) {
+    return { success: true, output: "(File is empty)" }
+  }
+
   // Smart Truncation: Cap at 4000 characters (~1000 tokens)
   const MAX_CHARS = 4000
-  let content = file.content
   if (content.length > MAX_CHARS) {
     content =
       content.slice(0, MAX_CHARS) +
-      `\n\n[...File truncated. Displaying first ${MAX_CHARS} of ${file.content.length} characters. Use chunked reading if needed.]`
+      `\n\n[...File truncated. Displaying first ${MAX_CHARS} of ${file.content.length} characters.]`
   }
 
   // Update Cache
