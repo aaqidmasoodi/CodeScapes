@@ -19,7 +19,7 @@ export function ScapperShowcase() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const prompt =
-    "create a python program that asks user their age and tells them whether they are allow to drive or not based on their age."
+    "create a python program that asks user their age and tells them whether they are allowed to drive or not based on their age."
 
   // Auto-scroll effect
   useEffect(() => {

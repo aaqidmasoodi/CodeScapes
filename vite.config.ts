@@ -32,7 +32,19 @@ export default defineConfig(({ mode }) => {
             }
 
             try {
+              // Validate URL format
+              try {
+                new URL(targetUrl)
+              } catch {
+                res.statusCode = 400
+                res.end(JSON.stringify({ error: "Invalid target URL" }))
+                return
+              }
+
               const response = await fetch(targetUrl)
+
+              // Propagate upstream status
+              res.statusCode = response.status
 
               // Forward headers
               res.setHeader("Access-Control-Allow-Origin", "*")
@@ -45,9 +57,33 @@ export default defineConfig(({ mode }) => {
               const buffer = await response.arrayBuffer()
               res.end(Buffer.from(buffer))
             } catch (error) {
+              // Log the real error for debugging
               console.error("Proxy error:", error)
-              res.statusCode = 500
-              res.end(JSON.stringify({ error: "Proxy failed" }))
+
+              // Determine appropriate status code
+              let statusCode = 500
+              let errorMessage = "Internal Proxy Error"
+
+              // Check for common network errors
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const code = (error as any).cause?.code || (error as any).code
+
+              if (code === "ENOTFOUND") {
+                statusCode = 502 // Bad Gateway (Upstream unreachable / DNS error)
+                errorMessage = "Upstream unreachable (DNS Error)"
+              } else if (code === "ECONNREFUSED") {
+                statusCode = 502
+                errorMessage = "Upstream connection refused"
+              } else if (code === "ETIMEDOUT") {
+                statusCode = 504 // Gateway Timeout
+                errorMessage = "Upstream request timed out"
+              }
+
+              // Return sanitized error to client
+              res.statusCode = statusCode
+              const message =
+                mode === "production" ? errorMessage : `${errorMessage}: ${String(error)}`
+              res.end(JSON.stringify({ error: message }))
             }
           })
 
