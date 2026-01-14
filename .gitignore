@@ -142,4 +142,3 @@ release
 # Bundled API functions (build output)
 
 # Bundled API functions (esbuild output - generated during build)
-api/*.js
