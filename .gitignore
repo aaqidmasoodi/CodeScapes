@@ -140,4 +140,6 @@ release
 .vercel
 
 # Bundled API functions (build output)
-api-dist/
+
+# Bundled API functions (esbuild output - generated during build)
+api/*.js
