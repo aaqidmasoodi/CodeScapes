@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { rateLimiters } from "./_lib/rateLimit"
+import { rateLimiters } from "./rateLimit"
 
 /**
  * Turnstile Token Validation Endpoint

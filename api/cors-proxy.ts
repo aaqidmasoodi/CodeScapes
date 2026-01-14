@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClient } from "@supabase/supabase-js"
-import { rateLimiters } from "./_lib/rateLimit"
+import { rateLimiters } from "./rateLimit"
 
 /**
  * CORS Proxy for Python HTTP Requests
