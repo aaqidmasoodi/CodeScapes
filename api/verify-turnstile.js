@@ -2102,7 +2102,7 @@ var require_dist2 = __commonJS({
   },
 })
 
-// api/lib/rateLimit.ts
+// api-src/lib/rateLimit.ts
 var import_ratelimit = __toESM(require_dist2(), 1)
 
 // node_modules/uncrypto/dist/crypto.node.mjs
@@ -6577,7 +6577,7 @@ var Redis2 = class _Redis extends Redis {
   }
 }
 
-// api/lib/rateLimit.ts
+// api-src/lib/rateLimit.ts
 var redis = null
 function getRedis() {
   if (redis) return redis
@@ -6645,7 +6645,7 @@ var rateLimiters = {
   auth: (req) => rateLimit(req, "auth", 5, "60 s"),
 }
 
-// api/verify-turnstile.ts
+// api-src/verify-turnstile.ts
 async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")

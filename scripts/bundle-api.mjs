@@ -18,10 +18,9 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const projectRoot = join(__dirname, "..")
 
-const API_SRC = join(projectRoot, "api")
-// Output bundled .js files directly to api/ folder
-// Vercel prefers .js over .ts when both exist
-const API_DIST = API_SRC
+// Source files in api-src/, bundled output in api/
+const API_SRC = join(projectRoot, "api-src")
+const API_DIST = join(projectRoot, "api")
 
 // Ensure output directory exists
 if (!existsSync(API_DIST)) {

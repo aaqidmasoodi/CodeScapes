@@ -17310,7 +17310,7 @@ if (shouldShowDeprecationWarning())
     "\u26A0\uFE0F  Node.js 18 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 20 or later. For more information, visit: https://github.com/orgs/supabase/discussions/37217"
   )
 
-// api/lib/rateLimit.ts
+// api-src/lib/rateLimit.ts
 var import_ratelimit = __toESM(require_dist2(), 1)
 
 // node_modules/uncrypto/dist/crypto.node.mjs
@@ -21785,7 +21785,7 @@ var Redis2 = class _Redis extends Redis {
   }
 }
 
-// api/lib/rateLimit.ts
+// api-src/lib/rateLimit.ts
 var redis = null
 function getRedis() {
   if (redis) return redis
@@ -21853,7 +21853,7 @@ var rateLimiters = {
   auth: (req) => rateLimit(req, "auth", 5, "60 s"),
 }
 
-// api/cors-proxy.ts
+// api-src/cors-proxy.ts
 var ALLOWED_SCHEMES = ["http:", "https:"]
 var MAX_RESPONSE_SIZE = 10 * 1024 * 1024
 async function handler(req, res) {

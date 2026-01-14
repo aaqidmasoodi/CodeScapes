@@ -15244,7 +15244,7 @@ if (shouldShowDeprecationWarning())
     "\u26A0\uFE0F  Node.js 18 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 20 or later. For more information, visit: https://github.com/orgs/supabase/discussions/37217"
   )
 
-// api/sitemap.ts
+// api-src/sitemap.ts
 var supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ""
 var supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ""
 var supabase = createClient(supabaseUrl, supabaseAnonKey)
