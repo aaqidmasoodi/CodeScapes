@@ -15,11 +15,16 @@ let redis: Redis | null = null
 function getRedis(): Redis | null {
   if (redis) return redis
 
-  const url = process.env.UPSTASH_REDIS_REST_URL
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN
+  // Support both Upstash standard and Vercel KV environment variables
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN
 
   if (!url || !token) {
-    console.warn("[RateLimit] Upstash Redis not configured, rate limiting disabled")
+    if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+      console.warn(
+        `[RateLimit] Config Error: URL=${!!url}, Token=${!!token}. Check Vercel Env Vars.`
+      )
+    }
     return null
   }
 
