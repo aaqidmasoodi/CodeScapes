@@ -15,6 +15,7 @@ export function TaglineCard() {
     >
       <div className="flex h-full flex-col justify-center rounded-2xl border border-white/20 bg-white/60 p-6 shadow-lg shadow-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none lg:p-8">
         <h1 className="text-3xl font-bold tracking-tight lg:text-4xl">
+          <span className="sr-only">CodeScapes: </span>
           Code.
           <br />
           Create.
