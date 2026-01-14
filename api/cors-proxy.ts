@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClient } from "@supabase/supabase-js"
-import { rateLimiters } from "./rateLimit"
 
 /**
  * CORS Proxy for Python HTTP Requests
@@ -29,24 +28,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end()
   }
 
-  // ================================================================
-  // SECURITY: Rate Limiting (60 requests per minute per IP)
-  // ================================================================
-  try {
-    const { success, limit, remaining, reset } = await rateLimiters.corsProxy(req)
-    res.setHeader("X-RateLimit-Limit", limit.toString())
-    res.setHeader("X-RateLimit-Remaining", remaining.toString())
-    res.setHeader("X-RateLimit-Reset", reset.toString())
-
-    if (!success) {
-      return res.status(429).json({
-        error: "Too many requests",
-        retryAfter: Math.ceil((reset - Date.now()) / 1000),
-      })
-    }
-  } catch (err) {
-    console.error("Rate limiting error:", err)
-  }
+  // NOTE: Rate limiting temporarily disabled (Vercel ESM bundling issue)
+  // TODO: Re-add rate limiting with inline implementation
 
   // ================================================================
   // SECURITY: Authentication (optional but preferred)

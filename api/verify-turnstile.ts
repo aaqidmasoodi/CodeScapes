@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { rateLimiters } from "./rateLimit"
 
 /**
  * Turnstile Token Validation Endpoint
@@ -21,25 +20,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" })
   }
 
-  // ================================================================
-  // SECURITY: Rate Limiting (5 verifications per minute per IP)
-  // ================================================================
-  try {
-    const { success, limit, remaining, reset } = await rateLimiters.auth(req)
-    res.setHeader("X-RateLimit-Limit", limit.toString())
-    res.setHeader("X-RateLimit-Remaining", remaining.toString())
-    res.setHeader("X-RateLimit-Reset", reset.toString())
-
-    if (!success) {
-      return res.status(429).json({
-        success: false,
-        error: "Too many verification attempts",
-        retryAfter: Math.ceil((reset - Date.now()) / 1000),
-      })
-    }
-  } catch (err) {
-    console.error("Rate limiting error:", err)
-  }
+  // NOTE: Rate limiting temporarily disabled (Vercel ESM bundling issue)
+  // TODO: Re-add rate limiting with inline implementation
 
   try {
     const { token } = req.body
