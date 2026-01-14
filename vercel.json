@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api-dist/*.js": {
+      "runtime": "@vercel/node@3.0.0"
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
@@ -79,11 +84,11 @@
     },
     {
       "source": "/community/scape/:scapeId",
-      "destination": "/api/og?scapeId=:scapeId"
+      "destination": "/api-dist/og?scapeId=:scapeId"
     },
     {
       "source": "/sitemap.xml",
-      "destination": "/api/sitemap"
+      "destination": "/api-dist/sitemap"
     },
     {
       "source": "/(.*)",

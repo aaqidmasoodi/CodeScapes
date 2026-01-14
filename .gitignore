@@ -138,3 +138,6 @@ release
 /playwright/.cache/
 /playwright/.auth/
 .vercel
+
+# Bundled API functions (build output)
+api-dist/
