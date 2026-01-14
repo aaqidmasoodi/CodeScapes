@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
+import { TurnstileWidget } from "@/components/auth/TurnstileWidget"
 
 // ============================================================================
 // Types
@@ -72,6 +73,7 @@ export function FeedbackDialog({ trigger, open, onOpenChange }: FeedbackDialogPr
   const [description, setDescription] = useState("")
   const [priority, setPriority] = useState<Priority>("medium")
   const [includeSystemInfo, setIncludeSystemInfo] = useState(true)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
   // Controlled or uncontrolled
   const dialogOpen = open !== undefined ? open : isOpen
@@ -120,6 +122,25 @@ export function FeedbackDialog({ trigger, open, onOpenChange }: FeedbackDialogPr
     setIsSubmitting(true)
 
     try {
+      // Validate Turnstile token server-side
+      if (turnstileToken && turnstileToken !== "dev-bypass-token") {
+        const verifyRes = await fetch("/api/verify-turnstile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: turnstileToken }),
+        })
+        const verifyData = await verifyRes.json()
+        if (!verifyData.success) {
+          toast({
+            variant: "destructive",
+            title: "Verification failed",
+            description: "Bot check failed. Please refresh and try again.",
+          })
+          setTurnstileToken(null)
+          setIsSubmitting(false)
+          return
+        }
+      }
       const feedbackData = {
         user_id: user.id,
         type: feedbackType,
@@ -305,6 +326,13 @@ export function FeedbackDialog({ trigger, open, onOpenChange }: FeedbackDialogPr
               Include system info (browser, theme, screen size)
             </Label>
           </div>
+          {/* Turnstile CAPTCHA */}
+          <TurnstileWidget
+            onVerify={setTurnstileToken}
+            onError={() => setTurnstileToken(null)}
+            onExpire={() => setTurnstileToken(null)}
+            className="my-2"
+          />
         </div>
 
         {/* Actions */}
@@ -314,7 +342,7 @@ export function FeedbackDialog({ trigger, open, onOpenChange }: FeedbackDialogPr
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || !title.trim() || !description.trim()}
+            disabled={isSubmitting || !title.trim() || !description.trim() || !turnstileToken}
           >
             {isSubmitting ? (
               <>

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { Github, Loader2, Mail, Sparkles } from "lucide-react"
 import { CodeScapeLogo } from "@/components/brand/Logo"
+import { TurnstileWidget } from "@/components/auth/TurnstileWidget"
 
 export default function AuthPage() {
   const navigate = useNavigate()
@@ -28,6 +29,7 @@ export default function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
   const handleGithubLogin = async () => {
     try {
@@ -59,10 +61,26 @@ export default function AuthPage() {
     setIsEmailLoading(true)
 
     try {
+      // Validate Turnstile token server-side (skip in dev if bypass token)
+      if (turnstileToken && turnstileToken !== "dev-bypass-token") {
+        const verifyRes = await fetch("/api/verify-turnstile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: turnstileToken }),
+        })
+        const verifyData = await verifyRes.json()
+        if (!verifyData.success) {
+          setError("Bot verification failed. Please try again.")
+          setTurnstileToken(null)
+          setIsEmailLoading(false)
+          return
+        }
+      }
+
       if (isSignUp) {
         await signUpWithEmail(email, password)
         setSuccessMsg("Account created! Please check your email to confirm.")
-        setIsSignUp(false) // Switch back to login
+        setIsSignUp(false)
       } else {
         await signInWithEmail(email, password)
       }
@@ -209,10 +227,18 @@ export default function AuthPage() {
               </div>
             )}
 
+            {/* Turnstile CAPTCHA */}
+            <TurnstileWidget
+              onVerify={setTurnstileToken}
+              onError={() => setError("Verification failed. Please refresh.")}
+              onExpire={() => setTurnstileToken(null)}
+              className="my-2"
+            />
+
             <Button
               className="h-11 w-full bg-primary text-primary-foreground transition-all hover:bg-primary/90"
               type="submit"
-              disabled={isEmailLoading || loading}
+              disabled={isEmailLoading || loading || !turnstileToken}
             >
               {isEmailLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

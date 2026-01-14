@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { createClient } from "@supabase/supabase-js"
+import { rateLimiters } from "./lib/rateLimit"
 
 /**
  * CORS Proxy for Python HTTP Requests
@@ -6,6 +8,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
  * This serverless function fetches external URLs server-side,
  * bypassing browser CORS restrictions. Used by the Python runtime
  * to enable `requests.get()` for any external URL.
+ *
+ * SECURITY: Requires Supabase JWT authentication.
  */
 
 // Allowed URL schemes (prevent SSRF attacks)
@@ -25,13 +29,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end()
   }
 
-  // Get target URL from query parameter
+  // ================================================================
+  // SECURITY: Rate Limiting (60 requests per minute per IP)
+  // ================================================================
+  try {
+    const { success, limit, remaining, reset } = await rateLimiters.corsProxy(req)
+    res.setHeader("X-RateLimit-Limit", limit.toString())
+    res.setHeader("X-RateLimit-Remaining", remaining.toString())
+    res.setHeader("X-RateLimit-Reset", reset.toString())
+
+    if (!success) {
+      return res.status(429).json({
+        error: "Too many requests",
+        retryAfter: Math.ceil((reset - Date.now()) / 1000),
+      })
+    }
+  } catch (err) {
+    console.error("Rate limiting error:", err)
+  }
+
+  // ================================================================
+  // SECURITY: Authentication (optional but preferred)
+  // For Python runtime requests, we fall back to origin validation
+  // ================================================================
+  const authHeader = req.headers.authorization
+  let isAuthenticated = false
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const accessToken = authHeader.replace("Bearer ", "")
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ""
+    const supabaseAnonKey =
+      process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ""
+
+    if (supabaseUrl && supabaseAnonKey) {
+      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      })
+
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
+      isAuthenticated = !authError && !!user
+    }
+  }
+
+  // If not authenticated, validate request origin
+  if (!isAuthenticated) {
+    const origin = req.headers.origin || req.headers.referer || ""
+    const allowedOrigins = [
+      "https://codescapes.io",
+      "https://www.codescapes.io",
+      "http://localhost:5173",
+      "http://localhost:3000",
+    ]
+
+    const isAllowedOrigin = allowedOrigins.some((allowed) => origin.startsWith(allowed))
+
+    if (!isAllowedOrigin) {
+      console.warn(`CORS Proxy blocked: unauthorized origin ${origin}`)
+      return res.status(403).json({ error: "Unauthorized origin" })
+    }
+  }
+
+  // ================================================================
+  // Validate target URL
+  // ================================================================
   const targetUrl = req.query.url
   if (!targetUrl || typeof targetUrl !== "string") {
     return res.status(400).json({ error: "Missing 'url' query parameter" })
   }
 
-  // Validate URL
   let parsedUrl: URL
   try {
     parsedUrl = new URL(targetUrl)

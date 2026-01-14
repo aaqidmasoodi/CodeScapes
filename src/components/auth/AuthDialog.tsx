@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Github, Loader2, Mail } from "lucide-react"
+import { TurnstileWidget } from "@/components/auth/TurnstileWidget"
 
 export function AuthDialog({
   children,
@@ -41,6 +42,7 @@ export function AuthDialog({
   const [isSignUp, setIsSignUp] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
 
   const handleGithubLogin = async () => {
     try {
@@ -68,6 +70,21 @@ export function AuthDialog({
     setIsEmailLoading(true)
 
     try {
+      // Validate Turnstile token server-side (skip in dev if no token)
+      if (turnstileToken && turnstileToken !== "dev-bypass-token") {
+        const verifyRes = await fetch("/api/verify-turnstile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: turnstileToken }),
+        })
+        const verifyData = await verifyRes.json()
+        if (!verifyData.success) {
+          setError("Bot verification failed. Please try again.")
+          setTurnstileToken(null)
+          return
+        }
+      }
+
       if (isSignUp) {
         await signUpWithEmail(email, password)
         setSuccessMsg("Account created! Check email.")
@@ -164,7 +181,19 @@ export function AuthDialog({
             {error && <p className="text-xs text-destructive">{error}</p>}
             {successMsg && <p className="text-xs text-green-500">{successMsg}</p>}
 
-            <Button className="w-full" type="submit" disabled={isEmailLoading || loading}>
+            {/* Turnstile CAPTCHA */}
+            <TurnstileWidget
+              onVerify={setTurnstileToken}
+              onError={() => setError("Verification failed. Please refresh.")}
+              onExpire={() => setTurnstileToken(null)}
+              className="my-2"
+            />
+
+            <Button
+              className="w-full"
+              type="submit"
+              disabled={isEmailLoading || loading || !turnstileToken}
+            >
               {isEmailLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
