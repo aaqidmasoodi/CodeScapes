@@ -6604,7 +6604,7 @@ function getLimiter(prefix, requests, window) {
       redis: redis2,
       limiter: import_ratelimit.Ratelimit.slidingWindow(requests, window),
       prefix: `ratelimit:${prefix}`,
-      analytics: true,
+      analytics: false,
     })
   }
   return limiters[key]

@@ -51,7 +51,7 @@ function getLimiter(prefix: string, requests: number, window: string): Ratelimit
         window as `${number} s` | `${number} m` | `${number} h`
       ),
       prefix: `ratelimit:${prefix}`,
-      analytics: true,
+      analytics: false,
     })
   }
   return limiters[key]
