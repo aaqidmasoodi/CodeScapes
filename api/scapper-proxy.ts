@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClient } from "@supabase/supabase-js"
+import { rateLimiters } from "./_lib/rateLimit"
 
 /**
  * Scapper AI Proxy - Vercel Edge Function
@@ -39,6 +40,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" })
+  }
+
+  // ================================================================
+  // SECURITY: Rate Limiting (10 requests per minute per user)
+  // ================================================================
+  const { success, limit, remaining, reset } = await rateLimiters.scapperAi(req)
+  res.setHeader("X-RateLimit-Limit", limit.toString())
+  res.setHeader("X-RateLimit-Remaining", remaining.toString())
+  res.setHeader("X-RateLimit-Reset", reset.toString())
+
+  if (!success) {
+    return res.status(429).json({
+      error: "Too many requests",
+      message: "AI rate limit exceeded. Please wait before sending more prompts.",
+      retryAfter: Math.ceil((reset - Date.now()) / 1000),
+    })
   }
 
   try {
