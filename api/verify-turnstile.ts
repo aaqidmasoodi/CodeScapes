@@ -24,17 +24,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ================================================================
   // SECURITY: Rate Limiting (5 verifications per minute per IP)
   // ================================================================
-  const { success, limit, remaining, reset } = await rateLimiters.auth(req)
-  res.setHeader("X-RateLimit-Limit", limit.toString())
-  res.setHeader("X-RateLimit-Remaining", remaining.toString())
-  res.setHeader("X-RateLimit-Reset", reset.toString())
+  try {
+    const { success, limit, remaining, reset } = await rateLimiters.auth(req)
+    res.setHeader("X-RateLimit-Limit", limit.toString())
+    res.setHeader("X-RateLimit-Remaining", remaining.toString())
+    res.setHeader("X-RateLimit-Reset", reset.toString())
 
-  if (!success) {
-    return res.status(429).json({
-      success: false,
-      error: "Too many verification attempts",
-      retryAfter: Math.ceil((reset - Date.now()) / 1000),
-    })
+    if (!success) {
+      return res.status(429).json({
+        success: false,
+        error: "Too many verification attempts",
+        retryAfter: Math.ceil((reset - Date.now()) / 1000),
+      })
+    }
+  } catch (err) {
+    console.error("Rate limiting error:", err)
   }
 
   try {

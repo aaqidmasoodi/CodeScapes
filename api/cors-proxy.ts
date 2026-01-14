@@ -32,16 +32,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ================================================================
   // SECURITY: Rate Limiting (60 requests per minute per IP)
   // ================================================================
-  const { success, limit, remaining, reset } = await rateLimiters.corsProxy(req)
-  res.setHeader("X-RateLimit-Limit", limit.toString())
-  res.setHeader("X-RateLimit-Remaining", remaining.toString())
-  res.setHeader("X-RateLimit-Reset", reset.toString())
+  try {
+    const { success, limit, remaining, reset } = await rateLimiters.corsProxy(req)
+    res.setHeader("X-RateLimit-Limit", limit.toString())
+    res.setHeader("X-RateLimit-Remaining", remaining.toString())
+    res.setHeader("X-RateLimit-Reset", reset.toString())
 
-  if (!success) {
-    return res.status(429).json({
-      error: "Too many requests",
-      retryAfter: Math.ceil((reset - Date.now()) / 1000),
-    })
+    if (!success) {
+      return res.status(429).json({
+        error: "Too many requests",
+        retryAfter: Math.ceil((reset - Date.now()) / 1000),
+      })
+    }
+  } catch (err) {
+    console.error("Rate limiting error:", err)
   }
 
   // ================================================================

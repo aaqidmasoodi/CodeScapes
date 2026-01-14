@@ -45,17 +45,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ================================================================
   // SECURITY: Rate Limiting (10 requests per minute per user)
   // ================================================================
-  const { success, limit, remaining, reset } = await rateLimiters.scapperAi(req)
-  res.setHeader("X-RateLimit-Limit", limit.toString())
-  res.setHeader("X-RateLimit-Remaining", remaining.toString())
-  res.setHeader("X-RateLimit-Reset", reset.toString())
+  try {
+    const { success, limit, remaining, reset } = await rateLimiters.scapperAi(req)
+    res.setHeader("X-RateLimit-Limit", limit.toString())
+    res.setHeader("X-RateLimit-Remaining", remaining.toString())
+    res.setHeader("X-RateLimit-Reset", reset.toString())
 
-  if (!success) {
-    return res.status(429).json({
-      error: "Too many requests",
-      message: "AI rate limit exceeded. Please wait before sending more prompts.",
-      retryAfter: Math.ceil((reset - Date.now()) / 1000),
-    })
+    if (!success) {
+      return res.status(429).json({
+        error: "Too many requests",
+        message: "AI rate limit exceeded. Please wait before sending more prompts.",
+        retryAfter: Math.ceil((reset - Date.now()) / 1000),
+      })
+    }
+  } catch (err) {
+    // Fail open: log error but allow request to proceed
+    console.error("Rate limiting error:", err)
   }
 
   try {
