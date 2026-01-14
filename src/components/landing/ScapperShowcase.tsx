@@ -84,9 +84,10 @@ export function ScapperShowcase() {
               </div>
 
               <h2 className="text-3xl font-bold leading-tight text-zinc-900 dark:text-white md:text-4xl">
-                Scapper: The{" "}
+                <span className="sr-only">Scapper AI Coding Assistant: </span>
+                Meet{" "}
                 <span className="bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent dark:from-[#00ff9d] dark:to-emerald-600">
-                  AI Coding Assistant
+                  Scapper
                 </span>
                 .
               </h2>
