@@ -19,10 +19,6 @@ const BOT_PATTERNS = [
   "Slackbot",
   "Discordbot",
   "TelegramBot",
-  "Googlebot",
-  "bingbot",
-  "Baiduspider",
-  "DuckDuckBot",
   "Applebot",
   "Pinterest",
 ]

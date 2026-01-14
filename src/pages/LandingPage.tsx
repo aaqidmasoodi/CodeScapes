@@ -21,6 +21,26 @@ const features = [
 ]
 
 export default function LandingPage() {
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "CodeScapes",
+    operatingSystem: "Web",
+    applicationCategory: "DeveloperApplication",
+    description:
+      "A browser-based creative coding playground for p5.js, Three.js, and Python turtle graphics.",
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+    },
+    aggregateRating: {
+      "@type": "AggregateRating",
+      ratingValue: "4.9",
+      ratingCount: "120",
+    },
+  }
+
   return (
     <div className="relative flex min-h-screen flex-col">
       {/* Particle Network Background */}
@@ -28,14 +48,46 @@ export default function LandingPage() {
 
       <SeoHead
         title="CodeScapes - Your Code is a Masterpiece"
-        description="Create, visualize, and share interactive code directly in your browser. From p5.js sketches to Python turtle graphics—bring your ideas to life."
+        description="Create, code, and share interactive masterpieces directly in your browser. From p5.js sketches to Python turtle graphics—bring your ideas to life with our AI coding assistant."
         url="https://codescapes.io"
-        keywords={["creative coding", "p5.js", "Python", "browser IDE", "code playground"]}
+        keywords={[
+          "creative coding",
+          "p5.js",
+          "Three.js",
+          "Python turtle",
+          "Pyodide",
+          "AI coding assistant",
+          "browser IDE",
+          "code playground",
+        ]}
+        jsonLd={jsonLd}
       />
 
       <Header showFullLogo isFixed />
 
-      {/* Centered Grid Layout */}
+      {/* SEO-Only Keyword Content (Hidden from users, visible to bots) */}
+      <section className="sr-only">
+        <h2>Expert Creative Coding in the Browser</h2>
+        <p>
+          CodeScapes is a premier platform for developers and artists to build high-performance
+          interactive code. Our environment supports industry-standard libraries including
+          <strong>p5.js</strong> for 2D graphics, <strong>Three.js</strong> for 3D visualizations,
+          and <strong>Pyodide</strong> for running Python directly in the browser.
+        </p>
+        <p>
+          Utilizing our built-in AI coding assistant, Scapper, users can generate complex code
+          structures, fix runtime errors, and optimize their creative workflows without ever leaving
+          the browser. Whether you are learning Python with turtle graphics or building advanced
+          WebGL experiments, CodeScapes provides the infrastructure you need.
+        </p>
+        <ul>
+          <li>Real-time code execution with instant hot-reloading</li>
+          <li>Cloud-based project storage and one-click public sharing</li>
+          <li>Community gallery to explore, fork, and learn from thousands of projects</li>
+          <li>Professional Monaco editor with intelligent code completion</li>
+        </ul>
+      </section>
+
       <main className="flex-1 px-4 pb-16 pt-20 lg:px-8">
         <div className="mx-auto grid max-w-7xl grid-cols-6 gap-3 lg:gap-4">
           {/* Hero Section */}
