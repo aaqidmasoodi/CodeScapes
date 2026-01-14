@@ -24,11 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const baseUrl = "https://codescapes.io"
 
     // Static pages
-    const staticPages = [
-      "",
-      "/community",
-      "/about", // if exists
-    ]
+    const staticPages = ["", "/community"]
 
     const staticXml = staticPages
       .map((path) => {

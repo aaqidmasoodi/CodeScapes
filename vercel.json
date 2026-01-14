@@ -53,10 +53,6 @@
       "destination": "/sandbox/bootloader.html"
     },
     {
-      "source": "/community/scape/:scapeId",
-      "destination": "/api/og?scapeId=:scapeId"
-    },
-    {
       "source": "/sitemap.xml",
       "destination": "/api/sitemap"
     },
