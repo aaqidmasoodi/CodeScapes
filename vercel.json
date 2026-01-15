@@ -70,12 +70,36 @@
       "destination": "/sandbox/bootloader.html"
     },
     {
-      "source": "/community/scape/:scapeId",
-      "destination": "/api/og?scapeId=:scapeId"
-    },
-    {
       "source": "/sitemap.xml",
       "destination": "/api/sitemap"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/robots.txt"
+    },
+    {
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
+      "source": "/favicon.svg",
+      "destination": "/favicon.svg"
+    },
+    {
+      "source": "/og-image.png",
+      "destination": "/og-image.png"
+    },
+    {
+      "source": "/community/scape/:scapeId",
+      "destination": "/api/prerender"
+    },
+    {
+      "source": "/community",
+      "destination": "/api/prerender"
+    },
+    {
+      "source": "/",
+      "destination": "/api/prerender"
     },
     {
       "source": "/(.*)",

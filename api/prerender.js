@@ -15244,13 +15244,35 @@ if (shouldShowDeprecationWarning())
     "\u26A0\uFE0F  Node.js 18 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 20 or later. For more information, visit: https://github.com/orgs/supabase/discussions/37217"
   )
 
-// api-src/og.ts
+// api-src/prerender.ts
 import { readFileSync } from "fs"
 import { join } from "path"
 var supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ""
 var supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ""
 var supabase = createClient(supabaseUrl, supabaseAnonKey)
+var BASE_URL = "https://codescapes.io"
+var DEFAULT_OG_IMAGE = `${BASE_URL}/og-image.png`
 var BOT_PATTERNS = [
+  // Search engines (CRITICAL for indexing)
+  "Googlebot",
+  "Googlebot-Image",
+  "Googlebot-Video",
+  "Googlebot-News",
+  "Storebot-Google",
+  "Google-InspectionTool",
+  "Bingbot",
+  "bingbot",
+  "msnbot",
+  "Slurp",
+  // Yahoo
+  "DuckDuckBot",
+  "Baiduspider",
+  "YandexBot",
+  "Sogou",
+  "Exabot",
+  "ia_archiver",
+  // Alexa
+  // Social media crawlers
   "facebookexternalhit",
   "Facebot",
   "Twitterbot",
@@ -15261,10 +15283,17 @@ var BOT_PATTERNS = [
   "TelegramBot",
   "Applebot",
   "Pinterest",
+  "Embedly",
+  "Quora Link Preview",
+  "Showyoubot",
+  "outbrain",
+  "vkShare",
+  "W3C_Validator",
 ]
 function isBot(userAgent) {
   if (!userAgent) return false
-  return BOT_PATTERNS.some((pattern) => userAgent.toLowerCase().includes(pattern.toLowerCase()))
+  const ua = userAgent.toLowerCase()
+  return BOT_PATTERNS.some((pattern) => ua.includes(pattern.toLowerCase()))
 }
 function escapeHtml(text) {
   return text
@@ -15274,23 +15303,49 @@ function escapeHtml(text) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;")
 }
-async function handler(req, res) {
-  const { scapeId } = req.query
-  const userAgent = req.headers["user-agent"] || ""
-  if (!isBot(userAgent)) {
-    try {
-      const indexPath = join(process.cwd(), "dist", "index.html")
-      const html = readFileSync(indexPath, "utf-8")
-      res.setHeader("Content-Type", "text/html; charset=utf-8")
-      return res.status(200).send(html)
-    } catch {
-      return res.redirect(307, "/")
-    }
+function getHomePageMeta() {
+  return {
+    title: "CodeScapes - Your Code is a Masterpiece",
+    description:
+      "Create, visualize, and share your code as beautiful, interactive masterpieces directly in your browser. Supports p5.js, Three.js, and Python turtle graphics.",
+    url: BASE_URL,
+    image: DEFAULT_OG_IMAGE,
+    type: "website",
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      name: "CodeScapes",
+      operatingSystem: "Web",
+      applicationCategory: "DeveloperApplication",
+      description:
+        "A browser-based creative coding playground for p5.js, Three.js, and Python turtle graphics.",
+      url: BASE_URL,
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+      },
+    },
   }
-  const id = Array.isArray(scapeId) ? scapeId[0] : scapeId
-  if (!id) {
-    return res.status(400).send("Missing scape ID")
+}
+function getCommunityPageMeta() {
+  return {
+    title: "Community | CodeScapes",
+    description:
+      "Discover interactive coding projects created by the CodeScapes community. Browse, remix, and get inspired by creative code experiments.",
+    url: `${BASE_URL}/community`,
+    image: DEFAULT_OG_IMAGE,
+    type: "website",
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: "CodeScapes Community Projects",
+      description: "A gallery of creative coding projects built with CodeScapes.",
+      url: `${BASE_URL}/community`,
+    },
   }
+}
+async function getScapePageMeta(scapeId) {
   try {
     const { data, error } = await supabase
       .from("scapes")
@@ -15301,96 +15356,156 @@ async function handler(req, res) {
         description,
         thumbnail,
         environment,
+        updated_at,
         author:profiles(
           full_name,
           username
         )
       `
       )
-      .eq("id", id)
+      .eq("id", scapeId)
       .eq("is_public", true)
       .maybeSingle()
     if (error || !data) {
-      return res.status(200).send(generateDefaultHtml())
+      return null
     }
-    const title = escapeHtml(data.name || "CodeScapes Project")
-    const description = escapeHtml(
-      data.description || "A project built with CodeScapes - Browser-Based Code IDE"
-    )
     const authorData = Array.isArray(data.author) ? data.author[0] : data.author
     const authorName = authorData?.full_name || authorData?.username || "CodeScapes User"
-    const image = data.thumbnail || "https://codescapes.io/og-image.png"
-    const url = `https://codescapes.io/community/scape/${id}`
-    const environment = data.environment || "web"
-    const html = `<!DOCTYPE html>
+    return {
+      title: `${data.name || "Untitled Scape"} | CodeScapes`,
+      description:
+        data.description ||
+        `A ${data.environment || "creative"} coding project built with CodeScapes`,
+      url: `${BASE_URL}/community/scape/${scapeId}`,
+      image: data.thumbnail || DEFAULT_OG_IMAGE,
+      type: "article",
+      jsonLd: {
+        "@context": "https://schema.org",
+        "@type": "CreativeWork",
+        name: data.name,
+        description: data.description,
+        url: `${BASE_URL}/community/scape/${scapeId}`,
+        image: data.thumbnail || DEFAULT_OG_IMAGE,
+        author: {
+          "@type": "Person",
+          name: authorName,
+        },
+        dateModified: data.updated_at,
+      },
+    }
+  } catch (err) {
+    console.error("Error fetching scape:", err)
+    return null
+  }
+}
+function generateHtml(meta, includeRedirect = true) {
+  const escapedTitle = escapeHtml(meta.title)
+  const escapedDescription = escapeHtml(meta.description)
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
   <!-- Primary Meta Tags -->
-  <title>${title} | CodeScapes</title>
-  <meta name="title" content="${title} | CodeScapes">
-  <meta name="description" content="${description}">
+  <title>${escapedTitle}</title>
+  <meta name="title" content="${escapedTitle}">
+  <meta name="description" content="${escapedDescription}">
+  <meta name="author" content="CodeScapes">
+  <meta name="robots" content="index, follow">
+  
+  <!-- Canonical URL -->
+  <link rel="canonical" href="${meta.url}">
   
   <!-- Open Graph / Facebook -->
-  <meta property="og:type" content="article">
-  <meta property="og:url" content="${url}">
-  <meta property="og:title" content="${title}">
-  <meta property="og:description" content="${description}">
-  <meta property="og:image" content="${image}">
+  <meta property="og:type" content="${meta.type}">
+  <meta property="og:url" content="${meta.url}">
+  <meta property="og:title" content="${escapedTitle}">
+  <meta property="og:description" content="${escapedDescription}">
+  <meta property="og:image" content="${meta.image}">
   <meta property="og:site_name" content="CodeScapes">
-  <meta property="article:author" content="${escapeHtml(authorName)}">
+  <meta property="og:locale" content="en_US">
   
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:url" content="${url}">
-  <meta name="twitter:title" content="${title}">
-  <meta name="twitter:description" content="${description}">
-  <meta name="twitter:image" content="${image}">
+  <meta name="twitter:url" content="${meta.url}">
+  <meta name="twitter:title" content="${escapedTitle}">
+  <meta name="twitter:description" content="${escapedDescription}">
+  <meta name="twitter:image" content="${meta.image}">
   
-  <!-- Additional Info -->
-  <meta name="author" content="${escapeHtml(authorName)}">
-  <meta name="keywords" content="CodeScapes, ${environment}, code, programming, ${title}">
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+  <meta name="theme-color" content="#10b981">
   
-  <!-- Redirect to actual page for any JS-enabled browsers -->
-  <meta http-equiv="refresh" content="0;url=${url}">
-  <link rel="canonical" href="${url}">
+  <!-- Structured Data -->
+  ${meta.jsonLd ? `<script type="application/ld+json">${JSON.stringify(meta.jsonLd)}</script>` : ""}
+  
+  ${
+    includeRedirect
+      ? `<!-- Redirect for JS-enabled browsers -->
+  <meta http-equiv="refresh" content="0;url=${meta.url}">`
+      : ""
+  }
 </head>
 <body>
-  <p>Loading ${title}...</p>
-  <p><a href="${url}">Click here if you are not redirected</a></p>
+  <h1>${escapedTitle}</h1>
+  <p>${escapedDescription}</p>
+  <p><a href="${meta.url}">Continue to CodeScapes</a></p>
 </body>
 </html>`
-    res.setHeader("Content-Type", "text/html; charset=utf-8")
-    res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate")
-    return res.status(200).send(html)
-  } catch (err) {
-    console.error("OG handler error:", err)
-    return res.status(200).send(generateDefaultHtml())
-  }
 }
-function generateDefaultHtml() {
+function generate404Html() {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CodeScapes - Browser-Based Code IDE</title>
-  <meta name="description" content="Create, code, and share interactive web projects directly in your browser.">
-  <meta property="og:type" content="website">
-  <meta property="og:title" content="CodeScapes - Browser-Based Code IDE">
-  <meta property="og:description" content="Create, code, and share interactive web projects directly in your browser.">
-  <meta property="og:image" content="https://codescapes.io/og-image.png">
-  <meta property="og:site_name" content="CodeScapes">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="CodeScapes - Browser-Based Code IDE">
-  <meta name="twitter:description" content="Create, code, and share interactive web projects directly in your browser.">
-  <meta name="twitter:image" content="https://codescapes.io/og-image.png">
+  <title>Page Not Found | CodeScapes</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="canonical" href="${BASE_URL}">
 </head>
 <body>
-  <p>Loading CodeScapes...</p>
+  <h1>Page Not Found</h1>
+  <p>The requested page could not be found.</p>
+  <p><a href="${BASE_URL}">Return to CodeScapes</a></p>
 </body>
 </html>`
+}
+async function handler(req, res) {
+  const userAgent = req.headers["user-agent"] || ""
+  const path = req.url?.split("?")[0] || "/"
+  if (!isBot(userAgent)) {
+    try {
+      const indexPath = join(process.cwd(), "dist", "index.html")
+      const html = readFileSync(indexPath, "utf-8")
+      res.setHeader("Content-Type", "text/html; charset=utf-8")
+      return res.status(200).send(html)
+    } catch {
+      return res.redirect(307, "/")
+    }
+  }
+  let meta = null
+  if (path === "/" || path === "") {
+    meta = getHomePageMeta()
+  } else if (path === "/community" || path === "/community/") {
+    meta = getCommunityPageMeta()
+  } else if (path.startsWith("/community/scape/")) {
+    const scapeId = path.replace("/community/scape/", "").replace(/\/$/, "")
+    if (scapeId) {
+      meta = await getScapePageMeta(scapeId)
+    }
+  }
+  if (!meta && req.query.scapeId) {
+    const scapeId = Array.isArray(req.query.scapeId) ? req.query.scapeId[0] : req.query.scapeId
+    meta = await getScapePageMeta(scapeId)
+  }
+  if (!meta) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8")
+    return res.status(404).send(generate404Html())
+  }
+  res.setHeader("Content-Type", "text/html; charset=utf-8")
+  res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate=86400")
+  return res.status(200).send(generateHtml(meta))
 }
 export { handler as default }
