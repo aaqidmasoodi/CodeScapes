@@ -15398,7 +15398,7 @@ async function getScapePageMeta(scapeId) {
     return null
   }
 }
-function generateHtml(meta, includeRedirect = true) {
+function generateHtml(meta) {
   const escapedTitle = escapeHtml(meta.title)
   const escapedDescription = escapeHtml(meta.description)
   return `<!DOCTYPE html>
@@ -15440,13 +15440,6 @@ function generateHtml(meta, includeRedirect = true) {
   
   <!-- Structured Data -->
   ${meta.jsonLd ? `<script type="application/ld+json">${JSON.stringify(meta.jsonLd)}</script>` : ""}
-  
-  ${
-    includeRedirect
-      ? `<!-- Redirect for JS-enabled browsers -->
-  <meta http-equiv="refresh" content="0;url=${meta.url}">`
-      : ""
-  }
 </head>
 <body>
   <h1>${escapedTitle}</h1>
