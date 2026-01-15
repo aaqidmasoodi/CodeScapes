@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Github, Loader2, Mail } from "lucide-react"
 import { TurnstileWidget } from "@/components/auth/TurnstileWidget"
+import { CodeScapeLogo } from "@/components/brand/Logo"
 
 export function AuthDialog({
   children,
@@ -106,7 +107,9 @@ export function AuthDialog({
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle className="text-center text-2xl font-bold">Welcome back</DialogTitle>
+          <DialogTitle className="flex justify-center pb-2">
+            <CodeScapeLogo size={48} />
+          </DialogTitle>
           <DialogDescription className="text-center">
             {isSignUp ? "Create an account" : "Sign in to CodeScapes"}
           </DialogDescription>
