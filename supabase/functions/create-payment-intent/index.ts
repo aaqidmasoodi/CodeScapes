@@ -31,17 +31,35 @@ serve(async (req: Request) => {
   }
 
   try {
-    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY")
+    // ================================================================
+    // Dual Environment Support: Test (Sandbox) vs Live (Production)
+    // Set STRIPE_ENV=live in production, defaults to test for safety
+    // ================================================================
+    const stripeEnv = Deno.env.get("STRIPE_ENV") || "test"
+    const isLive = stripeEnv === "live"
+
+    const stripeSecretKey = isLive
+      ? Deno.env.get("STRIPE_SECRET_KEY_LIVE")
+      : Deno.env.get("STRIPE_SECRET_KEY_TEST")
+
+    const priceId = isLive
+      ? Deno.env.get("STRIPE_PRICE_ID_LIVE")
+      : Deno.env.get("STRIPE_PRICE_ID_TEST")
+
     const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY")
 
-    if (!stripeSecretKey || !serviceRoleKey) {
+    console.log(`[Payment] Environment: ${stripeEnv}, isLive: ${isLive}`)
+
+    if (!stripeSecretKey || !serviceRoleKey || !priceId) {
       console.error("Missing secrets: ", {
         stripe: !!stripeSecretKey,
         serviceRole: !!serviceRoleKey,
+        priceId: !!priceId,
+        env: stripeEnv,
       })
       return new Response(
         JSON.stringify({
-          error: "Server configuration error: Missing Secrets (Stripe/ServiceRole)",
+          error: `Server configuration error: Missing Secrets for ${stripeEnv} environment`,
         }),
         {
           status: 500,
@@ -132,7 +150,7 @@ serve(async (req: Request) => {
       console.log(`[Payment] Created Stripe customer: ${customerId}`)
     }
 
-    const PRICE_ID = "price_1SnTW3DReSL06oNAt9hFgqAe" // CodeScapes Pro ($9.99/mo)
+    const PRICE_ID = priceId // Now from environment variable
 
     // ================================================================
     // CRITICAL: Check for existing ACTIVE subscriptions to prevent duplicates

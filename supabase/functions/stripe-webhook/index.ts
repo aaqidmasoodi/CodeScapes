@@ -22,18 +22,35 @@ serve(async (req: Request) => {
   }
 
   try {
-    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY")
-    const stripeWebhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")
+    // ================================================================
+    // Dual Environment Support: Test (Sandbox) vs Live (Production)
+    // Set STRIPE_ENV=live in production, defaults to test for safety
+    // ================================================================
+    const stripeEnv = Deno.env.get("STRIPE_ENV") || "test"
+    const isLive = stripeEnv === "live"
+
+    const stripeSecretKey = isLive
+      ? Deno.env.get("STRIPE_SECRET_KEY_LIVE")
+      : Deno.env.get("STRIPE_SECRET_KEY_TEST")
+
+    const stripeWebhookSecret = isLive
+      ? Deno.env.get("STRIPE_WEBHOOK_SECRET_LIVE")
+      : Deno.env.get("STRIPE_WEBHOOK_SECRET_TEST")
+
+    console.log(`[Webhook] Environment: ${stripeEnv}, isLive: ${isLive}`)
 
     if (!stripeSecretKey || !stripeWebhookSecret) {
-      console.error("[Webhook] Stripe keys not configured:", {
+      console.error(`[Webhook] Stripe keys not configured for ${stripeEnv}:`, {
         hasSecretKey: !!stripeSecretKey,
         hasWebhookSecret: !!stripeWebhookSecret,
       })
-      return new Response(JSON.stringify({ error: "Payment service not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      })
+      return new Response(
+        JSON.stringify({ error: `Payment service not configured for ${stripeEnv}` }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      )
     }
 
     // DEBUG: Log secret prefix to verify correct value is loaded
