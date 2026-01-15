@@ -13,7 +13,7 @@
         },
         {
           "key": "Permissions-Policy",
-          "value": "camera=(self 'https://sandbox.codescapes.io'), microphone=(self 'https://sandbox.codescapes.io'), geolocation=()"
+          "value": "camera=(self \"https://sandbox.codescapes.io\"), microphone=(self \"https://sandbox.codescapes.io\"), geolocation=()"
         }
       ]
     },
