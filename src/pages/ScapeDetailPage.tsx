@@ -11,7 +11,6 @@ import { useAuth } from "@/hooks/useAuth"
 import { useTheme } from "@/components/theme-provider"
 import { Skeleton } from "@/components/ui/skeleton"
 
-import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import { type Scape } from "@/lib/db"
 
@@ -207,10 +206,16 @@ export default function ScapeDetailPage() {
 
   if (loading)
     return (
-      <DashboardLayout>
+      <div className="flex h-full flex-col bg-background">
         {/* Skeleton Loader matching the page layout */}
         <div className="h-full w-full overflow-y-auto bg-background p-4 md:p-6">
           <div className="mx-auto flex max-w-[1800px] flex-col gap-8">
+            {/* ... (rest of skeleton is deep inside) ... */}
+            {/* We can just wrap the inner content in a div instead of DashboardLayout */}
+            {/* But wait, the inner content includes specific skeletons.  */}
+            {/* Let's just return the wrapper div and let the inner divs assume they are in main layout */}
+            {/* We need to match the previous structure roughly for the close tags to align if we don't replace the whole block */}
+
             {/* Top Section: Preview & Metadata */}
             <div className="grid min-h-[500px] grid-cols-1 gap-6 lg:h-[750px] lg:grid-cols-4">
               {/* Visual Preview Skeleton (3/4) */}
@@ -314,14 +319,9 @@ export default function ScapeDetailPage() {
             <div className="h-12" />
           </div>
         </div>
-      </DashboardLayout>
+      </div>
     )
-  if (!scape)
-    return (
-      <DashboardLayout>
-        <div className="flex h-full items-center justify-center">Scape not found</div>
-      </DashboardLayout>
-    )
+  if (!scape) return <div className="flex h-full items-center justify-center">Scape not found</div>
 
   const isOwner = user?.id === scape.authorId
 
@@ -350,7 +350,7 @@ export default function ScapeDetailPage() {
         jsonLd={jsonLd}
         keywords={["CodeScapes", scape.environment, "creative coding", "programming"]}
       />
-      <DashboardLayout activeTab="community">
+      <div className="flex h-full flex-col bg-background">
         <div className="h-full w-full overflow-y-auto bg-background p-4 md:p-6">
           <div className="mx-auto flex max-w-[1800px] flex-col gap-8">
             {/* Top Section: Preview & Metadata */}
@@ -525,7 +525,7 @@ export default function ScapeDetailPage() {
             <div className="h-12" />
           </div>
         </div>
-      </DashboardLayout>
+      </div>
 
       {/* Auth Dialog */}
       <AuthDialog open={showAuthDialog} onOpenChange={setShowAuthDialog} />

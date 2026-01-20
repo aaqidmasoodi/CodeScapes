@@ -30,10 +30,8 @@ export function AdminSidebar({ className, activeTab = "dashboard", isMobile }: A
   return (
     <div
       className={cn(
-        "z-50 flex h-full flex-col justify-between border-r bg-background py-4 transition-all duration-300 ease-in-out",
-        isMobile
-          ? "w-full border-none bg-transparent"
-          : cn("w-16 hover:w-64 hover:shadow-xl", isExpanded && "w-64"),
+        "group z-50 flex h-full flex-col justify-between border-r bg-background py-4 transition-all duration-300 ease-in-out",
+        isMobile ? "w-full border-none bg-transparent" : "w-16 hover:w-64 hover:shadow-xl",
         className
       )}
       onMouseEnter={() => !isMobile && setIsHovered(true)}
@@ -68,7 +66,7 @@ export function AdminSidebar({ className, activeTab = "dashboard", isMobile }: A
             <span
               className={cn(
                 "whitespace-nowrap transition-opacity duration-300",
-                isExpanded ? "opacity-100" : "opacity-0"
+                isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
               )}
             >
               {tab.label}
@@ -88,7 +86,7 @@ export function AdminSidebar({ className, activeTab = "dashboard", isMobile }: A
           <span
             className={cn(
               "whitespace-nowrap transition-opacity duration-300",
-              isExpanded ? "opacity-100" : "opacity-0"
+              isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             )}
           >
             Settings
@@ -106,7 +104,7 @@ export function AdminSidebar({ className, activeTab = "dashboard", isMobile }: A
           <span
             className={cn(
               "whitespace-nowrap transition-opacity duration-300",
-              isExpanded ? "opacity-100" : "opacity-0"
+              isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             )}
           >
             Sign Out

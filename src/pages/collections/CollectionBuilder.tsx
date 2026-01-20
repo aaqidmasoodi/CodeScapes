@@ -27,7 +27,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { PublishDialog } from "@/components/collections/PublishDialog"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { DashboardLayout } from "@/layouts/DashboardLayout"
 import { useAuth } from "@/hooks/useAuth"
 import { supabase } from "@/lib/supabase"
 import { useScapes } from "@/hooks/useScapes"
@@ -635,16 +634,14 @@ export default function CollectionBuilder() {
 
   if (loading) {
     return (
-      <DashboardLayout activeTab="collections">
-        <div className="flex h-full items-center justify-center">
-          <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      </DashboardLayout>
+      <div className="flex h-full items-center justify-center">
+        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
     )
   }
 
   return (
-    <DashboardLayout activeTab="collections">
+    <>
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -839,6 +836,6 @@ export default function CollectionBuilder() {
           handleUpdateMeta({ is_public: true })
         }}
       />
-    </DashboardLayout>
+    </>
   )
 }
