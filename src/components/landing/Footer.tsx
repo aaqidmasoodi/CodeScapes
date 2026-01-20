@@ -158,7 +158,7 @@ export function Footer() {
             ))}
           </div>
 
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">🇵🇸 فلسطين حرة</div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">🇵🇸🍁🇮🇪</div>
         </div>
       </div>
     </footer>
