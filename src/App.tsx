@@ -22,6 +22,7 @@ import { AdminDashboard } from "@/pages/admin/AdminDashboard"
 import { AdminEditor } from "@/pages/admin/AdminEditor"
 import { AdminOverview } from "@/pages/admin/AdminOverview"
 import { QueryProvider } from "@/providers/QueryProvider"
+import { MainLayout } from "@/layouts/MainLayout"
 import CollectionsPage from "@/pages/collections/CollectionsPage"
 import CollectionBuilder from "@/pages/collections/CollectionBuilder"
 import CollectionViewer from "@/pages/collections/CollectionViewer"
@@ -38,15 +39,26 @@ function App() {
               <Route path="/login" element={<AuthPage />} />
               <Route path="/" element={<LandingPage />} />
 
-              {/* Collections & Library Routes */}
-              <Route path="/dashboard/collections" element={<CollectionsPage />} />
-              <Route path="/dashboard/collections/:id" element={<CollectionViewer />} />
-              <Route path="/dashboard/collections/:id/edit" element={<CollectionBuilder />} />
-              <Route path="/dashboard/library" element={<LibraryPage />} />
-              <Route path="/library/:id" element={<CollectionDetail />} />
+              {/* Main App Layout Routes */}
+              <Route element={<MainLayout />}>
+                {/* Dashboard */}
+                <Route path="/dashboard" element={<Navigate to="/dashboard/local" replace />} />
+                <Route path="/dashboard/local" element={<Dashboard />} />
+                <Route path="/dashboard/cloud" element={<Dashboard />} />
 
-              <Route path="/dashboard" element={<Navigate to="/dashboard/scapes" replace />} />
-              <Route path="/dashboard/:tab" element={<Dashboard />} />
+                {/* Collections & Library */}
+                <Route path="/dashboard/collections" element={<CollectionsPage />} />
+                <Route path="/dashboard/collections/:id" element={<CollectionViewer />} />
+                <Route path="/dashboard/collections/:id/edit" element={<CollectionBuilder />} />
+                <Route path="/dashboard/library" element={<LibraryPage />} />
+                <Route path="/library/:id" element={<CollectionDetail />} />
+
+                {/* Community */}
+                <Route path="/community" element={<CommunityPage />} />
+                <Route path="/community/scape/:scapeId" element={<ScapeDetailPage />} />
+                <Route path="/u/:username" element={<ProfilePage />} />
+              </Route>
+
               <Route path="/scape/:scapeId" element={<ScapeEditor />} />
               <Route path="/flow/:scapeId" element={<FlowEditor />} />
               <Route path="/auth" element={<Navigate to="/login" replace />} />
@@ -59,11 +71,6 @@ function App() {
               <Route path="/live/:scapeId" element={<ScapeRunnerPage mode="live" />} />
               {/* /view: Public Deployment (Frozen Snapshot) - Community Link */}
               <Route path="/view/:scapeId" element={<ScapeRunnerPage mode="published" />} />
-
-              {/* Community Routes */}
-              <Route path="/community" element={<CommunityPage />} />
-              <Route path="/community/scape/:scapeId" element={<ScapeDetailPage />} />
-              <Route path="/u/:username" element={<ProfilePage />} />
 
               {/* Docs Routes */}
               <Route path="/docs" element={<Navigate to="/docs/introduction" replace />} />

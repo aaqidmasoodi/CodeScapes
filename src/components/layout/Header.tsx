@@ -23,6 +23,7 @@ interface HeaderProps {
   showFullLogo?: boolean
   startContent?: React.ReactNode
   isFixed?: boolean
+  className?: string
 }
 
 export function Header({
@@ -33,14 +34,15 @@ export function Header({
   showFullLogo = false,
   startContent,
   isFixed = false,
+  className,
 }: HeaderProps) {
   const baseClasses = "flex h-12 shrink-0 items-center justify-between px-4"
   const fixedClasses = isFixed
     ? "fixed left-0 right-0 top-0 z-50 border-b border-white/5 bg-background/80 backdrop-blur-md"
-    : "relative border-b bg-background"
+    : "relative bg-background"
 
   return (
-    <header className={`${baseClasses} ${fixedClasses}`}>
+    <header className={`${baseClasses} ${fixedClasses} ${className || ""}`}>
       <div className="flex items-center gap-2">
         {startContent}
         {customTitle ? (
