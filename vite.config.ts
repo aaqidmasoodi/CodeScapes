@@ -20,6 +20,33 @@ export default defineConfig(({ mode }) => {
             next()
           })
 
+          // Mock Turnstile Verification (for local dev)
+          server.middlewares.use("/api/verify-turnstile", async (req, res) => {
+            const chunks = []
+            for await (const chunk of req) chunks.push(chunk)
+            const body = Buffer.concat(chunks).toString()
+
+            res.setHeader("Content-Type", "application/json")
+            res.setHeader("Access-Control-Allow-Origin", "*")
+
+            try {
+              const { token } = JSON.parse(body || "{}")
+              // Always succeed in dev if token is present (even if it's the real Cloudflare token, we can't verify it locally easily without secrets)
+              // But specifically check for our dev bypass
+              if (token) {
+                setTimeout(() => {
+                  res.end(JSON.stringify({ success: true }))
+                }, 500) // Small delay to simulate network
+              } else {
+                res.statusCode = 400
+                res.end(JSON.stringify({ success: false, error: "Missing token" }))
+              }
+            } catch {
+              res.statusCode = 400
+              res.end(JSON.stringify({ success: false, error: "Invalid JSON" }))
+            }
+          })
+
           // Localhost CORS Proxy Middleware
           server.middlewares.use("/api/cors-proxy", async (req, res) => {
             const urlObj = new URL(req.url || "", `http://${req.headers.host}`)
