@@ -93,7 +93,7 @@ export default function CommunityPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
+    <div className="flex h-full flex-col overflow-hidden bg-background">
       <SeoHead
         title="Community"
         description="Discover interactive coding projects created by the CodeScapes community."
