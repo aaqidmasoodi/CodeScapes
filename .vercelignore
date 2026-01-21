@@ -1,0 +1,17 @@
+node_modules
+dist-electron
+release
+.git
+.vercel
+build/
+*.log
+.gemini
+implementation_plan.md
+walkthrough.md
+test-results/
+playwright-report/
+blob-report/
+/playwright/.cache/
+/playwright/.auth/
+# API build outputs if not needed for deployment
+api/*.js
