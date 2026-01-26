@@ -21904,6 +21904,7 @@ async function handler(req, res) {
     const allowedOrigins = [
       "https://codescapes.io",
       "https://www.codescapes.io",
+      "https://staging.codescapes.io",
       "http://localhost:5173",
       "http://localhost:3000",
     ]
