@@ -717,19 +717,36 @@ export const PythonRunner = memo(
           }
         }
 
-        worker.onerror = (e) => {
-          log("stderr", `Worker Error: ${e.message}`)
-          setBusy(false)
-          // Resolve with error if crashing (safety)
-          if (runResolveRef.current) {
-            runResolveRef.current()
-            runResolveRef.current = null
+        worker.onerror = (e: Event | ErrorEvent) => {
+          console.error("[PythonRunner] Worker Error Event:", e)
+          isBusyRef.current = false
+          setIsBusyState(false)
+
+          let errorMessage = "Unknown Worker Error"
+          if (e instanceof ErrorEvent) {
+            errorMessage = e.message
+          } else if (e && typeof e === "object" && "message" in e) {
+            errorMessage = String((e as { message: unknown }).message)
+          } else {
+            // Generic Event (e.g. script load error 404/403)
+            errorMessage = "Failed to load worker script. Check network tab for 404/403 errors."
           }
-          // Also fail any pending installs
-          if (pendingInstalls.current.size > 0) {
-            pendingInstalls.current.forEach((handler) =>
-              handler.resolve({ success: false, error: `Worker Error: ${e.message}` })
-            )
+
+          log("stderr", `Worker Error: ${errorMessage}`)
+
+          if (pendingRunRef.current && isExplicitRunRef.current) {
+            if (activeRunCallbacks.current?.onError) {
+              activeRunCallbacks.current.onError(`Worker Error: ${errorMessage}`)
+            }
+            if (runResolveRef.current) {
+              runResolveRef.current()
+              runResolveRef.current = null
+            }
+          } else if (pendingInstalls.current.size > 0) {
+            // Reject all pending installs
+            pendingInstalls.current.forEach((handler) => {
+              handler.resolve({ success: false, error: `Worker Error: ${errorMessage}` })
+            })
             pendingInstalls.current.clear()
           }
         }
