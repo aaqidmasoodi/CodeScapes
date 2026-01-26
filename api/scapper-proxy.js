@@ -2312,12 +2312,6 @@ var require_RealtimeChannel = __commonJS({
         if (this.socket.accessTokenValue) {
           headers["Authorization"] = `Bearer ${this.socket.accessTokenValue}`
         }
-        const allowedOrigins = [
-          "https://codescapes.io",
-          "https://www.codescapes.io",
-          "https://staging.codescapes.io",
-          "http://localhost:5173",
-        ]
         const options = {
           method: "POST",
           headers,
