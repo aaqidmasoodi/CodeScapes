@@ -123,6 +123,10 @@
       "destination": "/api/prerender"
     },
     {
+      "source": "/api/scapper-proxy",
+      "destination": "/api/scapper-proxy"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
