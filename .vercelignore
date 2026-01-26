@@ -14,4 +14,4 @@ blob-report/
 /playwright/.cache/
 /playwright/.auth/
 # API build outputs if not needed for deployment
-api/*.js
+
