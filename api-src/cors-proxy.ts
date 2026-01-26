@@ -83,13 +83,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       "https://staging.codescapes.io",
       "http://localhost:5173",
       "http://localhost:3000",
+      "null", // Sandboxed iframes often send "null" origin
     ]
 
-    const isAllowedOrigin = allowedOrigins.some((allowed) => origin.startsWith(allowed))
+    const isAllowedOrigin = allowedOrigins.some(
+      (allowed) => origin === allowed || origin.startsWith(allowed)
+    )
 
     if (!isAllowedOrigin) {
       console.warn(`CORS Proxy blocked: unauthorized origin ${origin}`)
-      return res.status(403).json({ error: "Unauthorized origin" })
+      return res.status(403).json({ error: "Unauthorized origin", blockedOrigin: origin })
     }
   }
 

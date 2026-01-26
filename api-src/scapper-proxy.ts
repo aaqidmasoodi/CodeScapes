@@ -42,6 +42,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" })
   }
 
+  // Check Origin for Scapper as well (since we removed the heavy auth check for OPTIONS)
+  const origin = req.headers.origin || req.headers.referer || ""
+  // Fast fail for unauthorized origins before rate limiting to save resources
+  const allowedOrigins = [
+    "https://codescapes.io",
+    "https://www.codescapes.io",
+    "https://staging.codescapes.io",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "null",
+  ]
+  const isAllowedOrigin = allowedOrigins.some(
+    (allowed) => origin === allowed || origin.startsWith(allowed)
+  )
+
+  if (!isAllowedOrigin) {
+    console.warn(`Scapper Proxy blocked: unauthorized origin ${origin}`)
+    return res.status(403).json({ error: "Unauthorized origin", blockedOrigin: origin })
+  }
+
   // ================================================================
   // SECURITY: Rate Limiting (10 requests per minute per user)
   // ================================================================

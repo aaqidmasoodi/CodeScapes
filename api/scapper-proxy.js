@@ -21868,6 +21868,22 @@ async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" })
   }
+  const origin = req.headers.origin || req.headers.referer || ""
+  const allowedOrigins = [
+    "https://codescapes.io",
+    "https://www.codescapes.io",
+    "https://staging.codescapes.io",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "null",
+  ]
+  const isAllowedOrigin = allowedOrigins.some(
+    (allowed) => origin === allowed || origin.startsWith(allowed)
+  )
+  if (!isAllowedOrigin) {
+    console.warn(`Scapper Proxy blocked: unauthorized origin ${origin}`)
+    return res.status(403).json({ error: "Unauthorized origin", blockedOrigin: origin })
+  }
   try {
     const { success, limit, remaining, reset } = await rateLimiters.scapperAi(req)
     res.setHeader("X-RateLimit-Limit", limit.toString())
