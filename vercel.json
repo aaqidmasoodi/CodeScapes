@@ -127,6 +127,10 @@
       "destination": "/api/scapper-proxy"
     },
     {
+      "source": "/api/cors-proxy",
+      "destination": "/api/cors-proxy"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
