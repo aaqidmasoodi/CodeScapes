@@ -311,6 +311,8 @@ export const WebRunner = memo(
               className="h-full w-full border-0"
               sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
               allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
+              // @ts-expect-error - credentialless is a valid HTML attribute but not yet in React types
+              credentialless="true"
             />
           </div>
         )
@@ -356,6 +358,8 @@ export const WebRunner = memo(
               className="h-full w-full border-0"
               sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads allow-same-origin"
               allow="accelerometer; camera; encrypted-media; geolocation; gyroscope; microphone; midi; clipboard-read; clipboard-write; xr-spatial-tracking"
+              // @ts-expect-error - credentialless is a valid HTML attribute but not yet in React types
+              credentialless="true"
             />
           </div>
         </div>
