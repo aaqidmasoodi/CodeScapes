@@ -14,6 +14,14 @@
         {
           "key": "Permissions-Policy",
           "value": "camera=(self \"https://sandbox.codescapes.io\"), microphone=(self \"https://sandbox.codescapes.io\"), geolocation=()"
+        },
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "credentialless"
         }
       ]
     },
