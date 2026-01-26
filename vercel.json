@@ -56,6 +56,10 @@
         {
           "key": "Expires",
           "value": "0"
+        },
+        {
+          "key": "Cross-Origin-Resource-Policy",
+          "value": "cross-origin"
         }
       ]
     }
