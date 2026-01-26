@@ -182,9 +182,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.setHeader("Cache-Control", cacheControl)
     }
 
-    // Set status and send buffer
+    // Set status and send buffer (use res.end for raw binary, not res.send)
     res.status(response.status)
-    res.send(Buffer.from(buffer))
+    res.end(Buffer.from(buffer))
   } catch (error: unknown) {
     // Handle timeouts
     if (error instanceof Error && error.name === "AbortError") {

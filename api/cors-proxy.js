@@ -21979,7 +21979,7 @@ async function handler(req, res) {
       res.setHeader("Cache-Control", cacheControl)
     }
     res.status(response.status)
-    res.send(Buffer.from(buffer))
+    res.end(Buffer.from(buffer))
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       return res.status(504).json({ error: "Request timeout" })
