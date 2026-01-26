@@ -188,6 +188,45 @@ const turtleEventQueues = new Map()
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url)
 
+  // =========================================================================
+  // COEP FIX: Intercept cross-origin requests (jsdelivr/pyodide/npm CDN)
+  // and add CORP headers so they work under Cross-Origin-Embedder-Policy
+  // =========================================================================
+  const crossOriginCDNs = [
+    "cdn.jsdelivr.net",
+    "pyodide-cdn2.iodide.io",
+    "unpkg.com",
+    "esm.sh",
+    "cdn.skypack.dev",
+  ]
+
+  if (crossOriginCDNs.some((cdn) => url.hostname.includes(cdn))) {
+    log(`Intercepting CDN request for COEP compliance: ${url.href}`)
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // Clone the response so we can modify headers
+          const newHeaders = new Headers(response.headers)
+          newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin")
+          // Also ensure it's accessible via CORS
+          if (!newHeaders.has("Access-Control-Allow-Origin")) {
+            newHeaders.set("Access-Control-Allow-Origin", "*")
+          }
+
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: newHeaders,
+          })
+        })
+        .catch((e) => {
+          console.error("[SW] CDN fetch failed:", e)
+          return new Response("CDN Proxy Error", { status: 502 })
+        })
+    )
+    return
+  }
+
   // 1. Python Input Blocking Strategy
   if (url.pathname === "/_wait_input") {
     const id = url.searchParams.get("id")
