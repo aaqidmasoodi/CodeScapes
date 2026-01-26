@@ -21909,6 +21909,8 @@ async function handler(req, res) {
       "http://localhost:3000",
       "null",
       // Sandboxed iframes often send "null" origin
+      "",
+      // Workers might not send Origin/Referer at all
     ]
     const isAllowedOrigin = allowedOrigins.some(
       (allowed) => origin === allowed || origin.startsWith(allowed)

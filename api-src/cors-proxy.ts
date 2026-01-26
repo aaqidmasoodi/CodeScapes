@@ -84,6 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       "http://localhost:5173",
       "http://localhost:3000",
       "null", // Sandboxed iframes often send "null" origin
+      "", // Workers might not send Origin/Referer at all
     ]
 
     const isAllowedOrigin = allowedOrigins.some(

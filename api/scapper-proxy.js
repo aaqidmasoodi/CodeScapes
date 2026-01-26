@@ -21876,6 +21876,8 @@ async function handler(req, res) {
     "http://localhost:5173",
     "http://localhost:3000",
     "null",
+    "",
+    // Workers might not send Origin/Referer at all
   ]
   const isAllowedOrigin = allowedOrigins.some(
     (allowed) => origin === allowed || origin.startsWith(allowed)

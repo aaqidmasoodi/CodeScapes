@@ -52,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     "http://localhost:5173",
     "http://localhost:3000",
     "null",
+    "", // Workers might not send Origin/Referer at all
   ]
   const isAllowedOrigin = allowedOrigins.some(
     (allowed) => origin === allowed || origin.startsWith(allowed)
