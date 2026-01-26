@@ -17,6 +17,7 @@ export interface RunFileOptions {
   onInputRequest?: (prompt: string, isPassword?: boolean) => Promise<string>
   // Pass files directly to bypass debounced props
   files?: { name: string; content: string | Uint8Array; language: string }[]
+  onError?: (error: string) => void
 }
 
 export interface ScapeRunnerHandle {
