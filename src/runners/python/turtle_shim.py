@@ -1153,6 +1153,15 @@ class Turtle:
         # Handle speed strings (standard turtle aliases)
         if isinstance(speed, str):
             speed = {"fastest": 0, "fast": 10, "normal": 6, "slow": 3, "slowest": 1}.get(speed.lower(), 3)
+        # Clamp speed to 0-10 range like CPython turtle
+        # Values > 10 are treated as 0 (instant/fastest mode)
+        if isinstance(speed, (int, float)):
+            if speed > 10:
+                speed = 0  # Fastest mode (no animation)
+            elif speed < 0:
+                speed = 0
+            else:
+                speed = int(round(speed))
         self._speed = speed
         _send_cmd("UPDATE_TURTLE", {"id": self._id, "speed": speed})
 
