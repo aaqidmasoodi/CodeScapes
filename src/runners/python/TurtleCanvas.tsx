@@ -701,6 +701,11 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               stretchWid: (command.stretchWid as number) || 1,
               stretchLen: (command.stretchLen as number) || 1,
             })
+
+            if (autoUpdateRef.current) {
+              redrawSpritesToBackBuffer()
+              swapBuffers()
+            }
             break
           }
 
@@ -911,6 +916,10 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
                 fillColor: (command.color as string) || "black",
                 path: [...path],
               })
+
+              if (autoUpdateRef.current) {
+                swapBuffers()
+              }
             }
             fillPathRef.current.delete(id)
             break
@@ -979,6 +988,10 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               y: worldY,
               size,
             })
+
+            if (autoUpdateRef.current) {
+              swapBuffers()
+            }
             break
           }
 
@@ -1028,18 +1041,34 @@ export const TurtleCanvas = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             })
 
             inkCtx.restore()
+
+            if (autoUpdateRef.current) {
+              swapBuffers()
+            }
             break
           }
 
           case "SHOW": {
             const t = turtlesRef.current.get(command.id as number)
-            if (t) t.visible = true
+            if (t) {
+              t.visible = true
+              if (autoUpdateRef.current) {
+                redrawSpritesToBackBuffer()
+                swapBuffers()
+              }
+            }
             break
           }
 
           case "HIDE": {
             const t = turtlesRef.current.get(command.id as number)
-            if (t) t.visible = false
+            if (t) {
+              t.visible = false
+              if (autoUpdateRef.current) {
+                redrawSpritesToBackBuffer()
+                swapBuffers()
+              }
+            }
             break
           }
 
