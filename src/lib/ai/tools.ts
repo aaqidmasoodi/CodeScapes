@@ -138,7 +138,7 @@ const AGENTIC_TOOLS: GroqTool[] = [
     function: {
       name: "apply_diff",
       description:
-        "Apply search/replace changes to a file. SAFER than line-based edits - uses fuzzy matching. The search text must exist in the file or the edit will fail safely (preventing accidental overwrites).",
+        "Apply SMALL, surgical search/replace edits to a few lines of an existing file. The 'search' text must match the file closely (whitespace-tolerant fuzzy matching). DO NOT use this to rewrite a whole file or large sections — for that, use write_file with the full content (it is more reliable and avoids oversized tool calls). Keep each 'search' snippet short and exact.",
       parameters: {
         type: "object",
         properties: {

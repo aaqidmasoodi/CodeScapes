@@ -5,6 +5,7 @@
  * and quota enforcement. Uses Vercel for higher invocation limits.
  */
 
+import { jsonrepair } from "jsonrepair"
 import { supabase } from "../supabase"
 import type { PromptType } from "../quotaClient"
 
@@ -443,10 +444,17 @@ function sleep(ms: number): Promise<void> {
  * Parse tool call arguments safely
  */
 export function parseToolArguments<T>(toolCall: GroqToolCall): T | null {
+  const raw = toolCall.function.arguments
   try {
-    return JSON.parse(toolCall.function.arguments) as T
+    return JSON.parse(raw) as T
   } catch {
-    console.error(`[Scapper] Failed to parse tool arguments: ${toolCall.function.arguments}`)
-    return null
+    // Models sometimes emit slightly malformed JSON (trailing commas, unescaped
+    // newlines in large content). Attempt a structural repair before giving up.
+    try {
+      return JSON.parse(jsonrepair(raw)) as T
+    } catch {
+      console.error(`[Scapper] Failed to parse tool arguments (even after repair): ${raw}`)
+      return null
+    }
   }
 }

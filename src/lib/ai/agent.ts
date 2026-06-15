@@ -292,26 +292,35 @@ export async function runScapper(
           promptType: loopCount === 1 ? promptType : "scapper_response",
         })
       } catch (error) {
-        // Handle Token/Tool Validation Errors (Model Hallucinations)
-        // This catches "Tool call validation failed" errors from the proxy
+        // Recoverable model/tool errors. Besides hallucinated tool names, this
+        // catches provider errors like "Failed to parse tool call arguments as
+        // JSON" — which happens when the model crams a whole file into an
+        // apply_diff call. Rather than killing the session, steer it to retry
+        // (preferring write_file for large content).
         const errorMsg = error instanceof Error ? error.message : String(error)
-        if (
-          errorMsg.includes("validation failed") ||
-          errorMsg.includes("assistant<|channel|>commentary") ||
-          errorMsg.includes("attempted to call tool")
-        ) {
-          console.warn("[Scapper] Caught validation error, asking for retry:", errorMsg)
+        const lowerErr = errorMsg.toLowerCase()
+        const isRecoverableToolError =
+          lowerErr.includes("validation failed") ||
+          lowerErr.includes("assistant<|channel|>commentary") ||
+          lowerErr.includes("attempted to call tool") ||
+          lowerErr.includes("tool call arguments") ||
+          lowerErr.includes("failed to parse") ||
+          lowerErr.includes("as json")
+
+        if (isRecoverableToolError) {
+          const retryKey = "__tool_error_retry__"
+          const retries = (failureTracker.get(retryKey) || 0) + 1
+          failureTracker.set(retryKey, retries)
+
+          // Give up only after repeated unparseable tool calls.
+          if (retries > 3) throw error
+
+          console.warn("[Scapper] Recoverable tool error, asking for retry:", errorMsg)
           messages.push({
-            // We can't really push a tool role without a call_id if we didn't get the call.
-            // But if the PROXY failed, we didn't get a response.
-            // So we act as if the user/system is rejecting the previous attempt (which failed invisibly).
-            // Since we can't append to a non-existent assistant message, we'll append a SYSTEM warning.
-            // But wait, the LAST message was USER or SYSTEM (from previous loop).
-            // We need to prompt the model again.
             role: "system",
-            content: `Error: The previous tool call was invalid (${errorMsg}). Please retry using ONLY valid tools from the provided list.`,
+            content: `Your previous tool call could not be parsed or validated (${errorMsg}). This usually means the arguments were too large or not valid JSON — which happens when a whole file is sent through apply_diff. RETRY NOW: for large or whole-file changes, use write_file with the COMPLETE file content; use apply_diff only for a small, exact snippet. Make sure the tool arguments are valid JSON.`,
           })
-          onProgress({ type: "error", message: "Invalid tool call detected, retrying..." })
+          onProgress({ type: "error", message: "Invalid tool call — retrying with guidance..." })
           continue
         }
         throw error // Re-throw other errors
@@ -377,9 +386,9 @@ export async function runScapper(
               const readResult = await executeTool("read_file", { path: filePath }, toolContext)
               if (readResult.success) {
                 const recoveryHint =
-                  failCount >= 3
-                    ? `\n\n[RECOVERY HINT] This edit has failed ${failCount} times. Consider using \`overwrite_file\` instead.`
-                    : ""
+                  failCount >= 2
+                    ? `\n\n[RECOVERY HINT] apply_diff has failed ${failCount} times on this file. STOP using apply_diff here — call write_file with the COMPLETE updated file content instead.`
+                    : `\n\n[HINT] Match the search text EXACTLY (including indentation) from the content below, or use write_file to rewrite the whole file.`
 
                 // Inject current file content to help the model retry correctly
                 messages.push({

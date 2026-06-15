@@ -107,6 +107,17 @@ export function applySafeChanges(
       }
     }
 
+    // Whitespace-tolerant fallback: match whole lines ignoring indentation /
+    // trailing whitespace. This is the most common reason an LLM-supplied diff
+    // fails exact matching (e.g. CSS blocks where indentation differs).
+    const wsMatch = findWhitespaceTolerantMatch(workingContent, change.search)
+    if (wsMatch) {
+      workingContent =
+        workingContent.slice(0, wsMatch.start) + change.replace + workingContent.slice(wsMatch.end)
+      appliedCount++
+      continue
+    }
+
     // No match found
     failures.push({
       search: change.search.slice(0, 50) + (change.search.length > 50 ? "..." : ""),
@@ -133,6 +144,52 @@ export function applySafeChanges(
     appliedChanges: appliedCount,
     failedChanges: failures,
   }
+}
+
+/**
+ * Find a whole-line block in `content` that matches `search` ignoring each
+ * line's leading/trailing whitespace. Returns the exact char span to replace,
+ * or null if no such block exists. Handles the common LLM diff failure where
+ * indentation differs from the real file.
+ */
+function findWhitespaceTolerantMatch(
+  content: string,
+  search: string
+): { start: number; end: number } | null {
+  const searchLines = search.split("\n")
+  // Drop leading/trailing blank lines from the search block.
+  while (searchLines.length && searchLines[0].trim() === "") searchLines.shift()
+  while (searchLines.length && searchLines[searchLines.length - 1].trim() === "") searchLines.pop()
+  if (searchLines.length === 0) return null
+
+  const trimmedSearch = searchLines.map((l) => l.trim())
+  const contentLines = content.split("\n")
+
+  // Char offset of the start of each content line.
+  const lineOffsets: number[] = []
+  let offset = 0
+  for (const line of contentLines) {
+    lineOffsets.push(offset)
+    offset += line.length + 1 // +1 for the newline
+  }
+
+  for (let i = 0; i + trimmedSearch.length <= contentLines.length; i++) {
+    let matched = true
+    for (let j = 0; j < trimmedSearch.length; j++) {
+      if (contentLines[i + j].trim() !== trimmedSearch[j]) {
+        matched = false
+        break
+      }
+    }
+    if (matched) {
+      const lastIdx = i + trimmedSearch.length - 1
+      return {
+        start: lineOffsets[i],
+        end: lineOffsets[lastIdx] + contentLines[lastIdx].length, // exclude trailing newline
+      }
+    }
+  }
+  return null
 }
 
 /**
