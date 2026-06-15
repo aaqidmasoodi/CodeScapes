@@ -41,4 +41,82 @@ describe("AI Tools", () => {
       expect(result.error).toContain("File not found")
     })
   })
+
+  // Build a fresh, isolated context (write_file mutates ctx.files).
+  function freshContext(files: { name: string; content: string }[] = []): ToolContext {
+    return {
+      scapeId: "test",
+      files: files.map((f) => ({
+        name: f.name,
+        language: "plaintext",
+        content: f.content,
+      })) as ToolContext["files"],
+      createFile: vi.fn(),
+      updateFile: vi.fn(),
+      deleteFile: vi.fn(),
+      environment: { id: "web", name: "Web", entryPoint: "index.html", capabilities: {} },
+      dependencies: [],
+    }
+  }
+
+  describe("write_file (idempotent upsert)", () => {
+    it("creates a file when it does not exist", async () => {
+      const ctx = freshContext()
+      const result = await executeTool(
+        "write_file",
+        { path: "index.html", content: "<html></html>" },
+        ctx
+      )
+      expect(result.success).toBe(true)
+      expect(result.output).toContain("Created")
+      expect(ctx.createFile).toHaveBeenCalledOnce()
+      expect(ctx.files.find((f) => f.name === "index.html")?.content).toBe("<html></html>")
+    })
+
+    it("overwrites a file when it already exists", async () => {
+      const ctx = freshContext([{ name: "index.html", content: "old" }])
+      const result = await executeTool("write_file", { path: "index.html", content: "new" }, ctx)
+      expect(result.success).toBe(true)
+      expect(result.output).toContain("Updated")
+      expect(ctx.updateFile).toHaveBeenCalledWith("index.html", "new")
+      expect(ctx.files.find((f) => f.name === "index.html")?.content).toBe("new")
+    })
+
+    it("create_file alias upserts an existing file WITHOUT failing (kills the retry dance)", async () => {
+      const ctx = freshContext([{ name: "index.html", content: "template" }])
+      const result = await executeTool(
+        "create_file",
+        { path: "index.html", content: "rewritten" },
+        ctx
+      )
+      expect(result.success).toBe(true) // previously returned "File already exists"
+      expect(ctx.files.find((f) => f.name === "index.html")?.content).toBe("rewritten")
+    })
+
+    it("overwrite_file alias creates a missing file instead of failing", async () => {
+      const ctx = freshContext()
+      const result = await executeTool("overwrite_file", { path: "new.js", content: "x" }, ctx)
+      expect(result.success).toBe(true) // previously returned "File not found"
+      expect(ctx.createFile).toHaveBeenCalledOnce()
+    })
+
+    it("rejects empty path", async () => {
+      const ctx = freshContext()
+      const result = await executeTool("write_file", { path: "", content: "x" }, ctx)
+      expect(result.success).toBe(false)
+    })
+  })
+
+  describe("attempt_completion", () => {
+    it("returns success with the result as output", async () => {
+      const ctx = freshContext()
+      const result = await executeTool(
+        "attempt_completion",
+        { result: "Built the poker app." },
+        ctx
+      )
+      expect(result.success).toBe(true)
+      expect(result.output).toBe("Built the poker app.")
+    })
+  })
 })

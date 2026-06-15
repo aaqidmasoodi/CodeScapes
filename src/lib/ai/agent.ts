@@ -26,9 +26,10 @@ import { classifyPromptType, type PromptType } from "../quotaClient"
 const COMMON_RULES = `
 Rules:
 1. Use tools to modify files; NEVER claim changes without tool calls.
-2. Prefer precise edits (apply_diff) over rewrites.
+2. Write whole files with write_file (create-or-overwrite; no need to check if the file exists first). For small, targeted changes to large files, prefer apply_diff.
 3. Ask the user only if blocked or ambiguous.
 4. Keep responses brief and user-friendly.
+5. When the task is fully complete, call attempt_completion with a short summary. This ends the session — only call it after every write/edit has succeeded.
 
 CRITICAL SAFEGUARDS:
 - IMPLICIT COMMANDS: Users often say "Make it red" or "Sort the list". INTERPRET THESE AS COMMANDS TO MODIFY CODE. Do NOT ask for permission. JUST DO IT.
@@ -342,6 +343,25 @@ export async function runScapper(
 
           const toolResult = await executeToolCall(toolCall, toolContext, onProgress)
 
+          // --- COMPLETION: attempt_completion ends the session cleanly ---
+          if (toolCall.function.name === "attempt_completion") {
+            const finalMessage =
+              (typeof args.result === "string" && args.result.trim()) ||
+              toolResult.output ||
+              "Done!"
+            messages.push({
+              role: "tool",
+              content: toolResult.output || "Completed.",
+              tool_call_id: toolCall.id,
+            })
+            updatedHistory.push({ role: "assistant", content: finalMessage })
+            onProgress({ type: "done", message: finalMessage })
+            return {
+              result: { success: true, message: finalMessage, intent },
+              updatedHistory: compressHistory(updatedHistory),
+            }
+          }
+
           // --- SMART FAILURE RECOVERY for apply_diff ---
           if (
             !toolResult.success &&
@@ -412,10 +432,9 @@ export async function runScapper(
 
         messages.push({
           role: "system",
-          content: "Continue. Use tools if needed.",
+          content: "Continue. Use tools if needed, then call attempt_completion when done.",
         })
 
-        await sleep(4000)
         continue
       }
 
@@ -450,9 +469,8 @@ export async function runScapper(
 
           messages.push({
             role: "system",
-            content: `${alertMsg} You MUST use tools like \`create_file\`, \`apply_diff\`, or \`overwrite_file\` to make changes. DO NOT APOLOGIZE. DO NOT EXPLAIN. JUST EXECUTE THE TOOLS NOW.`,
+            content: `${alertMsg} You MUST use tools like \`write_file\` or \`apply_diff\` to make changes, then call \`attempt_completion\` when done. DO NOT APOLOGIZE. DO NOT EXPLAIN. JUST EXECUTE THE TOOLS NOW.`,
           })
-          await sleep(3000) // Pacing delay for UI
           continue
         }
       }
@@ -553,8 +571,4 @@ async function executeToolCall(
 
 export function createEmptyConversation(): GroqMessage[] {
   return []
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

@@ -48,41 +48,19 @@ const BASE_TOOLS: GroqTool[] = [
   {
     type: "function",
     function: {
-      name: "create_file",
+      name: "write_file",
       description:
-        "Create a new file with the specified content. The file type is auto-detected from the extension.",
+        "Create a new file OR completely overwrite an existing one (idempotent upsert). File type is auto-detected from the extension. Use this to write whole files — you do NOT need to check whether the file exists first, and it will never fail with 'already exists'. For small, targeted changes to a large existing file, prefer apply_diff to save tokens.",
       parameters: {
         type: "object",
         properties: {
           path: {
             type: "string",
-            description: "The file path to create (e.g., 'index.html' or 'src/App.tsx')",
+            description: "The file path to write (e.g., 'index.html' or 'src/App.tsx')",
           },
           content: {
             type: "string",
             description: "The complete content for the file",
-          },
-        },
-        required: ["path", "content"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "overwrite_file",
-      description:
-        "Replace the entire content of an existing file. Use this when you want to completely rewrite a file instead of making small edits.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "The file path to overwrite",
-          },
-          content: {
-            type: "string",
-            description: "The new complete content for the file",
           },
         },
         required: ["path", "content"],
@@ -240,6 +218,24 @@ const AGENTIC_TOOLS: GroqTool[] = [
           },
         },
         required: ["question"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "attempt_completion",
+      description:
+        "Call this ONCE when the task is fully complete to present the final result. This ENDS the session, so only call it after all file writes/edits have succeeded. Provide a concise, user-facing summary of what you accomplished.",
+      parameters: {
+        type: "object",
+        properties: {
+          result: {
+            type: "string",
+            description: "A concise, user-facing summary of what was accomplished.",
+          },
+        },
+        required: ["result"],
       },
     },
   },
@@ -532,14 +528,16 @@ export async function executeTool(
       case "read_file":
         return executeReadFile(args.path, ctx)
 
+      // write_file is the canonical upsert. create_file/overwrite_file are kept
+      // as lenient aliases so older model habits never trigger the wasteful
+      // "already exists" / "not found" retry dance.
+      case "write_file":
       case "create_file":
-        return await executeCreateFile(args.path, args.content, ctx)
+      case "overwrite_file":
+        return await executeWriteFile(args.path, args.content, ctx)
 
       case "edit_file":
         return await executeEditFile(args.path, args.search, args.replace, ctx)
-
-      case "overwrite_file":
-        return await executeOverwriteFile(args.path, args.content, ctx)
 
       case "delete_file":
         return await executeDeleteFile(args.path, ctx)
@@ -569,6 +567,9 @@ export async function executeTool(
 
       case "ask_user":
         return await executeAskUser(args.question, ctx)
+
+      case "attempt_completion":
+        return { success: true, output: args.result || "Task complete." }
 
       case "verify_and_run":
         return await executeVerifyAndRun(args.path, ctx)
@@ -645,44 +646,43 @@ function executeReadFile(path: string, ctx: ToolContext): ToolResult {
   return { success: true, output: content }
 }
 
-async function executeCreateFile(
+/**
+ * Idempotent upsert: creates the file if missing, fully overwrites it if present.
+ * This is the single canonical "write a whole file" primitive — it never fails
+ * with "already exists" or "not found", which eliminates the create→exists→read
+ * →overwrite retry dance the agent used to perform on template files.
+ */
+async function executeWriteFile(
   path: string,
   content: string,
   ctx: ToolContext
 ): Promise<ToolResult> {
-  // Check if file already exists
-  const existing = ctx.files.find((f) => normalizePath(f.name) === normalizePath(path))
-  if (existing) {
-    return {
-      success: false,
-      output: "",
-      error: `File already exists: ${path}`,
-    }
+  if (typeof path !== "string" || !path.trim()) {
+    return { success: false, output: "", error: "write_file requires a non-empty 'path'" }
+  }
+  if (typeof content !== "string") {
+    return { success: false, output: "", error: "write_file requires string 'content'" }
   }
 
-  // Detect language from extension
-  const language = getLanguageFromFilename(path) as ScapeFile["language"]
-
-  // Normalize content to fix escaped newlines from LLM
   const normalizedContent = normalizeContent(content)
-
-  // Call the actual createFile callback FIRST
-  await ctx.createFile(path, language, normalizedContent)
-
-  // Create file object for local context update AFTER callback succeeds
-  // This prevents race condition where handleCreateFile sees file already exists
-  const newFile: ScapeFile = {
-    name: path,
-    language,
-    content: normalizedContent,
-  }
-  ctx.files.push(newFile)
-
-  // Update Cache
-  updateFileCache(path, normalizedContent)
-
   const lines = normalizedContent.split("\n").length
-  return { success: true, output: `Created ${path} (${lines} lines)` }
+  const fileIndex = ctx.files.findIndex((f) => normalizePath(f.name) === normalizePath(path))
+
+  if (fileIndex === -1) {
+    // Create
+    const language = getLanguageFromFilename(path) as ScapeFile["language"]
+    await ctx.createFile(path, language, normalizedContent)
+    ctx.files.push({ name: path, language, content: normalizedContent })
+    updateFileCache(path, normalizedContent)
+    return { success: true, output: `Created ${path} (${lines} lines)` }
+  }
+
+  // Overwrite (use the stored name to preserve exact casing)
+  const targetPath = ctx.files[fileIndex].name
+  await ctx.updateFile(targetPath, normalizedContent)
+  ctx.files[fileIndex] = { ...ctx.files[fileIndex], content: normalizedContent }
+  updateFileCache(targetPath, normalizedContent)
+  return { success: true, output: `Updated ${path} (${lines} lines)` }
 }
 
 async function executeEditFile(
@@ -722,42 +722,6 @@ async function executeEditFile(
   await ctx.updateFile(path, newContent)
 
   return { success: true, output: `Updated ${path} (${count} replacement${count > 1 ? "s" : ""})` }
-}
-
-async function executeOverwriteFile(
-  path: string,
-  content: string,
-  ctx: ToolContext
-): Promise<ToolResult> {
-  const fileIndex = ctx.files.findIndex((f) => normalizePath(f.name) === normalizePath(path))
-  const file = ctx.files[fileIndex]
-
-  if (!file) {
-    // If not found, try to create it? No, overwrite implies existing.
-    // But maybe we should be lenient? The prompt says "NEVER use create_file on existing".
-    // Does overwrite_file imply strict replacement?
-    // Let's stick to strict existing check for now, but with normalized path.
-    return { success: false, output: "", error: `File not found: ${path}` }
-  }
-
-  // Use the actual found name for the callback to ensure exact match if case differs (though we normalized)
-  // Actually, we should probably use the matched file's name for the update to be safe
-  const targetPath = file ? file.name : path
-
-  // Normalize content to fix escaped newlines from LLM
-  const normalizedContent = normalizeContent(content)
-
-  // Call the update callback FIRST
-  await ctx.updateFile(targetPath, normalizedContent)
-
-  // Update local context AFTER callback succeeds
-  ctx.files[fileIndex] = { ...file, content: normalizedContent }
-
-  // Update Cache
-  updateFileCache(targetPath, normalizedContent)
-
-  const lines = normalizedContent.split("\n").length
-  return { success: true, output: `Overwrote ${path} (${lines} lines)` }
 }
 
 async function executeDeleteFile(path: string, ctx: ToolContext): Promise<ToolResult> {

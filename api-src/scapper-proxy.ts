@@ -70,10 +70,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // ================================================================
-  // SECURITY: Rate Limiting (10 requests per minute per user)
+  // SECURITY: Rate Limiting
+  // New user prompts are limited tightly (10/min); the agent's internal
+  // tool-loop continuations use a much higher ceiling so multi-step builds
+  // aren't throttled. "New prompt" is derived server-side (unspoofable).
   // ================================================================
+  const isNewPrompt = isNewUserPrompt((req.body as RequestBody | undefined)?.messages)
   try {
-    const { success, limit, remaining, reset } = await rateLimiters.scapperAi(req)
+    const limiter = isNewPrompt ? rateLimiters.scapperAi : rateLimiters.scapperContinuation
+    const { success, limit, remaining, reset } = await limiter(req)
     res.setHeader("X-RateLimit-Limit", limit.toString())
     res.setHeader("X-RateLimit-Remaining", remaining.toString())
     res.setHeader("X-RateLimit-Reset", reset.toString())
@@ -131,8 +136,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const groqBody = { ...body }
     delete groqBody.promptType
 
-    // Check quota for genuine new user prompts only
-    if (isNewUserPrompt(groqBody.messages)) {
+    // Check quota for genuine new user prompts only (computed above, unspoofable)
+    if (isNewPrompt) {
       const { data: quotaResult, error: quotaError } = await supabase.rpc(
         "check_and_increment_quota"
       )

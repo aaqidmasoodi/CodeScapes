@@ -128,9 +128,17 @@ export const rateLimiters = {
   corsProxy: (req: { headers: { [key: string]: string | string[] | undefined } }) =>
     rateLimit(req, "cors-proxy", 60, "60 s"),
 
-  /** Scapper AI: 10 requests per minute per user */
+  /** Scapper AI: 10 NEW user prompts per minute per user */
   scapperAi: (req: { headers: { [key: string]: string | string[] | undefined } }) =>
     rateLimit(req, "scapper-ai", 10, "60 s"),
+
+  /**
+   * Scapper AI agent continuations (internal tool-loop steps).
+   * A single user prompt fans out into many of these, so the ceiling is high —
+   * it exists to cap abuse, not to throttle a normal multi-step build.
+   */
+  scapperContinuation: (req: { headers: { [key: string]: string | string[] | undefined } }) =>
+    rateLimit(req, "scapper-cont", 150, "60 s"),
 
   /** Auth/Turnstile: 5 attempts per minute per IP */
   auth: (req: { headers: { [key: string]: string | string[] | undefined } }) =>

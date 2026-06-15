@@ -11,6 +11,10 @@ import type { PromptType } from "../quotaClient"
 // Vercel API route for Groq proxy (higher free tier than Supabase Edge Functions)
 const SCAPPER_PROXY_URL = "/api/scapper-proxy"
 
+// Secondary models tried (in order) if the primary keeps returning 5xx, so a
+// single provider/model hiccup doesn't fail the whole request.
+const FALLBACK_MODELS = ["openai/gpt-oss-20b"]
+
 // Types
 export interface GroqMessage {
   role: "system" | "user" | "assistant" | "tool"
@@ -108,16 +112,9 @@ export async function chatCompletion(
   } = options || {}
 
   const body: Record<string, unknown> = {
-    model,
     messages,
     temperature,
-    // reasoning_effort, // Removed default inclusion
     promptType, // Pass to Edge Function for quota check
-  }
-
-  // Only include reasoning_effort for non-Llama models (Llama 3.1 doesn't support it)
-  if (!model.toLowerCase().includes("llama")) {
-    body.reasoning_effort = reasoning_effort
   }
 
   if (maxTokens) {
@@ -129,78 +126,95 @@ export async function chatCompletion(
     body.tool_choice = "auto"
   }
 
-  // Retry logic with exponential backoff
+  // Try the primary model, then fall back to secondaries on repeated 5xx errors.
+  const modelsToTry = [model, ...FALLBACK_MODELS.filter((m) => m !== model)]
   const MAX_RETRIES = 3
   let lastError: Error | null = null
 
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      // Add delay between attempts
-      if (attempt > 0) {
-        const delay = Math.min(5000 * Math.pow(2, attempt), 30000)
-        await sleep(delay)
-      }
-
-      const response = await fetch(SCAPPER_PROXY_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: options?.signal,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        console.error("[Scapper Proxy Error]", response.status, errorData)
-
-        // Handle quota exceeded - don't retry, throw immediately
-        if (response.status === 429 && errorData.error === "quota_exceeded") {
-          throw new GroqAPIError(
-            errorData.message ||
-              "Daily prompt limit reached. Upgrade to Pro for unlimited prompts.",
-            429,
-            "quota_exceeded"
-          )
-        }
-
-        // Check if rate limited or server error (retryable)
-        if (response.status === 429 || response.status >= 500) {
-          const isRateLimit = response.status === 429
-          console.log(
-            `[Scapper] ${isRateLimit ? "Rate limited" : "Server error"}, waiting before retry...`
-          )
-
-          lastError = new GroqAPIError(
-            isRateLimit ? "Rate limited - waiting before retry..." : "Server error - retrying...",
-            response.status,
-            isRateLimit ? "rate_limit" : "server_error"
-          )
-          continue
-        }
-
-        throw new GroqAPIError(
-          errorData.error?.message || `API error: ${response.status}`,
-          response.status,
-          errorData.error?.code
-        )
-      }
-
-      const data: GroqResponse = await response.json()
-      return data
-    } catch (error) {
-      if (error instanceof GroqAPIError && error.code === "quota_exceeded") {
-        throw error // Don't retry quota errors
-      }
-      if (error instanceof GroqAPIError && error.status !== 429 && (error.status ?? 0) < 500) {
-        throw error // Don't retry non-retryable errors
-      }
-      lastError = error instanceof Error ? error : new Error(String(error))
+  for (let modelIdx = 0; modelIdx < modelsToTry.length; modelIdx++) {
+    const currentModel = modelsToTry[modelIdx]
+    body.model = currentModel
+    // reasoning_effort is only supported by some models (not Llama).
+    if (currentModel.toLowerCase().includes("llama")) {
+      delete body.reasoning_effort
+    } else {
+      body.reasoning_effort = reasoning_effort
     }
+    if (modelIdx > 0) {
+      console.warn(`[Scapper] Falling back to model: ${currentModel}`)
+    }
+
+    // Retry logic with exponential backoff (per model)
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        // Add delay between attempts
+        if (attempt > 0) {
+          const delay = Math.min(5000 * Math.pow(2, attempt), 30000)
+          await sleep(delay)
+        }
+
+        const response = await fetch(SCAPPER_PROXY_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          signal: options?.signal,
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          console.error("[Scapper Proxy Error]", response.status, errorData)
+
+          // Handle quota exceeded - don't retry, throw immediately
+          if (response.status === 429 && errorData.error === "quota_exceeded") {
+            throw new GroqAPIError(
+              errorData.message ||
+                "Daily prompt limit reached. Upgrade to Pro for unlimited prompts.",
+              429,
+              "quota_exceeded"
+            )
+          }
+
+          // Check if rate limited or server error (retryable)
+          if (response.status === 429 || response.status >= 500) {
+            const isRateLimit = response.status === 429
+            console.log(
+              `[Scapper] ${isRateLimit ? "Rate limited" : "Server error"}, waiting before retry...`
+            )
+
+            lastError = new GroqAPIError(
+              isRateLimit ? "Rate limited - waiting before retry..." : "Server error - retrying...",
+              response.status,
+              isRateLimit ? "rate_limit" : "server_error"
+            )
+            continue
+          }
+
+          throw new GroqAPIError(
+            errorData.error?.message || `API error: ${response.status}`,
+            response.status,
+            errorData.error?.code
+          )
+        }
+
+        const data: GroqResponse = await response.json()
+        return data
+      } catch (error) {
+        if (error instanceof GroqAPIError && error.code === "quota_exceeded") {
+          throw error // Don't retry quota errors
+        }
+        if (error instanceof GroqAPIError && error.status !== 429 && (error.status ?? 0) < 500) {
+          throw error // Don't retry non-retryable errors
+        }
+        lastError = error instanceof Error ? error : new Error(String(error))
+      }
+    }
+    // Retries exhausted for this model — the outer loop tries the next fallback.
   }
 
-  // All retries exhausted
+  // All models + retries exhausted
   throw (
     lastError ||
     new GroqAPIError(
