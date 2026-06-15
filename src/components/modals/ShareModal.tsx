@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
-import { collaboratorsService } from "@/services/collaborators"
+import { collaboratorsService } from "@/lib/services/collaborators"
 import type { Collaborator } from "@/types/collaborator"
 
 interface ShareModalProps {

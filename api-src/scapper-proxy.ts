@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClient } from "@supabase/supabase-js"
 import { rateLimiters } from "./lib/rateLimit"
+import { isAllowedOrigin } from "./lib/security"
 
 /**
  * Scapper AI Proxy - Vercel Edge Function
@@ -28,6 +29,23 @@ interface RequestBody {
   promptType?: PromptType
 }
 
+/**
+ * Server-authoritative "is this a billable new prompt?" check.
+ *
+ * A genuine new user turn ends with a `user` message. The agent's internal
+ * tool-execution loop continues the conversation by appending `assistant`
+ * (tool_calls) and `tool` (results) messages, so those calls end in a non-user
+ * role and are NOT billed. A client cannot pretend a real user turn is a
+ * continuation without removing its own user message — which would break the
+ * request it is trying to make.
+ */
+export function isNewUserPrompt(messages: unknown): boolean {
+  if (!Array.isArray(messages) || messages.length === 0) return false
+  const last = messages[messages.length - 1]
+  if (!last || typeof last !== "object") return false
+  return (last as { role?: unknown }).role === "user"
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Set CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*")
@@ -42,25 +60,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" })
   }
 
-  // Check Origin for Scapper as well (since we removed the heavy auth check for OPTIONS)
-  const origin = req.headers.origin || req.headers.referer || ""
-  // Fast fail for unauthorized origins before rate limiting to save resources
-  const allowedOrigins = [
-    "https://codescapes.io",
-    "https://www.codescapes.io",
-    "https://staging.codescapes.io",
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "null",
-    "", // Workers might not send Origin/Referer at all
-  ]
-  const isAllowedOrigin = allowedOrigins.some(
-    (allowed) => origin === allowed || origin.startsWith(allowed)
-  )
-
-  if (!isAllowedOrigin) {
+  // Check Origin for Scapper as well (since we removed the heavy auth check for OPTIONS).
+  // Exact-match only; the AI panel runs in the top-level app frame so a real
+  // Origin/Referer is always present (no "null"/empty allowance here).
+  const origin = (req.headers.origin || req.headers.referer || "") as string
+  if (!isAllowedOrigin(origin)) {
     console.warn(`Scapper Proxy blocked: unauthorized origin ${origin}`)
-    return res.status(403).json({ error: "Unauthorized origin", blockedOrigin: origin })
+    return res.status(403).json({ error: "Unauthorized origin" })
   }
 
   // ================================================================
@@ -115,12 +121,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(401).json({ error: "Unauthorized" })
     }
 
-    // Parse request body
+    // Parse request body. NOTE: the client-supplied `promptType` is NOT trusted
+    // for quota accounting — a malicious client could always send "follow_up"
+    // to consume the AI budget for free. We instead derive whether this is a
+    // billable user turn from the message payload itself (see isNewUserPrompt),
+    // which cannot be spoofed without breaking the actual AI request.
     const body: RequestBody = req.body
-    const { promptType = "follow_up", ...groqBody } = body
+    // Strip the untrusted client field before forwarding to Groq.
+    const groqBody = { ...body }
+    delete groqBody.promptType
 
-    // Check quota for new prompts only
-    if (promptType === "new_prompt") {
+    // Check quota for genuine new user prompts only
+    if (isNewUserPrompt(groqBody.messages)) {
       const { data: quotaResult, error: quotaError } = await supabase.rpc(
         "check_and_increment_quota"
       )

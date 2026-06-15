@@ -4,16 +4,25 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor
 var __getOwnPropNames = Object.getOwnPropertyNames
 var __getProtoOf = Object.getPrototypeOf
 var __hasOwnProp = Object.prototype.hasOwnProperty
-var __esm = (fn, res) =>
+var __esm = (fn, res, err) =>
   function __init() {
-    return (fn && (res = (0, fn[__getOwnPropNames(fn)[0]])((fn = 0))), res)
+    if (err) throw err[0]
+    try {
+      return (fn && (res = (0, fn[__getOwnPropNames(fn)[0]])((fn = 0))), res)
+    } catch (e) {
+      throw ((err = [e]), e)
+    }
   }
 var __commonJS = (cb, mod) =>
   function __require() {
-    return (
-      mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod),
-      mod.exports
-    )
+    try {
+      return (
+        mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod),
+        mod.exports
+      )
+    } catch (e) {
+      throw ((mod = 0), e)
+    }
   }
 var __export = (target, all) => {
   for (var name in all) __defProp(target, name, { get: all[name], enumerable: true })
@@ -21857,8 +21866,107 @@ var rateLimiters = {
   auth: (req) => rateLimit(req, "auth", 5, "60 s"),
 }
 
+// api-src/lib/security.ts
+import { isIP } from "node:net"
+import { lookup } from "node:dns/promises"
+var ALLOWED_ORIGINS = /* @__PURE__ */ new Set([
+  "https://codescapes.io",
+  "https://www.codescapes.io",
+  "https://staging.codescapes.io",
+  "http://localhost:5173",
+  "http://localhost:3000",
+])
+function isAllowedOrigin(rawOrigin, allowNullOrigin = false) {
+  const origin = (rawOrigin || "").trim()
+  if (origin === "") {
+    return allowNullOrigin
+  }
+  if (origin === "null") {
+    return allowNullOrigin
+  }
+  let candidate = origin
+  try {
+    candidate = new URL(origin).origin
+  } catch {}
+  return ALLOWED_ORIGINS.has(candidate)
+}
+var ALLOWED_SCHEMES = /* @__PURE__ */ new Set(["http:", "https:"])
+var MAX_REDIRECTS = 5
+function isPrivateIp(ip) {
+  const family = isIP(ip)
+  if (family === 0) return false
+  if (family === 4) return isPrivateIPv4(ip)
+  return isPrivateIPv6(ip)
+}
+function isPrivateIPv4(ip) {
+  const parts = ip.split(".").map((p) => Number(p))
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+    return true
+  }
+  const [a, b] = parts
+  if (a === 0) return true
+  if (a === 10) return true
+  if (a === 127) return true
+  if (a === 169 && b === 254) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  if (a === 100 && b >= 64 && b <= 127) return true
+  if (a >= 224) return true
+  return false
+}
+function isPrivateIPv6(rawIp) {
+  const ip = rawIp.toLowerCase().replace(/^\[|\]$/g, "")
+  if (ip === "::1" || ip === "::") return true
+  const mapped = ip.match(/(?:::ffff:)?(\d+\.\d+\.\d+\.\d+)$/)
+  if (mapped) return isPrivateIPv4(mapped[1])
+  const firstHextet = ip.split(":")[0]
+  if (firstHextet.startsWith("fc") || firstHextet.startsWith("fd")) return true
+  if (firstHextet.startsWith("fe8") || firstHextet.startsWith("fe9")) return true
+  if (firstHextet.startsWith("fea") || firstHextet.startsWith("feb")) return true
+  if (firstHextet.startsWith("ff")) return true
+  return false
+}
+var SsrfError = class extends Error {
+  status
+  constructor(message, status = 403) {
+    super(message)
+    this.name = "SsrfError"
+    this.status = status
+  }
+}
+async function assertPublicUrl(targetUrl) {
+  let parsed
+  try {
+    parsed = new URL(targetUrl)
+  } catch {
+    throw new SsrfError("Invalid URL format", 400)
+  }
+  if (!ALLOWED_SCHEMES.has(parsed.protocol)) {
+    throw new SsrfError("Only http and https URLs are allowed", 400)
+  }
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "")
+  if (hostname === "localhost" || hostname.endsWith(".local") || hostname.endsWith(".internal")) {
+    throw new SsrfError("Internal URLs are not allowed")
+  }
+  if (isIP(hostname) !== 0) {
+    if (isPrivateIp(hostname)) {
+      throw new SsrfError("Internal URLs are not allowed")
+    }
+    return parsed
+  }
+  let addresses
+  try {
+    addresses = await lookup(hostname, { all: true })
+  } catch {
+    throw new SsrfError("Could not resolve host", 400)
+  }
+  if (addresses.length === 0 || addresses.some((a) => isPrivateIp(a.address))) {
+    throw new SsrfError("Internal URLs are not allowed")
+  }
+  return parsed
+}
+
 // api-src/cors-proxy.ts
-var ALLOWED_SCHEMES = ["http:", "https:"]
 var MAX_RESPONSE_SIZE = 10 * 1024 * 1024
 async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*")
@@ -21901,67 +22009,63 @@ async function handler(req, res) {
   }
   if (!isAuthenticated) {
     const origin = req.headers.origin || req.headers.referer || ""
-    const allowedOrigins = [
-      "https://codescapes.io",
-      "https://www.codescapes.io",
-      "https://staging.codescapes.io",
-      "http://localhost:5173",
-      "http://localhost:3000",
-      "null",
-      // Sandboxed iframes often send "null" origin
-      "",
-      // Workers might not send Origin/Referer at all
-    ]
-    const isAllowedOrigin = allowedOrigins.some(
-      (allowed) => origin === allowed || origin.startsWith(allowed)
-    )
-    if (!isAllowedOrigin) {
+    if (
+      !isAllowedOrigin(
+        origin,
+        /* allowNullOrigin */
+        true
+      )
+    ) {
       console.warn(`CORS Proxy blocked: unauthorized origin ${origin}`)
-      return res.status(403).json({ error: "Unauthorized origin", blockedOrigin: origin })
+      return res.status(403).json({ error: "Unauthorized origin" })
     }
   }
   const targetUrl = req.query.url
   if (!targetUrl || typeof targetUrl !== "string") {
     return res.status(400).json({ error: "Missing 'url' query parameter" })
   }
-  let parsedUrl
   try {
-    parsedUrl = new URL(targetUrl)
-  } catch {
-    return res.status(400).json({ error: "Invalid URL format" })
-  }
-  if (!ALLOWED_SCHEMES.includes(parsedUrl.protocol)) {
-    return res.status(400).json({ error: "Only http and https URLs are allowed" })
-  }
-  const hostname = parsedUrl.hostname.toLowerCase()
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "0.0.0.0" ||
-    hostname.startsWith("192.168.") ||
-    hostname.startsWith("10.") ||
-    hostname.startsWith("172.") ||
-    hostname.endsWith(".local")
-  ) {
-    return res.status(403).json({ error: "Internal URLs are not allowed" })
+    await assertPublicUrl(targetUrl)
+  } catch (err) {
+    if (err instanceof SsrfError) {
+      return res.status(err.status).json({ error: err.message })
+    }
+    return res.status(400).json({ error: "Invalid URL" })
   }
   try {
     const headers = {
       "User-Agent": "CodeScapes-Proxy/1.0",
     }
-    const authHeader2 = req.headers.authorization
-    if (authHeader2) {
-      headers["Authorization"] = authHeader2
-    }
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 3e4)
-    const response = await fetch(targetUrl, {
-      method: req.method === "POST" ? "POST" : "GET",
-      headers,
-      body: req.method === "POST" ? JSON.stringify(req.body) : void 0,
-      signal: controller.signal,
-    })
-    clearTimeout(timeout)
+    let currentUrl = targetUrl
+    let response = null
+    try {
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        response = await fetch(currentUrl, {
+          method: req.method === "POST" ? "POST" : "GET",
+          headers,
+          body: req.method === "POST" ? JSON.stringify(req.body) : void 0,
+          redirect: "manual",
+          signal: controller.signal,
+        })
+        if (response.status < 300 || response.status >= 400) break
+        const location = response.headers.get("location")
+        if (!location) break
+        const nextUrl = new URL(location, currentUrl).toString()
+        await assertPublicUrl(nextUrl)
+        currentUrl = nextUrl
+        if (hop === MAX_REDIRECTS) {
+          clearTimeout(timeout)
+          return res.status(508).json({ error: "Too many redirects" })
+        }
+      }
+    } finally {
+      clearTimeout(timeout)
+    }
+    if (!response) {
+      return res.status(502).json({ error: "No response from target" })
+    }
     const contentLength = response.headers.get("content-length")
     if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_SIZE) {
       return res.status(413).json({ error: "Response too large" })
@@ -21981,6 +22085,9 @@ async function handler(req, res) {
     res.status(response.status)
     res.end(Buffer.from(buffer))
   } catch (error) {
+    if (error instanceof SsrfError) {
+      return res.status(error.status).json({ error: error.message })
+    }
     if (error instanceof Error && error.name === "AbortError") {
       return res.status(504).json({ error: "Request timeout" })
     }

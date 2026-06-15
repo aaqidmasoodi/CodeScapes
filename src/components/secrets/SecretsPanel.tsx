@@ -3,7 +3,7 @@ import { Lock, Plus, Trash2, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
-import { secretsService } from "@/services/secrets"
+import { secretsService } from "@/lib/services/secrets"
 import type { Secret } from "@/types/secret"
 
 export interface SecretsPanelHandle {

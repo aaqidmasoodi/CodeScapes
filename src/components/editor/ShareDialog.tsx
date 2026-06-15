@@ -18,7 +18,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { LocalRepository } from "@/lib/repositories/LocalRepository"
 import { CloudRepository } from "@/lib/repositories/CloudRepository"
 import { useToast } from "@/components/ui/use-toast"
-import { collaboratorsService } from "@/services/collaborators"
+import { collaboratorsService } from "@/lib/services/collaborators"
 import type { Collaborator } from "@/types/collaborator"
 import { supabase } from "@/lib/supabase"
 

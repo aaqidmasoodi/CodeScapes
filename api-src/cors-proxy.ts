@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { createClient } from "@supabase/supabase-js"
 import { rateLimiters } from "./lib/rateLimit"
+import { assertPublicUrl, isAllowedOrigin, SsrfError, MAX_REDIRECTS } from "./lib/security"
 
 /**
  * CORS Proxy for Python HTTP Requests
@@ -9,11 +10,12 @@ import { rateLimiters } from "./lib/rateLimit"
  * bypassing browser CORS restrictions. Used by the Python runtime
  * to enable `requests.get()` for any external URL.
  *
- * SECURITY: Requires Supabase JWT authentication.
+ * SECURITY:
+ *  - Requires a valid Supabase JWT, OR an exact-matched trusted origin.
+ *  - Validates the target URL against SSRF (private/reserved/metadata IPs),
+ *    re-checking every redirect hop.
+ *  - Never forwards the caller's Authorization header to the target.
  */
-
-// Allowed URL schemes (prevent SSRF attacks)
-const ALLOWED_SCHEMES = ["http:", "https:"]
 
 // Maximum response size (10MB)
 const MAX_RESPONSE_SIZE = 10 * 1024 * 1024
@@ -49,8 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // ================================================================
-  // SECURITY: Authentication (optional but preferred)
-  // For Python runtime requests, we fall back to origin validation
+  // SECURITY: Authentication (preferred) or trusted-origin fallback
   // ================================================================
   const authHeader = req.headers.authorization
   let isAuthenticated = false
@@ -74,87 +75,80 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // If not authenticated, validate request origin
+  // If not authenticated, validate request origin (exact match). Sandboxed
+  // iframes / Web Workers may send "null" or no Origin, which we allow here
+  // because the runtime calls this proxy from a worker context.
   if (!isAuthenticated) {
-    const origin = req.headers.origin || req.headers.referer || ""
-    const allowedOrigins = [
-      "https://codescapes.io",
-      "https://www.codescapes.io",
-      "https://staging.codescapes.io",
-      "http://localhost:5173",
-      "http://localhost:3000",
-      "null", // Sandboxed iframes often send "null" origin
-      "", // Workers might not send Origin/Referer at all
-    ]
-
-    const isAllowedOrigin = allowedOrigins.some(
-      (allowed) => origin === allowed || origin.startsWith(allowed)
-    )
-
-    if (!isAllowedOrigin) {
+    const origin = (req.headers.origin || req.headers.referer || "") as string
+    if (!isAllowedOrigin(origin, /* allowNullOrigin */ true)) {
       console.warn(`CORS Proxy blocked: unauthorized origin ${origin}`)
-      return res.status(403).json({ error: "Unauthorized origin", blockedOrigin: origin })
+      return res.status(403).json({ error: "Unauthorized origin" })
     }
   }
 
   // ================================================================
-  // Validate target URL
+  // Validate target URL (SSRF-safe)
   // ================================================================
   const targetUrl = req.query.url
   if (!targetUrl || typeof targetUrl !== "string") {
     return res.status(400).json({ error: "Missing 'url' query parameter" })
   }
 
-  let parsedUrl: URL
   try {
-    parsedUrl = new URL(targetUrl)
-  } catch {
-    return res.status(400).json({ error: "Invalid URL format" })
-  }
-
-  // Security: Only allow http/https
-  if (!ALLOWED_SCHEMES.includes(parsedUrl.protocol)) {
-    return res.status(400).json({ error: "Only http and https URLs are allowed" })
-  }
-
-  // Security: Block localhost/internal IPs (basic SSRF protection)
-  const hostname = parsedUrl.hostname.toLowerCase()
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "0.0.0.0" ||
-    hostname.startsWith("192.168.") ||
-    hostname.startsWith("10.") ||
-    hostname.startsWith("172.") ||
-    hostname.endsWith(".local")
-  ) {
-    return res.status(403).json({ error: "Internal URLs are not allowed" })
+    await assertPublicUrl(targetUrl)
+  } catch (err) {
+    if (err instanceof SsrfError) {
+      return res.status(err.status).json({ error: err.message })
+    }
+    return res.status(400).json({ error: "Invalid URL" })
   }
 
   try {
-    // Prepare headers to forward (optional - can be expanded)
+    // NOTE: We intentionally do NOT forward the caller's Authorization header
+    // to the target — that would leak the user's Supabase JWT to arbitrary
+    // third-party servers.
     const headers: HeadersInit = {
       "User-Agent": "CodeScapes-Proxy/1.0",
     }
 
-    // Forward Authorization header if present (for authenticated APIs)
-    const authHeader = req.headers.authorization
-    if (authHeader) {
-      headers["Authorization"] = authHeader
-    }
-
-    // Fetch the target URL
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 30000) // 30s timeout
 
-    const response = await fetch(targetUrl, {
-      method: req.method === "POST" ? "POST" : "GET",
-      headers,
-      body: req.method === "POST" ? JSON.stringify(req.body) : undefined,
-      signal: controller.signal,
-    })
+    // Follow redirects manually so each hop is re-validated against SSRF rules.
+    let currentUrl = targetUrl
+    let response: Response | null = null
+    try {
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        response = await fetch(currentUrl, {
+          method: req.method === "POST" ? "POST" : "GET",
+          headers,
+          body: req.method === "POST" ? JSON.stringify(req.body) : undefined,
+          redirect: "manual",
+          signal: controller.signal,
+        })
 
-    clearTimeout(timeout)
+        // Not a redirect — we're done.
+        if (response.status < 300 || response.status >= 400) break
+
+        const location = response.headers.get("location")
+        if (!location) break // redirect without target — treat as final response
+
+        const nextUrl = new URL(location, currentUrl).toString()
+        await assertPublicUrl(nextUrl) // throws SsrfError if the hop is unsafe
+        currentUrl = nextUrl
+
+        if (hop === MAX_REDIRECTS) {
+          clearTimeout(timeout)
+          return res.status(508).json({ error: "Too many redirects" })
+        }
+      }
+    } finally {
+      clearTimeout(timeout)
+    }
+
+    if (!response) {
+      return res.status(502).json({ error: "No response from target" })
+    }
 
     // Check response size via Content-Length header
     const contentLength = response.headers.get("content-length")
@@ -176,7 +170,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.setHeader("Content-Type", contentType)
     }
 
-    // Forward cache headers if present
     const cacheControl = response.headers.get("cache-control")
     if (cacheControl) {
       res.setHeader("Cache-Control", cacheControl)
@@ -186,6 +179,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(response.status)
     res.end(Buffer.from(buffer))
   } catch (error: unknown) {
+    // A redirect hop pointing at an internal host surfaces here.
+    if (error instanceof SsrfError) {
+      return res.status(error.status).json({ error: error.message })
+    }
+
     // Handle timeouts
     if (error instanceof Error && error.name === "AbortError") {
       return res.status(504).json({ error: "Request timeout" })

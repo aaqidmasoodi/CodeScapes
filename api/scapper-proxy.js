@@ -4,16 +4,25 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor
 var __getOwnPropNames = Object.getOwnPropertyNames
 var __getProtoOf = Object.getPrototypeOf
 var __hasOwnProp = Object.prototype.hasOwnProperty
-var __esm = (fn, res) =>
+var __esm = (fn, res, err) =>
   function __init() {
-    return (fn && (res = (0, fn[__getOwnPropNames(fn)[0]])((fn = 0))), res)
+    if (err) throw err[0]
+    try {
+      return (fn && (res = (0, fn[__getOwnPropNames(fn)[0]])((fn = 0))), res)
+    } catch (e) {
+      throw ((err = [e]), e)
+    }
   }
 var __commonJS = (cb, mod) =>
   function __require() {
-    return (
-      mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod),
-      mod.exports
-    )
+    try {
+      return (
+        mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod),
+        mod.exports
+      )
+    } catch (e) {
+      throw ((mod = 0), e)
+    }
   }
 var __export = (target, all) => {
   for (var name in all) __defProp(target, name, { get: all[name], enumerable: true })
@@ -21857,7 +21866,36 @@ var rateLimiters = {
   auth: (req) => rateLimit(req, "auth", 5, "60 s"),
 }
 
+// api-src/lib/security.ts
+var ALLOWED_ORIGINS = /* @__PURE__ */ new Set([
+  "https://codescapes.io",
+  "https://www.codescapes.io",
+  "https://staging.codescapes.io",
+  "http://localhost:5173",
+  "http://localhost:3000",
+])
+function isAllowedOrigin(rawOrigin, allowNullOrigin = false) {
+  const origin = (rawOrigin || "").trim()
+  if (origin === "") {
+    return allowNullOrigin
+  }
+  if (origin === "null") {
+    return allowNullOrigin
+  }
+  let candidate = origin
+  try {
+    candidate = new URL(origin).origin
+  } catch {}
+  return ALLOWED_ORIGINS.has(candidate)
+}
+
 // api-src/scapper-proxy.ts
+function isNewUserPrompt(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return false
+  const last = messages[messages.length - 1]
+  if (!last || typeof last !== "object") return false
+  return last.role === "user"
+}
 async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -21869,22 +21907,9 @@ async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" })
   }
   const origin = req.headers.origin || req.headers.referer || ""
-  const allowedOrigins = [
-    "https://codescapes.io",
-    "https://www.codescapes.io",
-    "https://staging.codescapes.io",
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "null",
-    "",
-    // Workers might not send Origin/Referer at all
-  ]
-  const isAllowedOrigin = allowedOrigins.some(
-    (allowed) => origin === allowed || origin.startsWith(allowed)
-  )
-  if (!isAllowedOrigin) {
+  if (!isAllowedOrigin(origin)) {
     console.warn(`Scapper Proxy blocked: unauthorized origin ${origin}`)
-    return res.status(403).json({ error: "Unauthorized origin", blockedOrigin: origin })
+    return res.status(403).json({ error: "Unauthorized origin" })
   }
   try {
     const { success, limit, remaining, reset } = await rateLimiters.scapperAi(req)
@@ -21924,8 +21949,9 @@ async function handler(req, res) {
       return res.status(401).json({ error: "Unauthorized" })
     }
     const body = req.body
-    const { promptType = "follow_up", ...groqBody } = body
-    if (promptType === "new_prompt") {
+    const groqBody = { ...body }
+    delete groqBody.promptType
+    if (isNewUserPrompt(groqBody.messages)) {
       const { data: quotaResult, error: quotaError } = await supabase.rpc(
         "check_and_increment_quota"
       )
@@ -21983,4 +22009,4 @@ async function handler(req, res) {
     return res.status(500).json({ error: "Internal server error" })
   }
 }
-export { handler as default }
+export { handler as default, isNewUserPrompt }

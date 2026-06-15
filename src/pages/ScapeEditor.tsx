@@ -24,6 +24,7 @@ import type { Problem } from "@/types/problem"
 import type { LogEntry } from "@/types/log"
 import { useFileSystem } from "@/hooks/useFileSystem"
 import { useAuth } from "@/hooks/useAuth"
+import { usePersistentState } from "@/hooks/usePersistentState"
 import { useScapeLoading } from "@/hooks/useScapeLoading"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useConsoleInput } from "@/hooks/useConsoleInput"
@@ -70,32 +71,6 @@ import { initFromSupabase } from "@/lib/git/sync"
 import { useGitManager } from "@/hooks/useGitManager"
 import { TourProvider, TourStep, TourAutoStart, TourRestartButtonWrapper } from "@/components/tour"
 import { tourRegistry } from "@/lib/tours"
-
-// --- Helper for Persistence ---
-function usePersistentState<T>(
-  key: string,
-  initialValue: T
-): [T, (value: T | ((val: T) => T)) => void] {
-  const [state, setState] = useState<T>(() => {
-    try {
-      const stored = localStorage.getItem(key)
-      return stored ? JSON.parse(stored) : initialValue
-    } catch (e) {
-      console.warn("Failed to load persistent state:", key, e)
-      return initialValue
-    }
-  })
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(state))
-    } catch (e) {
-      console.warn("Failed to save persistent state:", key, e)
-    }
-  }, [key, state])
-
-  return [state, setState]
-}
 
 // Helper for Layout Validation
 const getLayout = (key: string, defaults: number[]) => {

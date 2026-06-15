@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import type { ScapeFile } from "@/types/file"
-import { secretsService } from "@/services/secrets"
+import { secretsService } from "@/lib/services/secrets"
 
 export interface StablePreviewPayload {
   files: ScapeFile[]

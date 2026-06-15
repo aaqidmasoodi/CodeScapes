@@ -237,14 +237,12 @@ self.addEventListener("message", async (event) => {
       try {
         const cache = await caches.open(FILES_CACHE)
 
-        // Clear existing cache entries for this scapeId to ensure fresh files
-        const existingRequests = await cache.keys()
-        for (const request of existingRequests) {
-          if (request.url.includes(`/run/${scapeId}/`)) {
-            await cache.delete(request)
-          }
-        }
-        log(`[Sandbox SW] Cleared old cache entries for ${scapeId}`)
+        // Atomic hydration: write the new files FIRST (cache.put overwrites in
+        // place), then prune stale keys afterwards. We must never leave the
+        // cache empty -- otherwise an in-flight redirect/fetch for index.html
+        // (e.g. from a previous, overlapping hydrate cycle) would 404 with
+        // "Sandbox not hydrated".
+        const newKeys = new Set()
 
         // Process and Store files
         const putPromises = files.map(async (file) => {
@@ -300,6 +298,7 @@ self.addEventListener("message", async (event) => {
             `${RUN_PATH_PREFIX}/${scapeId}/${file.name}`,
             self.location.origin
           )
+          newKeys.add(cacheUrl.pathname)
 
           await cache.put(
             cacheUrl,
@@ -316,6 +315,20 @@ self.addEventListener("message", async (event) => {
         })
 
         await Promise.all(putPromises)
+
+        // Prune entries for this scape that are no longer part of the project
+        // (deleted/renamed files). Done AFTER writing so the current files stay
+        // continuously available -- no empty-cache window.
+        const existingRequests = await cache.keys()
+        await Promise.all(
+          existingRequests.map(async (request) => {
+            const reqPath = new URL(request.url).pathname
+            if (reqPath.includes(`/run/${scapeId}/`) && !newKeys.has(reqPath)) {
+              await cache.delete(request)
+            }
+          })
+        )
+
         log(`[Sandbox SW] Hydration Complete for ${scapeId}`)
 
         // Acknowledge
