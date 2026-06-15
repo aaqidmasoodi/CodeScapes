@@ -1,7 +1,7 @@
 {
   "name": "codescapes",
   "private": true,
-  "version": "0.0.6",
+  "version": "0.0.7",
   "type": "module",
   "main": "dist-electron/main.js",
   "author": "Aaqid Masoodi <aaqidmasoodi@gmail.com>",

@@ -276,8 +276,33 @@ export async function runScapper(
   // ---------------------------------------------------------------------------
 
   const failureTracker = new Map<string, number>()
+
+  // Dedup of read-only tool calls (signature -> count). Breaks the degenerate
+  // "re-read the same file 15 times" loop and the token blow-up it causes.
+  const toolCallSignatures = new Map<string, number>()
+  const READ_ONLY_TOOLS = new Set([
+    "read_file",
+    "search_files",
+    "list_files",
+    "view_file_outline",
+    "analyze_codebase",
+  ])
+  const MUTATION_TOOLS = new Set([
+    "write_file",
+    "create_file",
+    "overwrite_file",
+    "edit_file",
+    "apply_diff",
+    "delete_file",
+  ])
+
+  // No-progress breaker: bail out (gracefully) if many turns pass without a
+  // successful file mutation, instead of grinding to MAX_LOOPS.
+  let iterationsSinceProgress = 0
+  const MAX_NO_PROGRESS = 8
+
   let loopCount = 0
-  const MAX_LOOPS = 30
+  const MAX_LOOPS = 20
 
   try {
     while (loopCount++ < MAX_LOOPS) {
@@ -335,6 +360,7 @@ export async function runScapper(
 
       // Handle Tools
       if (assistantMessage.tool_calls?.length) {
+        let madeProgressThisTurn = false
         for (const toolCall of assistantMessage.tool_calls) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const args = parseToolArguments<Record<string, any>>(toolCall)
@@ -348,6 +374,24 @@ export async function runScapper(
             })
             onProgress({ type: "error", message: "Invalid JSON from model, asking for retry..." })
             continue
+          }
+
+          // --- DEDUP: skip repeated identical read-only calls (token + loop guard) ---
+          // Signatures are cleared after any successful mutation (file changed),
+          // so legitimate "write then re-read to verify" still works.
+          if (READ_ONLY_TOOLS.has(toolCall.function.name)) {
+            const sig = `${toolCall.function.name}:${toolCall.function.arguments}`
+            const seen = toolCallSignatures.get(sig) || 0
+            toolCallSignatures.set(sig, seen + 1)
+            if (seen >= 1) {
+              messages.push({
+                role: "tool",
+                content: `You already ran this exact ${toolCall.function.name} call and the result has not changed. Do NOT repeat read-only calls — use what you already have to make the edit (write_file / apply_diff) or call attempt_completion.`,
+                tool_call_id: toolCall.id,
+              })
+              onProgress({ type: "error", message: `Skipped repeated ${toolCall.function.name}` })
+              continue
+            }
           }
 
           const toolResult = await executeToolCall(toolCall, toolContext, onProgress)
@@ -416,6 +460,13 @@ export async function runScapper(
             tool_call_id: toolCall.id,
           })
 
+          // Real progress: a successful mutation resets the no-progress counter
+          // and invalidates read dedup (the file changed, re-reads are valid).
+          if (MUTATION_TOOLS.has(toolCall.function.name) && toolResult.success) {
+            madeProgressThisTurn = true
+            toolCallSignatures.clear()
+          }
+
           // Check for plan proposal
           if (toolResult.output.includes("[PLAN_PROPOSAL]")) {
             // Basic plan handling logic (simplified for rewrite but functional)
@@ -436,6 +487,25 @@ export async function runScapper(
                 updatedHistory: compressHistory(updatedHistory),
               }
             }
+          }
+        }
+
+        // No-progress accounting: bail out gracefully if the model keeps
+        // reading/searching/failing without actually changing files.
+        if (madeProgressThisTurn) {
+          iterationsSinceProgress = 0
+        } else {
+          iterationsSinceProgress++
+        }
+
+        if (iterationsSinceProgress >= MAX_NO_PROGRESS) {
+          const msg =
+            "I've made some changes but I'm looping without converging, so I stopped to avoid wasting tokens. Please tell me specifically what still needs fixing (or run it and share any error)."
+          updatedHistory.push({ role: "assistant", content: msg })
+          onProgress({ type: "done", message: msg })
+          return {
+            result: { success: true, message: msg, intent },
+            updatedHistory: compressHistory(updatedHistory),
           }
         }
 
